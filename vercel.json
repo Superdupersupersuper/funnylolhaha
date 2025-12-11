@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "analytics_api.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/",
+      "dest": "/analytics_ui.html"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/analytics_api.py"
+    }
+  ]
+}

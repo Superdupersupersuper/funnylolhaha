@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MentionMarkets - Trump Transcript Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: #1a2332;
+            color: #e5e7eb;
+            font-size: 14px;
+        }
+
+        .container {
+            max-width: 100%;
+            padding: 20px;
+        }
+
+        /* SEARCH SECTION */
+        .search-section {
+            background: #2d3748;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .search-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #3b82f6;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 15px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            color: #e5e7eb;
+            font-size: 15px;
+            margin-bottom: 15px;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .search-options {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .search-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+        }
+
+        .search-option input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .options-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .option-label {
+            font-size: 13px;
+            color: #d1d5db;
+        }
+
+        .context-size-input {
+            width: 80px;
+            padding: 6px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            color: #e5e7eb;
+            font-size: 13px;
+        }
+
+        .sort-select {
+            padding: 6px 10px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            color: #e5e7eb;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        /* CHARTS SECTION */
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .chart-wrapper {
+            background: #2d3748;
+            border-radius: 8px;
+            padding: 20px;
+            height: 400px;
+        }
+
+        .chart-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #f3f4f6;
+        }
+
+        .chart-canvas {
+            height: calc(100% - 30px);
+        }
+
+        /* FILTERS SECTION - HORIZONTAL */
+        .filters-section {
+            background: #2d3748;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .filters-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #f3f4f6;
+        }
+
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .filter-group-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #d1d5db;
+        }
+
+        .filter-items {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            background: #1a2332;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #374151;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .filter-item input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .filter-item label {
+            cursor: pointer;
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .filter-btn {
+            padding: 6px 12px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover {
+            background: #2563eb;
+        }
+
+        .filter-btn.secondary {
+            background: #4b5563;
+        }
+
+        .filter-btn.secondary:hover {
+            background: #6b7280;
+        }
+
+        .date-input {
+            padding: 8px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            color: #e5e7eb;
+            font-size: 13px;
+            width: 100%;
+        }
+
+        /* STATISTICS SECTION */
+        .stats-section {
+            background: #2d3748;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .stats-title {
+            font-size: 14px;
+            margin-bottom: 15px;
+            color: #9ca3af;
+        }
+
+        .stats-item {
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+
+        .bar-container {
+            width: 100%;
+            height: 12px;
+            background: #1a2332;
+            border-radius: 4px;
+            margin-top: 6px;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .bar-segment {
+            height: 100%;
+            transition: all 0.3s;
+        }
+
+        .bar-segment.mentioned {
+            background: #3b82f6;
+        }
+
+        .bar-segment.not-mentioned {
+            background: #4b5563;
+        }
+
+        /* TRANSCRIPTS SECTION - HORIZONTAL GRID */
+        .transcripts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 15px;
+        }
+
+        .transcript-card {
+            background: #2d3748;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 15px;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .transcript-card:hover {
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+        }
+
+        .transcript-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #f3f4f6;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .transcript-date {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-bottom: 10px;
+        }
+
+        .transcript-totals {
+            font-size: 13px;
+            margin-bottom: 10px;
+            color: #d1d5db;
+        }
+
+        .transcript-totals strong {
+            color: #3b82f6;
+        }
+
+        .transcript-content {
+            background: #1a2332;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #d1d5db;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .transcript-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .transcript-content::-webkit-scrollbar-track {
+            background: #374151;
+            border-radius: 3px;
+        }
+
+        .transcript-content::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+
+        .highlight {
+            background-color: #fbbf24;
+            color: #000;
+            padding: 2px 4px;
+            border-radius: 2px;
+            font-weight: 600;
+        }
+
+        /* YOUTUBE-STYLE PROGRESS BAR - ONLY MARKERS */
+        .progress-bar-container {
+            position: relative;
+            height: 12px;
+            background: #4b5563;
+            border-radius: 6px;
+            cursor: pointer;
+            overflow: visible;
+        }
+
+        .progress-bar-container:hover {
+            height: 14px;
+        }
+
+        .progress-bar-markers {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .progress-marker {
+            position: absolute;
+            top: 0;
+            width: 3px;
+            height: 100%;
+            background: #3b82f6;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-radius: 2px;
+        }
+
+        .progress-marker:hover {
+            width: 5px;
+            height: 120%;
+            top: -10%;
+            background: #60a5fa;
+        }
+
+        /* STATS BARS - PROPORTIONAL WITH COLOR CODING */
+        .stats-bar-item {
+            height: 100%;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-right: 1px solid #1a2332;
+        }
+
+        .stats-bar-item:hover {
+            opacity: 0.8;
+            transform: scaleY(1.1);
+        }
+
+        .stats-bar-item.mentions-0 {
+            background: #4b5563;
+        }
+
+        .stats-bar-item.mentions-1-3 {
+            background: #60a5fa;
+        }
+
+        .stats-bar-item.mentions-3-7 {
+            background: #3b82f6;
+        }
+
+        .stats-bar-item.mentions-7plus {
+            background: #1e40af;
+        }
+
+        .speaker-separator {
+            height: 15px;
+            background: transparent;
+        }
+
+        /* Loading & Empty states */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #9ca3af;
+            grid-column: 1 / -1;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9ca3af;
+            grid-column: 1 / -1;
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        /* Scrollbar styling */
+        .filter-items::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .filter-items::-webkit-scrollbar-track {
+            background: #374151;
+            border-radius: 3px;
+        }
+
+        .filter-items::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- SEARCH SECTION -->
+        <div class="search-section">
+            <div class="search-title">MentionMarkets.com</div>
+            <input type="text" class="search-input" id="searchInput" placeholder="Search terms (e.g., trump derangement syndrome)">
+
+            <div class="search-options">
+                <div class="search-option">
+                    <input type="checkbox" id="matchBeginning">
+                    <label for="matchBeginning">Match Beginning</label>
+                </div>
+                <div class="search-option">
+                    <input type="checkbox" id="matchEnding">
+                    <label for="matchEnding">Match Ending</label>
+                </div>
+                <div class="search-option">
+                    <input type="checkbox" id="includePlural" checked>
+                    <label for="includePlural">Include Plural/Possessive</label>
+                </div>
+                <div class="search-option">
+                    <input type="checkbox" id="includeHyphenation">
+                    <label for="includeHyphenation">Include Hyphenation</label>
+                </div>
+                <div class="search-option">
+                    <input type="checkbox" id="caseSensitive">
+                    <label for="caseSensitive">Case-Sensitive</label>
+                </div>
+            </div>
+
+            <div class="options-row">
+                <span class="option-label">Context Size:</span>
+                <input type="number" class="context-size-input" id="contextSize" value="200" min="50" max="500">
+
+                <span class="option-label" style="margin-left: 20px;">Sort Results:</span>
+                <select class="sort-select" id="sortSelect">
+                    <option value="newest">Newest</option>
+                    <option value="oldest">Oldest</option>
+                    <option value="most-mentions">Most Mentions</option>
+                </select>
+
+                <div class="checkbox-group" style="margin-left: auto;">
+                    <input type="checkbox" id="showResults" checked>
+                    <label for="showResults">Show Results</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="showMatchLocations" checked>
+                    <label for="showMatchLocations">Show Match Locations</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="showContext" checked>
+                    <label for="showContext">Show Context</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- CHARTS SECTION -->
+        <div class="charts-container">
+            <div class="chart-wrapper">
+                <div class="chart-title">Mentions Over Time</div>
+                <canvas id="mentionsChart" class="chart-canvas"></canvas>
+            </div>
+            <div class="chart-wrapper">
+                <div class="chart-title">Location in Event (from Start to Finish)</div>
+                <canvas id="locationChart" class="chart-canvas"></canvas>
+            </div>
+        </div>
+
+        <!-- FILTERS SECTION - HORIZONTAL -->
+        <div class="filters-section">
+            <div class="filters-title">Filters</div>
+            <div class="filters-grid">
+                <!-- Date Range -->
+                <div class="filter-group">
+                    <div class="filter-group-title">Date Range</div>
+                    <label style="font-size: 12px; margin-bottom: 5px; color: #9ca3af;">Start Date</label>
+                    <input type="date" class="date-input" id="startDate" value="2016-01-01">
+                    <label style="font-size: 12px; margin-top: 8px; margin-bottom: 5px; color: #9ca3af;">End Date</label>
+                    <input type="date" class="date-input" id="endDate" value="2019-12-31">
+                </div>
+
+                <!-- Categories -->
+                <div class="filter-group">
+                    <div class="filter-group-title">Categories</div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn" onclick="selectAllCategories()">All</button>
+                        <button class="filter-btn secondary" onclick="selectNoneCategories()">None</button>
+                    </div>
+                    <div class="filter-items" id="categoriesFilter">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Speakers -->
+                <div class="filter-group">
+                    <div class="filter-group-title">Speakers</div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn" onclick="selectAllSpeakers()">All</button>
+                        <button class="filter-btn secondary" onclick="selectNoneSpeakers()">None</button>
+                    </div>
+                    <div class="filter-items" id="speakersFilter">
+                        <div class="filter-item">
+                            <input type="checkbox" id="speaker-trump" value="Donald Trump" checked>
+                            <label for="speaker-trump">Donald Trump</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Events -->
+                <div class="filter-group">
+                    <div class="filter-group-title">Events</div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn" onclick="selectAllEvents()">All</button>
+                        <button class="filter-btn secondary" onclick="selectNoneEvents()">None</button>
+                    </div>
+                    <div class="filter-items" id="eventsFilter">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STATISTICS SECTION -->
+        <div class="stats-section" id="statsSection" style="display: none;">
+            <div class="stats-title">Statistics</div>
+            <div class="stats-item">
+                <span id="eventPercentage">0.0%</span> of events have at least <span id="minMentions">3</span> mentions.
+            </div>
+            <div class="stats-item">
+                Monthly matches: <span id="monthlyMatches">0.0%</span>
+                <div class="bar-container" id="monthlyBar"></div>
+            </div>
+            <div class="stats-item">
+                Weekly matches: <span id="weeklyMatches">0.0%</span>
+                <div class="bar-container" id="weeklyBar"></div>
+            </div>
+        </div>
+
+        <!-- TRANSCRIPTS SECTION - HORIZONTAL GRID -->
+        <div class="transcripts-section" id="transcriptsSection">
+            <div class="loading">Loading transcripts...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5001/api';
+        let mentionsChart = null;
+        let locationChart = null;
+        let allTranscripts = [];
+
+        // Initialize charts
+        function initCharts() {
+            const mentionsCtx = document.getElementById('mentionsChart').getContext('2d');
+            const locationCtx = document.getElementById('locationChart').getContext('2d');
+
+            // SCATTER/DOT CHART for mentions over time
+            mentionsChart = new Chart(mentionsCtx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Mentions',
+                        data: [],
+                        backgroundColor: '#3b82f6',
+                        borderColor: '#3b82f6',
+                        pointRadius: 6,
+                        pointHoverRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const dataIndex = elements[0].index;
+                            const dataset = mentionsChart.data.datasets[0];
+                            const point = dataset.data[dataIndex];
+                            if (point && point.transcriptId) {
+                                const card = document.getElementById(`card-${point.transcriptId}`);
+                                if (card) {
+                                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    card.style.border = '2px solid #3b82f6';
+                                    setTimeout(() => { card.style.border = '1px solid #374151'; }, 2000);
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#1a2332',
+                            titleColor: '#f3f4f6',
+                            bodyColor: '#d1d5db',
+                            borderColor: '#374151',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.parsed.y} mentions`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'category',
+                            grid: { color: '#374151' },
+                            ticks: {
+                                color: '#9ca3af',
+                                font: { size: 10 },
+                                maxRotation: 45,
+                                minRotation: 45
+                            },
+                            title: {
+                                display: true,
+                                text: 'Event Date',
+                                color: '#9ca3af'
+                            }
+                        },
+                        y: {
+                            grid: { color: '#374151' },
+                            ticks: {
+                                color: '#9ca3af',
+                                font: { size: 11 },
+                                stepSize: 1
+                            },
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Mentions',
+                                color: '#9ca3af'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // STEPPED LINE CHART for location (cumulative %)
+            locationChart = new Chart(locationCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'All Mentions',
+                        data: [],
+                        borderColor: '#60a5fa',
+                        backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                        stepped: true,
+                        fill: true,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    }, {
+                        label: 'First Mentions',
+                        data: [],
+                        borderColor: '#fbbf24',
+                        backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                        stepped: true,
+                        fill: true,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: '#d1d5db', font: { size: 11 } }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1a2332',
+                            titleColor: '#f3f4f6',
+                            bodyColor: '#d1d5db',
+                            borderColor: '#374151',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#374151' },
+                            ticks: {
+                                color: '#9ca3af',
+                                font: { size: 10 },
+                                callback: function(value, index) {
+                                    // Show every 10th label
+                                    return index % 10 === 0 ? this.getLabelForValue(value) : '';
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time in Speech',
+                                color: '#9ca3af',
+                                font: { size: 11 }
+                            }
+                        },
+                        y: {
+                            grid: { color: '#374151' },
+                            ticks: { color: '#9ca3af', font: { size: 11 } },
+                            min: 0,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Cumulative Percent',
+                                color: '#9ca3af'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load initial data
+        async function loadInitialData() {
+            try {
+                const statsRes = await fetch(`${API_BASE}/stats`);
+                const stats = await statsRes.json();
+
+                // Populate categories
+                const categoriesFilter = document.getElementById('categoriesFilter');
+                categoriesFilter.innerHTML = stats.speechTypes.map((type, idx) => `
+                    <div class="filter-item">
+                        <input type="checkbox" id="cat-${idx}" value="${type}" checked onchange="applyFilters()">
+                        <label for="cat-${idx}">${type}</label>
+                    </div>
+                `).join('');
+
+                // Load recent transcripts
+                const transcriptsRes = await fetch(`${API_BASE}/transcripts?limit=20`);
+                const transcriptsData = await transcriptsRes.json();
+                allTranscripts = transcriptsData.transcripts;
+
+                // Populate events
+                const eventsFilter = document.getElementById('eventsFilter');
+                eventsFilter.innerHTML = transcriptsData.transcripts.map((t, idx) => `
+                    <div class="filter-item">
+                        <input type="checkbox" id="event-${idx}" value="${t.id}" checked onchange="applyFilters()">
+                        <label for="event-${idx}" title="${t.title}">${t.title.substring(0, 60)}${t.title.length > 60 ? '...' : ''}</label>
+                    </div>
+                `).join('');
+
+                displayTranscripts(allTranscripts);
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('transcriptsSection').innerHTML = '<div class="empty-state"><h3>Error loading data</h3><p>Please make sure the API server is running.</p></div>';
+            }
+        }
+
+        // Display transcripts in horizontal grid
+        function displayTranscripts(transcripts) {
+            const container = document.getElementById('transcriptsSection');
+            const isSearching = document.getElementById('searchInput').value.trim().length > 0;
+
+            if (transcripts.length === 0) {
+                container.innerHTML = '<div class="empty-state"><h3>No transcripts found</h3><p>Try adjusting your search or filters.</p></div>';
+                return;
+            }
+
+            container.innerHTML = transcripts.map(t => {
+                const mentionCount = t.mention_count || 0;
+                const mentions = t.mentions || [];
+                const mentionLocations = t.mention_locations || [];
+
+                // Get all speakers who mentioned the term
+                let totalsHTML = '';
+                if (mentionCount > 0) {
+                    const speakerCounts = {'Donald Trump': mentionCount};
+                    const speakersStr = Object.entries(speakerCounts)
+                        .map(([speaker, count]) => `${speaker}: ${count}`)
+                        .join(', ');
+                    totalsHTML = `<div class="transcript-totals"><strong>Totals:</strong> ${speakersStr}</div>`;
+                }
+
+                let contentHTML = '';
+                if (document.getElementById('showContext').checked) {
+                    if (isSearching && mentions.length > 0) {
+                        // When searching: show ONLY context snippets with highlights
+                        contentHTML = mentions.slice(0, 5).map((m, idx) => {
+                            const before = m.context.substring(0, m.highlight_start);
+                            const highlight = m.context.substring(m.highlight_start, m.highlight_end);
+                            const after = m.context.substring(m.highlight_end);
+                            const separator = idx > 0 ? '<div class="speaker-separator"></div>' : '';
+                            return `${separator}${before}<span class="highlight">${highlight}</span>${after}`;
+                        }).join('');
+                    }
+                    // When NOT searching: don't show content (only show if user wants full transcript)
+                }
+
+                // Create YouTube-style progress bar - ONLY MARKERS (no blue fill)
+                let progressBarHTML = '';
+                if (mentionLocations.length > 0 && document.getElementById('showMatchLocations').checked) {
+                    const markersHTML = mentionLocations.map(loc =>
+                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
+                    ).join('');
+
+                    progressBarHTML = `
+                        <div class="progress-bar-container" onclick="seekInTranscript(event, ${t.id})">
+                            <div class="progress-bar-markers">${markersHTML}</div>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="transcript-card" id="card-${t.id}" data-date="${t.date}">
+                        <div class="transcript-title">${t.title}</div>
+                        <div class="transcript-date">${t.date}</div>
+                        ${totalsHTML}
+                        ${contentHTML && document.getElementById('showContext').checked ? `
+                            <div class="transcript-content" id="content-${t.id}">${contentHTML}</div>
+                        ` : ''}
+                        ${progressBarHTML}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Perform search
+        async function performSearch() {
+            const searchInput = document.getElementById('searchInput').value.trim();
+
+            if (!searchInput) {
+                displayTranscripts(allTranscripts);
+                document.getElementById('statsSection').style.display = 'none';
+
+                // Clear charts
+                mentionsChart.data.datasets[0].data = [];
+                mentionsChart.update();
+                locationChart.data.labels = [];
+                locationChart.data.datasets[0].data = [];
+                locationChart.data.datasets[1].data = [];
+                locationChart.update();
+                return;
+            }
+
+            const terms = searchInput.split(',').map(t => t.trim()).filter(t => t);
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const includePlural = document.getElementById('includePlural').checked;
+            const matchBeginning = document.getElementById('matchBeginning').checked;
+            const matchEnding = document.getElementById('matchEnding').checked;
+            const contextSize = parseInt(document.getElementById('contextSize').value);
+            const selectedCategories = Array.from(document.querySelectorAll('#categoriesFilter input:checked')).map(cb => cb.value);
+
+            try {
+                const searchRes = await fetch(`${API_BASE}/search`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        terms, startDate, endDate, speechTypes: selectedCategories,
+                        includePlural, matchBeginning, matchEnding, contextSize
+                    })
+                });
+                const searchData = await searchRes.json();
+
+                const timelineRes = await fetch(`${API_BASE}/mention-timeline`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        terms, startDate, endDate, speechTypes: selectedCategories,
+                        includePlural, granularity: 'month'
+                    })
+                });
+                const timelineData = await timelineRes.json();
+
+                updateMentionsChart(searchData.results);
+                updateLocationChart(searchData.results);
+                updateStats(searchData.results, timelineData.timeline);
+                displayTranscripts(searchData.results);
+
+            } catch (error) {
+                console.error('Search error:', error);
+            }
+        }
+
+        // Update mentions DOT chart
+        function updateMentionsChart(results) {
+            const data = results.map(r => ({
+                x: r.date,
+                y: r.mention_count || 0,
+                transcriptId: r.id
+            }));
+
+            mentionsChart.data.datasets[0].data = data;
+            mentionsChart.update();
+        }
+
+        // Update location chart
+        function updateLocationChart(results) {
+            const allLocations = [];
+            const firstMentionLocations = [];
+
+            results.forEach(r => {
+                if (r.mention_locations && r.mention_locations.length > 0) {
+                    r.mention_locations.forEach(loc => allLocations.push(loc.location));
+                    firstMentionLocations.push(Math.min(...r.mention_locations.map(l => l.location)));
+                }
+            });
+
+            if (allLocations.length === 0) {
+                locationChart.data.labels = [];
+                locationChart.data.datasets[0].data = [];
+                locationChart.data.datasets[1].data = [];
+                locationChart.update();
+                return;
+            }
+
+            allLocations.sort((a, b) => a - b);
+            firstMentionLocations.sort((a, b) => a - b);
+
+            const labels = [];
+            const cumulativeData = [];
+            const firstMentionData = [];
+
+            for (let i = 0; i <= 1.0; i += 0.01) {
+                labels.push(i.toFixed(2));
+                cumulativeData.push((allLocations.filter(loc => loc <= i).length / allLocations.length) * 100);
+                firstMentionData.push((firstMentionLocations.filter(loc => loc <= i).length / firstMentionLocations.length) * 100);
+            }
+
+            locationChart.data.labels = labels;
+            locationChart.data.datasets[0].data = cumulativeData;
+            locationChart.data.datasets[1].data = firstMentionData;
+            locationChart.update();
+        }
+
+        // Update statistics with proportional, color-coded bars
+        function updateStats(results, timeline) {
+            if (results.length === 0) {
+                document.getElementById('statsSection').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('statsSection').style.display = 'block';
+
+            const eventsWithMentions = results.filter(r => r.mention_count >= 3).length;
+            const eventPercentage = ((eventsWithMentions / results.length) * 100).toFixed(1);
+            document.getElementById('eventPercentage').textContent = eventPercentage + '%';
+
+            // Get current month from most recent result
+            const latestDate = new Date(Math.max(...results.map(r => new Date(r.date))));
+            const currentMonth = `${latestDate.getFullYear()}-${String(latestDate.getMonth() + 1).padStart(2, '0')}`;
+
+            // Filter transcripts for current month only
+            const currentMonthTranscripts = results.filter(r => r.date.startsWith(currentMonth));
+
+            if (currentMonthTranscripts.length > 0) {
+                const totalWordCount = currentMonthTranscripts.reduce((sum, r) => sum + (r.word_count || 0), 0);
+
+                const monthlyBar = document.getElementById('monthlyBar');
+                monthlyBar.innerHTML = currentMonthTranscripts.map(t => {
+                    const widthPercent = (t.word_count / totalWordCount) * 100;
+                    const mentions = t.mention_count || 0;
+
+                    let colorClass = 'mentions-0';
+                    if (mentions > 7) colorClass = 'mentions-7plus';
+                    else if (mentions > 3) colorClass = 'mentions-3-7';
+                    else if (mentions > 0) colorClass = 'mentions-1-3';
+
+                    return `<div class="stats-bar-item ${colorClass}"
+                        style="flex: ${widthPercent};"
+                        title="${t.date}: ${mentions} mentions"
+                        onclick="scrollToTranscript(${t.id})"></div>`;
+                }).join('');
+
+                const eventsWithMentions = currentMonthTranscripts.filter(t => t.mention_count > 0).length;
+                const monthlyPercentage = ((eventsWithMentions / currentMonthTranscripts.length) * 100).toFixed(1);
+                document.getElementById('monthlyMatches').textContent = monthlyPercentage + '%';
+            }
+
+            // Get current week from most recent result
+            const currentWeekNum = getWeekNumber(latestDate);
+            const currentWeek = `${latestDate.getFullYear()}-W${String(currentWeekNum).padStart(2, '0')}`;
+
+            // Filter transcripts for current week only
+            const currentWeekTranscripts = results.filter(r => {
+                const date = new Date(r.date);
+                const week = `${date.getFullYear()}-W${String(getWeekNumber(date)).padStart(2, '0')}`;
+                return week === currentWeek;
+            });
+
+            if (currentWeekTranscripts.length > 0) {
+                const totalWeekWordCount = currentWeekTranscripts.reduce((sum, r) => sum + (r.word_count || 0), 0);
+
+                const weeklyBar = document.getElementById('weeklyBar');
+                weeklyBar.innerHTML = currentWeekTranscripts.map(t => {
+                    const widthPercent = (t.word_count / totalWeekWordCount) * 100;
+                    const mentions = t.mention_count || 0;
+
+                    let colorClass = 'mentions-0';
+                    if (mentions > 7) colorClass = 'mentions-7plus';
+                    else if (mentions > 3) colorClass = 'mentions-3-7';
+                    else if (mentions > 0) colorClass = 'mentions-1-3';
+
+                    return `<div class="stats-bar-item ${colorClass}"
+                        style="flex: ${widthPercent};"
+                        title="${t.date}: ${mentions} mentions"
+                        onclick="scrollToTranscript(${t.id})"></div>`;
+                }).join('');
+
+                const eventsWithMentions = currentWeekTranscripts.filter(t => t.mention_count > 0).length;
+                const weeklyPercentage = ((eventsWithMentions / currentWeekTranscripts.length) * 100).toFixed(1);
+                document.getElementById('weeklyMatches').textContent = weeklyPercentage + '%';
+            }
+        }
+
+        // Helper function to get week number
+        function getWeekNumber(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        }
+
+        // Scroll to transcript
+        function scrollToTranscript(transcriptId) {
+            const card = document.getElementById(`card-${transcriptId}`);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.style.border = '2px solid #3b82f6';
+                setTimeout(() => { card.style.border = '1px solid #374151'; }, 2000);
+            }
+        }
+
+        // Filter helper functions
+        function selectAllCategories() {
+            document.querySelectorAll('#categoriesFilter input').forEach(cb => cb.checked = true);
+            applyFilters();
+        }
+        function selectNoneCategories() {
+            document.querySelectorAll('#categoriesFilter input').forEach(cb => cb.checked = false);
+            applyFilters();
+        }
+        function selectAllSpeakers() {
+            document.querySelectorAll('#speakersFilter input').forEach(cb => cb.checked = true);
+            applyFilters();
+        }
+        function selectNoneSpeakers() {
+            document.querySelectorAll('#speakersFilter input').forEach(cb => cb.checked = false);
+            applyFilters();
+        }
+        function selectAllEvents() {
+            document.querySelectorAll('#eventsFilter input').forEach(cb => cb.checked = true);
+            applyFilters();
+        }
+        function selectNoneEvents() {
+            document.querySelectorAll('#eventsFilter input').forEach(cb => cb.checked = false);
+            applyFilters();
+        }
+        function applyFilters() {
+            if (document.getElementById('searchInput').value.trim()) {
+                performSearch();
+            }
+        }
+
+        // Seek functions for progress bar
+        function seekToMention(transcriptId, position) {
+            const content = document.getElementById(`content-${transcriptId}`);
+            if (content) {
+                content.scrollTop = position / 10;
+            }
+        }
+
+        function seekInTranscript(event, transcriptId) {
+            const bar = event.currentTarget;
+            const rect = bar.getBoundingClientRect();
+            const percent = (event.clientX - rect.left) / rect.width;
+            seekToMention(transcriptId, percent * 1000);
+        }
+
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+        document.getElementById('searchInput').addEventListener('input', performSearch);
+        document.getElementById('startDate').addEventListener('change', applyFilters);
+        document.getElementById('endDate').addEventListener('change', applyFilters);
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            loadInitialData();
+        });
+    </script>
+</body>
+</html>
