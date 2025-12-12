@@ -1,12 +1,17 @@
 {
+  "functions": {
+    "api/*.py": {
+      "runtime": "python3.9"
+    }
+  },
   "rewrites": [
     {
       "source": "/",
       "destination": "/analytics_ui.html"
     },
     {
-      "source": "/api/:path*",
-      "destination": "/analytics_api.py"
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
     }
   ]
 }
