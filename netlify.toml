@@ -1,0 +1,15 @@
+[build]
+  publish = "."
+
+[functions]
+  directory = "api"
+
+[[redirects]]
+  from = "/*"
+  to = "/analytics_ui.html"
+  status = 200
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
