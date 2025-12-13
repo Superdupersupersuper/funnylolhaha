@@ -1,0 +1,40 @@
+.filters {
+  margin-bottom: 30px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin: 20px 0;
+}
+
+.filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-item label {
+  font-weight: 600;
+  font-size: 14px;
+  color: #555;
+}
+
+.filter-stats {
+  display: flex;
+  gap: 30px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+
+.stat {
+  color: #666;
+  font-size: 14px;
+}
+
+.stat strong {
+  color: #667eea;
+  font-size: 16px;
+}

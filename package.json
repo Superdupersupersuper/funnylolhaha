@@ -1,0 +1,27 @@
+{
+  "name": "mention-market-tool",
+  "version": "1.0.0",
+  "description": "Tool for analyzing Donald Trump speech transcripts with mention markets data analysis",
+  "main": "index.js",
+  "scripts": {
+    "scrape": "node backend/scraper/scrape.js",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "nodemon backend/server.js",
+    "dev:frontend": "cd frontend && npm run dev",
+    "setup-db": "node backend/database/setup.js"
+  },
+  "keywords": ["transcript", "analysis", "scraping", "mention-markets"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.0",
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.19.0",
+    "better-sqlite3": "^11.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
