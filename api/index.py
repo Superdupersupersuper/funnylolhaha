@@ -17,7 +17,7 @@ CORS(app)
 
 # Database will be downloaded to /tmp (Vercel writable directory)
 DB_PATH = '/tmp/transcripts.db'
-DB_URL = os.environ.get('DATABASE_URL', 'https://github.com/Superdupersupersuper/funnylolhaha/releases/download/v1.0/transcripts.db.zip')
+DB_URL = os.environ.get('DATABASE_URL', 'https://github.com/Superdupersupersuper/funnylolhaha/releases/download/v2.0/transcripts.db.zip')
 
 def ensure_database():
     """Download and extract database if not present"""
