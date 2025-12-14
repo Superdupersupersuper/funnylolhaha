@@ -1,0 +1,9 @@
+{
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "python3 scraper_python/app.py",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}
