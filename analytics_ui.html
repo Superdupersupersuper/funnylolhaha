@@ -1073,36 +1073,85 @@
                     return found;
                 }).map(t => {
                     // Calculate mention_count and mention_locations for charts
-                    const text = `${t.title} ${t.preview || ''}`.toLowerCase();
+                    // ONLY count mentions where Donald Trump said it
+                    const preview = t.preview || '';
                     const mentions = [];
                     const mentionLocations = [];
                     let mentionCount = 0;
 
                     terms.forEach(term => {
-                        let pos = 0;
-                        while ((pos = text.indexOf(term, pos)) !== -1) {
-                            mentionCount++;
-                            const contextStart = Math.max(0, pos - 100);
-                            const contextEnd = Math.min(text.length, pos + term.length + 100);
-                            const context = (t.preview || '').substring(contextStart, contextEnd);
-                            const highlightStart = pos - contextStart;
-                            const highlightEnd = highlightStart + term.length;
+                        // Split preview into sections by speaker
+                        // Look for "Donald Trump:" followed by dialogue
+                        const trumpSections = [];
+                        const lines = preview.split('\n');
+                        let currentSpeaker = '';
+                        let currentText = '';
+                        let currentStartPos = 0;
 
-                            mentions.push({
-                                context: context,
-                                highlight_start: highlightStart,
-                                highlight_end: highlightEnd
-                            });
+                        for (let i = 0; i < lines.length; i++) {
+                            const line = lines[i];
+                            // Check if line starts with a speaker name followed by colon
+                            const speakerMatch = line.match(/^\s*([^:]+):\s*(.*)$/);
 
-                            // Calculate location as percentage through document
-                            const location = pos / text.length;
-                            mentionLocations.push({
-                                location: location,
-                                position: pos
-                            });
+                            if (speakerMatch) {
+                                // Save previous speaker's text
+                                if (currentSpeaker.toLowerCase().includes('donald trump') && currentText) {
+                                    trumpSections.push({
+                                        text: currentText,
+                                        startPos: currentStartPos
+                                    });
+                                }
 
-                            pos += term.length;
+                                // Start new speaker
+                                currentSpeaker = speakerMatch[1].trim();
+                                currentText = speakerMatch[2] + ' ';
+                                currentStartPos = preview.indexOf(line);
+                            } else if (currentSpeaker) {
+                                // Continue current speaker's text
+                                currentText += line + ' ';
+                            }
                         }
+
+                        // Don't forget last speaker
+                        if (currentSpeaker.toLowerCase().includes('donald trump') && currentText) {
+                            trumpSections.push({
+                                text: currentText,
+                                startPos: currentStartPos
+                            });
+                        }
+
+                        // Now search for term ONLY in Trump's sections
+                        trumpSections.forEach(section => {
+                            const sectionLower = section.text.toLowerCase();
+                            let pos = 0;
+
+                            while ((pos = sectionLower.indexOf(term, pos)) !== -1) {
+                                mentionCount++;
+
+                                // Extract context around the match from Trump's dialogue
+                                const contextStart = Math.max(0, pos - 150);
+                                const contextEnd = Math.min(section.text.length, pos + term.length + 150);
+                                const context = section.text.substring(contextStart, contextEnd);
+                                const highlightStart = pos - contextStart;
+                                const highlightEnd = highlightStart + term.length;
+
+                                mentions.push({
+                                    context: context.trim(),
+                                    highlight_start: highlightStart,
+                                    highlight_end: highlightEnd
+                                });
+
+                                // Calculate location as percentage through document
+                                const absolutePos = section.startPos + pos;
+                                const location = absolutePos / preview.length;
+                                mentionLocations.push({
+                                    location: location,
+                                    position: absolutePos
+                                });
+
+                                pos += term.length;
+                            }
+                        });
                     });
 
                     return {
@@ -1113,20 +1162,23 @@
                     };
                 });
 
-                console.log('Found results:', results.length);
+                // Filter out transcripts where Trump didn't actually say the term
+                const trumpResults = results.filter(r => r.mention_count > 0);
+
+                console.log('Found results:', trumpResults.length, '(filtered from', results.length, 'total matches)');
 
                 // Sort by date descending
-                results.sort((a, b) => new Date(b.date) - new Date(a.date));
+                trumpResults.sort((a, b) => new Date(b.date) - new Date(a.date));
 
                 // Display results
-                displayTranscripts(results);
+                displayTranscripts(trumpResults);
 
                 // Update charts with search results
-                updateMentionsChart(results);
-                updateLocationChart(results);
+                updateMentionsChart(trumpResults);
+                updateLocationChart(trumpResults);
 
                 // Show message if no results
-                if (results.length === 0) {
+                if (trumpResults.length === 0) {
                     document.getElementById('transcriptsSection').innerHTML = `
                         <div class="empty-state">
                             <h3>No results found for "${searchInput}"</h3>
