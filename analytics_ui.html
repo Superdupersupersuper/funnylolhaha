@@ -1154,10 +1154,13 @@
         document.getElementById('startDate').addEventListener('change', applyFilters);
         document.getElementById('endDate').addEventListener('change', applyFilters);
 
+        // Embedded transcript data (will be populated on build)
+        const EMBEDDED_DATA_URL = 'https://raw.githubusercontent.com/Superdupersupersuper/funnylolhaha/main/transcripts-data.json';
+
         // Load static transcript data
         async function loadStaticData() {
             try {
-                const response = await fetch('/transcripts-data.json');
+                const response = await fetch(EMBEDDED_DATA_URL);
                 transcriptsData = await response.json();
                 console.log(`Loaded ${transcriptsData.length} transcripts from static data`);
                 return transcriptsData;
