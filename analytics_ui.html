@@ -493,11 +493,11 @@
 
             <div class="search-options">
                 <div class="search-option">
-                    <input type="checkbox" id="matchBeginning">
+                    <input type="checkbox" id="matchBeginning" checked>
                     <label for="matchBeginning">Match Beginning</label>
                 </div>
                 <div class="search-option">
-                    <input type="checkbox" id="matchEnding">
+                    <input type="checkbox" id="matchEnding" checked>
                     <label for="matchEnding">Match Ending</label>
                 </div>
                 <div class="search-option">
@@ -505,7 +505,7 @@
                     <label for="includePlural">Include Plural/Possessive</label>
                 </div>
                 <div class="search-option">
-                    <input type="checkbox" id="includeHyphenation">
+                    <input type="checkbox" id="includeHyphenation" checked>
                     <label for="includeHyphenation">Include Hyphenation</label>
                 </div>
                 <div class="search-option">
@@ -836,14 +836,20 @@
                     </div>
                 `).join('');
 
-                // Get all unique speakers from transcripts
-                const allSpeakers = new Set();
+                // Get all unique speakers from transcripts and count frequency
+                const speakerCounts = {};
                 transcriptsData.forEach(t => {
                     if (t.speakers && Array.isArray(t.speakers)) {
-                        t.speakers.forEach(speaker => allSpeakers.add(speaker));
+                        t.speakers.forEach(speaker => {
+                            speakerCounts[speaker] = (speakerCounts[speaker] || 0) + 1;
+                        });
                     }
                 });
-                const uniqueSpeakers = [...allSpeakers].sort();
+
+                // Sort by frequency (most frequent first)
+                const uniqueSpeakers = Object.keys(speakerCounts).sort((a, b) => {
+                    return speakerCounts[b] - speakerCounts[a];
+                });
 
                 // Populate speakers filter
                 const speakersFilter = document.getElementById('speakersFilter');
@@ -853,7 +859,7 @@
                     speakersFilter.innerHTML = uniqueSpeakers.map((speaker, idx) => `
                         <div class="filter-item">
                             <input type="checkbox" id="speaker-${idx}" value="${speaker}" checked>
-                            <label for="speaker-${idx}">${speaker}</label>
+                            <label for="speaker-${idx}">${speaker} <span style="color: #6b7280; font-size: 11px;">(${speakerCounts[speaker]})</span></label>
                         </div>
                     `).join('');
                 } else {
@@ -1033,6 +1039,11 @@
             const selectedCategories = Array.from(document.querySelectorAll('#categoriesFilter input:checked')).map(cb => cb.value);
 
             try {
+                console.log('Searching for:', terms);
+                console.log('Date range:', startDate, 'to', endDate);
+                console.log('Categories:', selectedCategories);
+                console.log('Total transcripts to search:', transcriptsData.length);
+
                 // Client-side search in preview text
                 const results = transcriptsData.filter(t => {
                     // Filter by date and category
@@ -1040,16 +1051,32 @@
                     if (tDate < startDate || tDate > endDate) return false;
                     if (!selectedCategories.includes(t.speech_type)) return false;
 
-                    // Search in title and preview
+                    // Search in title and preview (case-insensitive)
                     const searchText = `${t.title} ${t.preview || ''}`.toLowerCase();
-                    return terms.some(term => searchText.includes(term));
+                    const found = terms.some(term => searchText.includes(term));
+                    return found;
                 });
+
+                console.log('Found results:', results.length);
 
                 // Sort by date descending
                 results.sort((a, b) => new Date(b.date) - new Date(a.date));
 
                 // Display results
                 displayTranscripts(results);
+
+                // Show message if no results
+                if (results.length === 0) {
+                    document.getElementById('transcriptsSection').innerHTML = `
+                        <div class="empty-state">
+                            <h3>No results found for "${searchInput}"</h3>
+                            <p>Try different keywords or adjust your filters</p>
+                            <p style="font-size: 12px; color: #6b7280; margin-top: 10px;">
+                                Searched in ${transcriptsData.length} transcripts from ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}
+                            </p>
+                        </div>
+                    `;
+                }
 
                 // Show success feedback
                 searchBtn.textContent = '✓';
