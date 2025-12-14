@@ -812,9 +812,14 @@
                 displayTranscripts(allTranscripts);
 
                 // Update stats display
+                const latestDate = transcriptsData
+                    .map(t => t.date)
+                    .filter(d => d)
+                    .sort((a, b) => new Date(b) - new Date(a))[0] || 'N/A';
+
                 document.querySelector('.search-section').insertAdjacentHTML('afterbegin', `
                     <div style="margin-bottom: 15px; padding: 10px; background: rgba(59, 130, 246, 0.1); border-radius: 6px; font-size: 13px;">
-                        📊 <strong>${transcriptsData.length}</strong> transcripts loaded | Latest: ${transcriptsData[0]?.date || 'N/A'}
+                        📊 <strong>${transcriptsData.length}</strong> transcripts loaded | Latest: ${latestDate}
                     </div>
                 `);
 
