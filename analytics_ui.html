@@ -847,6 +847,8 @@
 
                 // Populate speakers filter
                 const speakersFilter = document.getElementById('speakersFilter');
+                console.log('Found speakers:', uniqueSpeakers.length, uniqueSpeakers.slice(0, 5));
+
                 if (uniqueSpeakers.length > 0) {
                     speakersFilter.innerHTML = uniqueSpeakers.map((speaker, idx) => `
                         <div class="filter-item">
@@ -854,6 +856,8 @@
                             <label for="speaker-${idx}">${speaker}</label>
                         </div>
                     `).join('');
+                } else {
+                    speakersFilter.innerHTML = '<div style="padding: 10px; color: #9ca3af;">No speakers found</div>';
                 }
 
                 // Get recent transcripts (last 20)
