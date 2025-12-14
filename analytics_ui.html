@@ -958,16 +958,29 @@
                 }
 
                 // Add preview toggle with speaker bolding
-                let previewText = (t.preview || '').substring(0, 300);
-                const hasPreview = previewText.length > 0;
+                let previewText = '';
+                const hasPreview = (t.preview || '').length > 0;
 
-                // Bold speaker names in preview
-                if (t.speakers && t.speakers.length > 0) {
-                    t.speakers.forEach(speaker => {
-                        // Bold speaker name when followed by colon
-                        const speakerPattern = new RegExp(`((?:^|\\n)\\s*)(${speaker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(\\s*:)`, 'gim');
-                        previewText = previewText.replace(speakerPattern, '$1<strong>$2</strong>$3');
-                    });
+                // If searching and we have context snippets, show those
+                if (isSearching && mentions.length > 0) {
+                    // Show first context snippet with search term highlighted
+                    const firstMention = mentions[0];
+                    const before = firstMention.context.substring(0, firstMention.highlight_start);
+                    const highlight = firstMention.context.substring(firstMention.highlight_start, firstMention.highlight_end);
+                    const after = firstMention.context.substring(firstMention.highlight_end);
+                    previewText = `...${before}<span style="background-color: #fbbf24; color: #000; padding: 2px 4px; border-radius: 2px;">${highlight}</span>${after}...`;
+                } else {
+                    // Otherwise show first 300 chars of preview
+                    previewText = (t.preview || '').substring(0, 300);
+
+                    // Bold speaker names in preview
+                    if (t.speakers && t.speakers.length > 0) {
+                        t.speakers.forEach(speaker => {
+                            // Bold speaker name when followed by colon
+                            const speakerPattern = new RegExp(`((?:^|\\n)\\s*)(${speaker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(\\s*:)`, 'gim');
+                            previewText = previewText.replace(speakerPattern, '$1<strong>$2</strong>$3');
+                        });
+                    }
                 }
 
                 return `
@@ -1058,6 +1071,46 @@
                     const searchText = `${t.title} ${t.preview || ''}`.toLowerCase();
                     const found = terms.some(term => searchText.includes(term));
                     return found;
+                }).map(t => {
+                    // Calculate mention_count and mention_locations for charts
+                    const text = `${t.title} ${t.preview || ''}`.toLowerCase();
+                    const mentions = [];
+                    const mentionLocations = [];
+                    let mentionCount = 0;
+
+                    terms.forEach(term => {
+                        let pos = 0;
+                        while ((pos = text.indexOf(term, pos)) !== -1) {
+                            mentionCount++;
+                            const contextStart = Math.max(0, pos - 100);
+                            const contextEnd = Math.min(text.length, pos + term.length + 100);
+                            const context = (t.preview || '').substring(contextStart, contextEnd);
+                            const highlightStart = pos - contextStart;
+                            const highlightEnd = highlightStart + term.length;
+
+                            mentions.push({
+                                context: context,
+                                highlight_start: highlightStart,
+                                highlight_end: highlightEnd
+                            });
+
+                            // Calculate location as percentage through document
+                            const location = pos / text.length;
+                            mentionLocations.push({
+                                location: location,
+                                position: pos
+                            });
+
+                            pos += term.length;
+                        }
+                    });
+
+                    return {
+                        ...t,
+                        mention_count: mentionCount,
+                        mentions: mentions,
+                        mention_locations: mentionLocations
+                    };
                 });
 
                 console.log('Found results:', results.length);
@@ -1067,6 +1120,10 @@
 
                 // Display results
                 displayTranscripts(results);
+
+                // Update charts with search results
+                updateMentionsChart(results);
+                updateLocationChart(results);
 
                 // Show message if no results
                 if (results.length === 0) {
