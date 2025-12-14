@@ -46,7 +46,17 @@ SPEAKERS = [
     "Traci Park", "Tom McClintock", "Ed Ring", "Ric Grenell",
     "Michael Whatley", "Larry Ellison", "Masayoshi Son", "Sam Altman",
     "Amy Klobuchar", "John Thune", "Chuck Schumer", "Hakeem Jeffries",
-    "Deb Fischer", "John Roberts", "Chris LaNeve", "Joe Biden"
+    "Deb Fischer", "John Roberts", "Chris LaNeve", "Joe Biden",
+    # Additional speakers found in transcripts
+    "Karoline Leavitt", "Sarah Huckabee Sanders", "Peter Navarro", "Russell Vought",
+    "Charlie Kirk", "Lara Trump", "Eric Trump", "Mike Pompeo",
+    "Sean Hannity", "Nikki Haley", "Greg Abbott", "Brian Kemp",
+    "Tom Homan", "Marty Makary", "Adam Boehler", "Bruce LeVell",
+    "Bryson DeChambeau", "Chip Roy", "David Pecker", "Emil Bove",
+    "Hope Hicks", "Jake Tapper", "Joshua Steinglass", "Juan Merchan",
+    "Matthew Colangelo", "Mike Lindell", "Patty Morin",
+    "Sean O'Brien", "Saudi Protocol Officer", "Tamim bin Hamad Al Thani",
+    "Todd Blanche", "Tom Hauser", "Mark Rutte"
 ]
 
 def parse_speakers_from_text(text):

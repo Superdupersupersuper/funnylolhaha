@@ -580,15 +580,22 @@
                 <!-- Speakers -->
                 <div class="filter-group">
                     <div class="filter-group-title">Speakers</div>
+                    <input type="text" id="speakerSearch" placeholder="Search speakers..." onkeyup="filterSpeakers()" style="
+                        width: 100%;
+                        padding: 8px;
+                        background: #1a2332;
+                        border: 1px solid #374151;
+                        border-radius: 4px;
+                        color: #e5e7eb;
+                        font-size: 13px;
+                        margin-bottom: 10px;
+                    ">
                     <div class="filter-buttons">
                         <button class="filter-btn" onclick="selectAllSpeakers()">All</button>
                         <button class="filter-btn secondary" onclick="selectNoneSpeakers()">None</button>
                     </div>
-                    <div class="filter-items" id="speakersFilter">
-                        <div class="filter-item">
-                            <input type="checkbox" id="speaker-trump" value="Donald Trump" checked>
-                            <label for="speaker-trump">Donald Trump</label>
-                        </div>
+                    <div class="filter-items" id="speakersFilter" style="max-height: 200px; overflow-y: auto;">
+                        <!-- Populated dynamically -->
                     </div>
                 </div>
 
@@ -1237,13 +1244,39 @@
             document.querySelectorAll('#categoriesFilter input').forEach(cb => cb.checked = false);
             applyFilters();
         }
+        function filterSpeakers() {
+            const searchText = document.getElementById('speakerSearch').value.toLowerCase();
+            const filterItems = document.querySelectorAll('#speakersFilter .filter-item');
+
+            filterItems.forEach(item => {
+                const label = item.querySelector('label').textContent.toLowerCase();
+                if (label.includes(searchText)) {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
         function selectAllSpeakers() {
-            document.querySelectorAll('#speakersFilter input').forEach(cb => cb.checked = true);
-            applyFilters();
+            const searchText = document.getElementById('speakerSearch').value.toLowerCase();
+            document.querySelectorAll('#speakersFilter .filter-item').forEach(item => {
+                const label = item.querySelector('label').textContent.toLowerCase();
+                // Only select visible speakers (matching search)
+                if (item.style.display !== 'none' && (!searchText || label.includes(searchText))) {
+                    item.querySelector('input').checked = true;
+                }
+            });
         }
         function selectNoneSpeakers() {
-            document.querySelectorAll('#speakersFilter input').forEach(cb => cb.checked = false);
-            applyFilters();
+            const searchText = document.getElementById('speakerSearch').value.toLowerCase();
+            document.querySelectorAll('#speakersFilter .filter-item').forEach(item => {
+                const label = item.querySelector('label').textContent.toLowerCase();
+                // Only deselect visible speakers (matching search)
+                if (item.style.display !== 'none' && (!searchText || label.includes(searchText))) {
+                    item.querySelector('input').checked = false;
+                }
+            });
         }
         function selectAllEvents() {
             document.querySelectorAll('#eventsFilter input').forEach(cb => cb.checked = true);
@@ -1345,8 +1378,8 @@
             }
         }
 
-        // Speaker list for parsing
-        const SPEAKERS = ["Donald Trump", "Keir Starmer", "Unidentified Speaker", "Emmanuel Macron", "Narendra Modi", "Shigeru Ishiba", "Benjamin Netanyahu", "Sean Duffy", "Pete Hegseth", "J.D. Vance", "Anne Fundner", "Mike Johnson", "Janet Mills", "Jim Pillen", "Richard Attias", "Rosanna Maietta", "Borge Brende", "Stephen Schwarzman", "Patrick Pouyanné", "Brian Moynihan", "Ana Botin", "Laura Ingraham", "Kamala Harris", "Tammy Nobles", "Jonathan Martinez", "Tom Cole", "Steve Eagar", "Elon Musk", "R. Lee Ermey", "Rachel Levine", "Matthew Modine", "Kylie Minogue", "Qveen Herby", "Marines", "Kid Rock", "Will Scharf", "Aide", "Paula White-Cain", "Alina Habba", "Pam Bondi", "Randy Fine", "Howard Lutnick", "Nicole Malliotakis", "Sergio Gor", "Charles Kushner", "James Blair", "David Perdue", "Leah Campos", "Michael Waltz", "John Arrigo", "Kevin Cabrera", "Tom Barrack", "Pete Hoekstra", "Ron Johnson", "Matt Whitaker", "George Glass", "Ken Howery", "Stacey Feinberg", "Nicole McGraw", "Brandon Judd", "Brian Burch", "Somers Farkas", "Joe Popolo", "Mike Huckabee", "Tilman Fertitta", "Warren Stephens", "Jimmy Patronis", "Alek Skarlatos", "Kimberly Guilfoyle", "Doug Burgum", "Brooke Rollins", "Kelly Loeffler", "Lee Zeldin", "Doug Collins", "Chris Wright", "Linda McMahon", "Robert F. Kennedy, Jr.", "Kristi Noem", "Marco Rubio", "Scott Bessent", "Euisun Chung", "Steve Scalise", "Jeff Landry", "David W. Allvin", "Dale R. White", "Mary Martin", "Chuck Robbins", "Gianni Infantino", "Kevin Hassett", "David Sacks", "Tom Emmer", "Cameron Winklevoss", "Tyler Winklevoss", "Sergey Nazarov", "Rodolphe Saadé", "Lindsey Halligan", "Maria Bartiromo", "C.C. Wei", "Scott Turner", "Ron DeSantis", "Tiger Woods", "Tim Scott", "Leo Terrell", "Phil Heath", "Neil Gorsuch", "Cheryl Hines", "Tulsi Gabbard", "Abraham Williams", "Steve Witkoff", "Marc Fogel", "Dave McCormick", "Mark Fogel", "Stephen Miller", "Clarence Thomas", "Nancy Mace", "Tim Burchett", "Ronny Jackson", "Payton McNabb", "Paul Maurice", "Sergei Bobrovsky", "Vinnie Viola", "Sam Reinhart", "Matthew Tkachuk", "Allyson Phillips", "Franklin Graham", "Melania Trump", "Karen Bass", "Brad Sherman", "Judy Chu", "Kathryn Barger", "Vince Fong", "Kevin Kiley", "Joel Pollak", "Jay Obernolte", "Young Kim", "George Whitesides", "Traci Park", "Tom McClintock", "Ed Ring", "Ric Grenell", "Michael Whatley", "Larry Ellison", "Masayoshi Son", "Sam Altman", "Amy Klobuchar", "John Thune", "Chuck Schumer", "Hakeem Jeffries", "Deb Fischer", "John Roberts", "Chris LaNeve", "Joe Biden"];
+        // Speaker list for parsing (186 speakers)
+        const SPEAKERS = ["Donald Trump", "Keir Starmer", "Unidentified Speaker", "Emmanuel Macron", "Narendra Modi", "Shigeru Ishiba", "Benjamin Netanyahu", "Sean Duffy", "Pete Hegseth", "J.D. Vance", "Anne Fundner", "Mike Johnson", "Janet Mills", "Jim Pillen", "Richard Attias", "Rosanna Maietta", "Borge Brende", "Stephen Schwarzman", "Patrick Pouyanné", "Brian Moynihan", "Ana Botin", "Laura Ingraham", "Kamala Harris", "Tammy Nobles", "Jonathan Martinez", "Tom Cole", "Steve Eagar", "Elon Musk", "R. Lee Ermey", "Rachel Levine", "Matthew Modine", "Kylie Minogue", "Qveen Herby", "Marines", "Kid Rock", "Will Scharf", "Aide", "Paula White-Cain", "Alina Habba", "Pam Bondi", "Randy Fine", "Howard Lutnick", "Nicole Malliotakis", "Sergio Gor", "Charles Kushner", "James Blair", "David Perdue", "Leah Campos", "Michael Waltz", "John Arrigo", "Kevin Cabrera", "Tom Barrack", "Pete Hoekstra", "Ron Johnson", "Matt Whitaker", "George Glass", "Ken Howery", "Stacey Feinberg", "Nicole McGraw", "Brandon Judd", "Brian Burch", "Somers Farkas", "Joe Popolo", "Mike Huckabee", "Tilman Fertitta", "Warren Stephens", "Jimmy Patronis", "Alek Skarlatos", "Kimberly Guilfoyle", "Doug Burgum", "Brooke Rollins", "Kelly Loeffler", "Lee Zeldin", "Doug Collins", "Chris Wright", "Linda McMahon", "Robert F. Kennedy, Jr.", "Kristi Noem", "Marco Rubio", "Scott Bessent", "Euisun Chung", "Steve Scalise", "Jeff Landry", "David W. Allvin", "Dale R. White", "Mary Martin", "Chuck Robbins", "Gianni Infantino", "Kevin Hassett", "David Sacks", "Tom Emmer", "Cameron Winklevoss", "Tyler Winklevoss", "Sergey Nazarov", "Rodolphe Saadé", "Lindsey Halligan", "Maria Bartiromo", "C.C. Wei", "Scott Turner", "Ron DeSantis", "Tiger Woods", "Tim Scott", "Leo Terrell", "Phil Heath", "Neil Gorsuch", "Cheryl Hines", "Tulsi Gabbard", "Abraham Williams", "Steve Witkoff", "Marc Fogel", "Dave McCormick", "Mark Fogel", "Stephen Miller", "Clarence Thomas", "Nancy Mace", "Tim Burchett", "Ronny Jackson", "Payton McNabb", "Paul Maurice", "Sergei Bobrovsky", "Vinnie Viola", "Sam Reinhart", "Matthew Tkachuk", "Allyson Phillips", "Franklin Graham", "Melania Trump", "Karen Bass", "Brad Sherman", "Judy Chu", "Kathryn Barger", "Vince Fong", "Kevin Kiley", "Joel Pollak", "Jay Obernolte", "Young Kim", "George Whitesides", "Traci Park", "Tom McClintock", "Ed Ring", "Ric Grenell", "Michael Whatley", "Larry Ellison", "Masayoshi Son", "Sam Altman", "Amy Klobuchar", "John Thune", "Chuck Schumer", "Hakeem Jeffries", "Deb Fischer", "John Roberts", "Chris LaNeve", "Joe Biden", "Karoline Leavitt", "Sarah Huckabee Sanders", "Peter Navarro", "Russell Vought", "Charlie Kirk", "Lara Trump", "Eric Trump", "Mike Pompeo", "Sean Hannity", "Nikki Haley", "Greg Abbott", "Brian Kemp", "Tom Homan", "Marty Makary", "Adam Boehler", "Bruce LeVell", "Bryson DeChambeau", "Chip Roy", "David Pecker", "Emil Bove", "Hope Hicks", "Jake Tapper", "Joshua Steinglass", "Juan Merchan", "Matthew Colangelo", "Mike Lindell", "Patty Morin", "Sean O'Brien", "Saudi Protocol Officer", "Tamim bin Hamad Al Thani", "Todd Blanche", "Tom Hauser", "Mark Rutte"];
 
         // Parse speakers from text
         function parseSpeakers(text) {
