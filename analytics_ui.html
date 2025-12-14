@@ -902,7 +902,9 @@
 
         // Display transcripts in horizontal grid
         function displayTranscripts(transcripts) {
+            console.log('displayTranscripts called with', transcripts.length, 'transcripts');
             const container = document.getElementById('transcriptsSection');
+            console.log('Container element:', container);
             const isSearching = document.getElementById('searchInput').value.trim().length > 0;
 
             if (transcripts.length === 0) {
@@ -910,6 +912,7 @@
                 return;
             }
 
+            console.log('Generating HTML for transcripts...');
             container.innerHTML = transcripts.map(t => {
                 const mentionCount = t.mention_count || 0;
                 const mentions = t.mentions || [];
@@ -1391,7 +1394,7 @@
         document.getElementById('searchInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') performSearch();
         });
-        document.getElementById('searchInput').addEventListener('input', performSearch);
+        // Removed auto-search on input - only search on button click or Enter key
 
         // Embedded transcript data (will be populated on build)
         const EMBEDDED_DATA_URL = 'https://raw.githubusercontent.com/Superdupersupersuper/funnylolhaha/main/transcripts-data.json';
