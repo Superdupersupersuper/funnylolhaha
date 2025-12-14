@@ -1481,14 +1481,23 @@
         window.addEventListener('DOMContentLoaded', async () => {
             initCharts();
 
-            // Load from localStorage first, fallback to static file
+            // Data version for cache busting
+            const DATA_VERSION = '2.0-with-speakers';
+            const storedVersion = localStorage.getItem('dataVersion');
+
+            // Force reload if version changed or no data
             const stored = localStorage.getItem('transcripts');
-            if (stored) {
+            if (stored && storedVersion === DATA_VERSION) {
+                console.log('Loading from localStorage cache');
                 transcriptsData = JSON.parse(stored);
             } else {
+                console.log('Loading fresh data from GitHub (version changed or no cache)');
                 transcriptsData = await loadStaticData();
                 localStorage.setItem('transcripts', JSON.stringify(transcriptsData));
+                localStorage.setItem('dataVersion', DATA_VERSION);
             }
+
+            console.log('Loaded transcripts:', transcriptsData.length);
 
             await loadInitialData();
 
