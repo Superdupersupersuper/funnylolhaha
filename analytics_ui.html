@@ -617,6 +617,7 @@
         let mentionsChart = null;
         let locationChart = null;
         let allTranscripts = [];
+        let transcriptsData = [];
 
         // Initialize charts
         function initCharts() {
@@ -782,26 +783,26 @@
         // Load initial data
         async function loadInitialData() {
             try {
-                const statsRes = await fetch(`${API_BASE}/stats`);
-                const stats = await statsRes.json();
+                // Get unique speech types from data
+                const speechTypes = [...new Set(transcriptsData.map(t => t.speech_type))].sort();
 
                 // Populate categories
                 const categoriesFilter = document.getElementById('categoriesFilter');
-                categoriesFilter.innerHTML = stats.speechTypes.map((type, idx) => `
+                categoriesFilter.innerHTML = speechTypes.map((type, idx) => `
                     <div class="filter-item">
                         <input type="checkbox" id="cat-${idx}" value="${type}" checked onchange="applyFilters()">
                         <label for="cat-${idx}">${type}</label>
                     </div>
                 `).join('');
 
-                // Load recent transcripts
-                const transcriptsRes = await fetch(`${API_BASE}/transcripts?limit=20`);
-                const transcriptsData = await transcriptsRes.json();
-                allTranscripts = transcriptsData.transcripts;
+                // Get recent transcripts (last 20)
+                allTranscripts = transcriptsData
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .slice(0, 20);
 
                 // Populate events
                 const eventsFilter = document.getElementById('eventsFilter');
-                eventsFilter.innerHTML = transcriptsData.transcripts.map((t, idx) => `
+                eventsFilter.innerHTML = allTranscripts.map((t, idx) => `
                     <div class="filter-item">
                         <input type="checkbox" id="event-${idx}" value="${t.id}" checked onchange="applyFilters()">
                         <label for="event-${idx}" title="${t.title}">${t.title.substring(0, 60)}${t.title.length > 60 ? '...' : ''}</label>
@@ -810,9 +811,16 @@
 
                 displayTranscripts(allTranscripts);
 
+                // Update stats display
+                document.querySelector('.search-section').insertAdjacentHTML('afterbegin', `
+                    <div style="margin-bottom: 15px; padding: 10px; background: rgba(59, 130, 246, 0.1); border-radius: 6px; font-size: 13px;">
+                        📊 <strong>${transcriptsData.length}</strong> transcripts loaded | Latest: ${transcriptsData[0]?.date || 'N/A'}
+                    </div>
+                `);
+
             } catch (error) {
                 console.error('Error loading data:', error);
-                document.getElementById('transcriptsSection').innerHTML = '<div class="empty-state"><h3>Error loading data</h3><p>Please make sure the API server is running.</p></div>';
+                document.getElementById('transcriptsSection').innerHTML = '<div class="empty-state"><h3>Error loading data</h3><p>Try refreshing the page.</p></div>';
             }
         }
 
@@ -1146,11 +1154,135 @@
         document.getElementById('startDate').addEventListener('change', applyFilters);
         document.getElementById('endDate').addEventListener('change', applyFilters);
 
+        // Load static transcript data
+        async function loadStaticData() {
+            try {
+                const response = await fetch('/transcripts-data.json');
+                transcriptsData = await response.json();
+                console.log(`Loaded ${transcriptsData.length} transcripts from static data`);
+                return transcriptsData;
+            } catch (error) {
+                console.error('Error loading static data:', error);
+                return [];
+            }
+        }
+
+        // Sync/Refresh transcripts from RollCall
+        async function syncTranscripts() {
+            const btn = document.getElementById('syncBtn');
+            btn.textContent = '⟳ Syncing...';
+            btn.disabled = true;
+
+            try {
+                // Get latest date from current data
+                const latestDate = transcriptsData.length > 0
+                    ? transcriptsData.reduce((latest, t) => t.date > latest ? t.date : latest, transcriptsData[0].date)
+                    : '2024-01-01';
+
+                console.log('Latest transcript date:', latestDate);
+
+                // Fetch new transcripts from RollCall using CORS proxy
+                const proxyUrl = 'https://api.allorigins.win/raw?url=';
+                const rollCallUrl = encodeURIComponent('https://rollcall.com/factbase/trump/search/');
+
+                const response = await fetch(proxyUrl + rollCallUrl);
+                const html = await response.text();
+
+                // Parse HTML to find new transcript links
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const links = doc.querySelectorAll('a[href*="/factbase/trump/transcript/"]');
+
+                let newCount = 0;
+                const existingUrls = new Set(transcriptsData.map(t => t.url));
+
+                for (const link of links) {
+                    const url = link.href;
+                    const text = link.textContent.trim();
+
+                    // Extract date from URL
+                    const dateMatch = url.match(/(january|february|march|april|may|june|july|august|september|october|november|december)-(\d+)-(2024|2025)/i);
+                    if (dateMatch && !existingUrls.has(url)) {
+                        const month = dateMatch[1];
+                        const day = dateMatch[2];
+                        const year = dateMatch[3];
+                        const date = new Date(`${month} ${day}, ${year}`).toISOString().split('T')[0];
+
+                        if (date > latestDate) {
+                            // Add new transcript
+                            transcriptsData.push({
+                                id: transcriptsData.length + 1,
+                                title: text,
+                                date: date,
+                                speech_type: 'Speech',
+                                location: '',
+                                url: url,
+                                word_count: 0
+                            });
+                            newCount++;
+                        }
+                    }
+                }
+
+                // Save to localStorage
+                localStorage.setItem('transcripts', JSON.stringify(transcriptsData));
+
+                btn.textContent = `✓ Added ${newCount} new`;
+                setTimeout(() => {
+                    btn.textContent = '⟳ Sync Transcripts';
+                    btn.disabled = false;
+                }, 3000);
+
+                // Reload data
+                if (newCount > 0) {
+                    await loadInitialData();
+                }
+            } catch (error) {
+                console.error('Sync error:', error);
+                btn.textContent = '✗ Sync Failed';
+                setTimeout(() => {
+                    btn.textContent = '⟳ Sync Transcripts';
+                    btn.disabled = false;
+                }, 3000);
+            }
+        }
+
         // Initialize
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
             initCharts();
-            loadInitialData();
+
+            // Load from localStorage first, fallback to static file
+            const stored = localStorage.getItem('transcripts');
+            if (stored) {
+                transcriptsData = JSON.parse(stored);
+            } else {
+                transcriptsData = await loadStaticData();
+                localStorage.setItem('transcripts', JSON.stringify(transcriptsData));
+            }
+
+            await loadInitialData();
         });
     </script>
+
+    <!-- Floating Sync Button -->
+    <button id="syncBtn" onclick="syncTranscripts()" style="
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        padding: 12px 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 25px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        transition: all 0.3s ease;
+        z-index: 1000;
+    " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.6)'"
+       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.4)'">
+        ⟳ Sync Transcripts
+    </button>
 </body>
 </html>
