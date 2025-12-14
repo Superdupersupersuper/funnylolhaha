@@ -1,15 +1,5 @@
 [build]
   publish = "."
-  command = "echo 'Build complete'"
-
-[functions]
-  directory = "netlify/functions"
-
-[[redirects]]
-  from = "/transcripts-data.json"
-  to = "/transcripts-data.json"
-  status = 200
-  force = false
 
 [[redirects]]
   from = "/*"
