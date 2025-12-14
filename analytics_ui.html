@@ -473,7 +473,23 @@
         <!-- SEARCH SECTION -->
         <div class="search-section">
             <div class="search-title">MentionMarkets.com</div>
-            <input type="text" class="search-input" id="searchInput" placeholder="Search terms (e.g., trump derangement syndrome)">
+            <div style="position: relative;">
+                <input type="text" class="search-input" id="searchInput" placeholder="Search terms (e.g., trump derangement syndrome)" style="padding-right: 45px;">
+                <button id="searchBtn" onclick="performSearch()" style="
+                    position: absolute;
+                    right: 5px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                    border: none;
+                    border-radius: 4px;
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    color: white;
+                    font-size: 16px;
+                    transition: all 0.2s;
+                ">🔍</button>
+            </div>
 
             <div class="search-options">
                 <div class="search-option">
@@ -901,11 +917,36 @@
                     `;
                 }
 
+                // Add preview toggle
+                const previewText = (t.preview || '').substring(0, 300);
+                const hasPreview = previewText.length > 0;
+
                 return `
                     <div class="transcript-card" id="card-${t.id}" data-date="${t.date}">
                         <div class="transcript-title">${t.title}</div>
-                        <div class="transcript-date">${t.date}</div>
+                        <div class="transcript-date">${t.date} | ${t.speech_type}${t.location ? ' | ' + t.location : ''}</div>
                         ${totalsHTML}
+                        ${hasPreview ? `
+                            <div class="preview-toggle" onclick="togglePreview(${t.id})" style="
+                                cursor: pointer;
+                                color: #3b82f6;
+                                font-size: 12px;
+                                margin-top: 8px;
+                                user-select: none;
+                            ">
+                                <span id="preview-icon-${t.id}">▶</span> Show Preview
+                            </div>
+                            <div id="preview-${t.id}" style="
+                                display: none;
+                                margin-top: 10px;
+                                padding: 10px;
+                                background: rgba(255, 255, 255, 0.05);
+                                border-radius: 4px;
+                                font-size: 13px;
+                                line-height: 1.6;
+                                color: #d1d5db;
+                            ">${previewText}...</div>
+                        ` : ''}
                         ${contentHTML && document.getElementById('showContext').checked ? `
                             <div class="transcript-content" id="content-${t.id}">${contentHTML}</div>
                         ` : ''}
@@ -917,10 +958,16 @@
 
         // Perform search
         async function performSearch() {
+            const searchBtn = document.getElementById('searchBtn');
             const searchInput = document.getElementById('searchInput').value.trim();
 
+            // Visual feedback - show loading
+            searchBtn.textContent = '⏳';
+            searchBtn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+
             if (!searchInput) {
-                displayTranscripts(allTranscripts);
+                // Apply current filters
+                applyFilters();
                 document.getElementById('statsSection').style.display = 'none';
 
                 // Clear charts
@@ -930,46 +977,59 @@
                 locationChart.data.datasets[0].data = [];
                 locationChart.data.datasets[1].data = [];
                 locationChart.update();
+
+                // Reset button
+                searchBtn.textContent = '🔍';
+                searchBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
                 return;
             }
 
-            const terms = searchInput.split(',').map(t => t.trim()).filter(t => t);
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
-            const includePlural = document.getElementById('includePlural').checked;
-            const matchBeginning = document.getElementById('matchBeginning').checked;
-            const matchEnding = document.getElementById('matchEnding').checked;
-            const contextSize = parseInt(document.getElementById('contextSize').value);
+            // Simulate async for smooth UX
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            const terms = searchInput.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
+            const startDate = new Date(document.getElementById('startDate').value);
+            const endDate = new Date(document.getElementById('endDate').value);
             const selectedCategories = Array.from(document.querySelectorAll('#categoriesFilter input:checked')).map(cb => cb.value);
 
             try {
-                const searchRes = await fetch(`${API_BASE}/search`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        terms, startDate, endDate, speechTypes: selectedCategories,
-                        includePlural, matchBeginning, matchEnding, contextSize
-                    })
-                });
-                const searchData = await searchRes.json();
+                // Client-side search in preview text
+                const results = transcriptsData.filter(t => {
+                    // Filter by date and category
+                    const tDate = new Date(t.date);
+                    if (tDate < startDate || tDate > endDate) return false;
+                    if (!selectedCategories.includes(t.speech_type)) return false;
 
-                const timelineRes = await fetch(`${API_BASE}/mention-timeline`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        terms, startDate, endDate, speechTypes: selectedCategories,
-                        includePlural, granularity: 'month'
-                    })
+                    // Search in title and preview
+                    const searchText = `${t.title} ${t.preview || ''}`.toLowerCase();
+                    return terms.some(term => searchText.includes(term));
                 });
-                const timelineData = await timelineRes.json();
 
-                updateMentionsChart(searchData.results);
-                updateLocationChart(searchData.results);
-                updateStats(searchData.results, timelineData.timeline);
-                displayTranscripts(searchData.results);
+                // Sort by date descending
+                results.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                // Display results
+                displayTranscripts(results);
+
+                // Show success feedback
+                searchBtn.textContent = '✓';
+                searchBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+
+                // Reset button after 1 second
+                setTimeout(() => {
+                    searchBtn.textContent = '🔍';
+                    searchBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+                }, 1000);
 
             } catch (error) {
                 console.error('Search error:', error);
+                searchBtn.textContent = '✗';
+                searchBtn.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+
+                setTimeout(() => {
+                    searchBtn.textContent = '🔍';
+                    searchBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+                }, 2000);
             }
         }
 
@@ -1124,6 +1184,22 @@
         }
 
         // Filter helper functions
+        function togglePreview(transcriptId) {
+            const preview = document.getElementById(`preview-${transcriptId}`);
+            const icon = document.getElementById(`preview-icon-${transcriptId}`);
+            const toggle = icon.parentElement;
+
+            if (preview.style.display === 'none') {
+                preview.style.display = 'block';
+                icon.textContent = '▼';
+                toggle.childNodes[1].textContent = ' Hide Preview';
+            } else {
+                preview.style.display = 'none';
+                icon.textContent = '▶';
+                toggle.childNodes[1].textContent = ' Show Preview';
+            }
+        }
+
         function selectAllCategories() {
             document.querySelectorAll('#categoriesFilter input').forEach(cb => cb.checked = true);
             applyFilters();
