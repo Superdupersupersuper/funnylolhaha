@@ -1079,59 +1079,25 @@
                     const mentionLocations = [];
                     let mentionCount = 0;
 
+                    // Simple approach: Find all "Donald Trump:" sections using regex
+                    // Match "Donald Trump:" followed by text until next speaker or end
+                    const trumpPattern = /Donald Trump:\s*([^]*?)(?=\n\s*[A-Z][^:]*:|$)/gi;
+                    const trumpMatches = [...preview.matchAll(trumpPattern)];
+
                     terms.forEach(term => {
-                        // Split preview into sections by speaker
-                        // Look for "Donald Trump:" followed by dialogue
-                        const trumpSections = [];
-                        const lines = preview.split('\n');
-                        let currentSpeaker = '';
-                        let currentText = '';
-                        let currentStartPos = 0;
+                        trumpMatches.forEach(match => {
+                            const trumpText = match[1]; // The text Trump said
+                            const trumpStartPos = match.index + match[0].indexOf(match[1]); // Position in preview
+                            const trumpTextLower = trumpText.toLowerCase();
 
-                        for (let i = 0; i < lines.length; i++) {
-                            const line = lines[i];
-                            // Check if line starts with a speaker name followed by colon
-                            const speakerMatch = line.match(/^\s*([^:]+):\s*(.*)$/);
-
-                            if (speakerMatch) {
-                                // Save previous speaker's text
-                                if (currentSpeaker.toLowerCase().includes('donald trump') && currentText) {
-                                    trumpSections.push({
-                                        text: currentText,
-                                        startPos: currentStartPos
-                                    });
-                                }
-
-                                // Start new speaker
-                                currentSpeaker = speakerMatch[1].trim();
-                                currentText = speakerMatch[2] + ' ';
-                                currentStartPos = preview.indexOf(line);
-                            } else if (currentSpeaker) {
-                                // Continue current speaker's text
-                                currentText += line + ' ';
-                            }
-                        }
-
-                        // Don't forget last speaker
-                        if (currentSpeaker.toLowerCase().includes('donald trump') && currentText) {
-                            trumpSections.push({
-                                text: currentText,
-                                startPos: currentStartPos
-                            });
-                        }
-
-                        // Now search for term ONLY in Trump's sections
-                        trumpSections.forEach(section => {
-                            const sectionLower = section.text.toLowerCase();
                             let pos = 0;
-
-                            while ((pos = sectionLower.indexOf(term, pos)) !== -1) {
+                            while ((pos = trumpTextLower.indexOf(term, pos)) !== -1) {
                                 mentionCount++;
 
-                                // Extract context around the match from Trump's dialogue
+                                // Extract context around the match
                                 const contextStart = Math.max(0, pos - 150);
-                                const contextEnd = Math.min(section.text.length, pos + term.length + 150);
-                                const context = section.text.substring(contextStart, contextEnd);
+                                const contextEnd = Math.min(trumpText.length, pos + term.length + 150);
+                                const context = trumpText.substring(contextStart, contextEnd);
                                 const highlightStart = pos - contextStart;
                                 const highlightEnd = highlightStart + term.length;
 
@@ -1142,7 +1108,7 @@
                                 });
 
                                 // Calculate location as percentage through document
-                                const absolutePos = section.startPos + pos;
+                                const absolutePos = trumpStartPos + pos;
                                 const location = absolutePos / preview.length;
                                 mentionLocations.push({
                                     location: location,
