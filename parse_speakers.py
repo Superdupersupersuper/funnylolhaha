@@ -52,18 +52,22 @@ SPEAKERS = [
 def parse_speakers_from_text(text):
     """
     Parse speakers from transcript text.
-    Looks for patterns like "Speaker Name:" at the beginning of lines or after newlines.
+    Looks for patterns like "Speaker Name:" or speaker names in statistics.
     """
     found_speakers = set()
 
     for speaker in SPEAKERS:
-        # Pattern 1: "Speaker Name:" format (most common)
+        # Pattern 1: "Speaker Name:" format (dialogue)
         pattern1 = re.compile(rf'(?:^|\n)\s*{re.escape(speaker)}\s*:', re.MULTILINE | re.IGNORECASE)
 
-        # Pattern 2: Just the name appearing (for statistics)
-        pattern2 = re.compile(rf'\b{re.escape(speaker)}\b', re.IGNORECASE)
+        # Pattern 2: "Speaker Name said X sentences" (statistics)
+        pattern2 = re.compile(rf'{re.escape(speaker)}\s+said\s+\d+\s+sentences', re.IGNORECASE)
 
-        if pattern1.search(text) or (pattern2.search(text) and len(text) < 1000):
+        # Pattern 3: Just the name appearing in title or metadata
+        pattern3 = re.compile(rf'\b{re.escape(speaker)}\b', re.IGNORECASE)
+
+        # If any pattern matches, add the speaker
+        if pattern1.search(text) or pattern2.search(text) or pattern3.search(text):
             found_speakers.add(speaker)
 
     return list(found_speakers)
@@ -97,8 +101,8 @@ def update_database():
     except sqlite3.OperationalError:
         print("Speakers column already exists")
 
-    # Get all transcripts
-    cursor.execute("SELECT id, full_text FROM transcripts WHERE full_text IS NOT NULL AND full_text != ''")
+    # Get all transcripts with title for better parsing
+    cursor.execute("SELECT id, title, full_text FROM transcripts WHERE full_text IS NOT NULL AND full_text != ''")
     transcripts = cursor.fetchall()
 
     print(f"Processing {len(transcripts)} transcripts...")
@@ -106,8 +110,10 @@ def update_database():
     updated = 0
     speaker_counts = {}
 
-    for transcript_id, full_text in transcripts:
-        speakers = parse_speakers_from_text(full_text)
+    for transcript_id, title, full_text in transcripts:
+        # Parse from both title and full text
+        combined_text = f"{title}\n{full_text}"
+        speakers = parse_speakers_from_text(combined_text)
 
         if speakers:
             # Store as JSON array
