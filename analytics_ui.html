@@ -588,6 +588,24 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Apply Filters Button -->
+            <div style="margin-top: 15px; text-align: center;">
+                <button onclick="applyFilters()" style="
+                    padding: 12px 32px;
+                    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+                ">
+                    Apply Filters
+                </button>
+            </div>
         </div>
 
         <!-- STATISTICS SECTION -->
@@ -790,7 +808,7 @@
                 const categoriesFilter = document.getElementById('categoriesFilter');
                 categoriesFilter.innerHTML = speechTypes.map((type, idx) => `
                     <div class="filter-item">
-                        <input type="checkbox" id="cat-${idx}" value="${type}" checked onchange="applyFilters()">
+                        <input type="checkbox" id="cat-${idx}" value="${type}" checked>
                         <label for="cat-${idx}">${type}</label>
                     </div>
                 `).join('');
@@ -804,7 +822,7 @@
                 const eventsFilter = document.getElementById('eventsFilter');
                 eventsFilter.innerHTML = allTranscripts.map((t, idx) => `
                     <div class="filter-item">
-                        <input type="checkbox" id="event-${idx}" value="${t.id}" checked onchange="applyFilters()">
+                        <input type="checkbox" id="event-${idx}" value="${t.id}" checked>
                         <label for="event-${idx}" title="${t.title}">${t.title.substring(0, 60)}${t.title.length > 60 ? '...' : ''}</label>
                     </div>
                 `).join('');
@@ -1156,8 +1174,6 @@
             if (e.key === 'Enter') performSearch();
         });
         document.getElementById('searchInput').addEventListener('input', performSearch);
-        document.getElementById('startDate').addEventListener('change', applyFilters);
-        document.getElementById('endDate').addEventListener('change', applyFilters);
 
         // Embedded transcript data (will be populated on build)
         const EMBEDDED_DATA_URL = 'https://raw.githubusercontent.com/Superdupersupersuper/funnylolhaha/main/transcripts-data.json';
