@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mention Markets — Transcript Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #111111;
+            --bg-tertiary: #1a1a1a;
+            --border-color: #2a2a2a;
+            --text-primary: #e0e0e0;
+            --text-secondary: #888888;
+            --text-muted: #555555;
+            --accent-green: #00ff88;
+            --accent-cyan: #00d4ff;
+            --accent-yellow: #ffcc00;
+            --accent-red: #ff4444;
+            --accent-purple: #aa88ff;
+            --trump-color: #ff4444;
+            --vance-color: #4488ff;
+            --leavitt-color: #aa66ff;
+            --powell-color: #00cc88;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'IBM Plex Mono', 'Courier New', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* Subtle scanline effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px);
+            z-index: 1000;
+            opacity: 0.2;
+        }
+
+        header {
+            border-bottom: 1px solid var(--border-color);
+            padding: 16px 24px;
+            background: var(--bg-secondary);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 32px; height: 32px;
+            border: 2px solid var(--accent-green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: var(--accent-green);
+            font-size: 14px;
+        }
+
+        .logo-text {
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .logo-text span { color: var(--accent-green); }
+
+        nav { display: flex; gap: 4px; }
+
+        nav button {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 8px 16px;
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.15s;
+        }
+
+        nav button:hover {
+            border-color: var(--text-secondary);
+            color: var(--text-primary);
+        }
+
+        nav button.active {
+            background: var(--accent-green);
+            border-color: var(--accent-green);
+            color: var(--bg-primary);
+        }
+
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .search-section { margin-bottom: 24px; }
+
+        .search-box {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .search-input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 12px 16px 12px 40px;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .search-input:focus { border-color: var(--accent-green); }
+        .search-input::placeholder { color: var(--text-muted); }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .search-btn {
+            background: var(--accent-green);
+            border: none;
+            color: var(--bg-primary);
+            padding: 12px 24px;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+
+        .search-btn:hover { opacity: 0.9; }
+
+        .filters {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .filter-select, .filter-input {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .filter-select { min-width: 160px; }
+        .filter-select:focus, .filter-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        .clear-btn {
+            background: transparent;
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            padding: 8px 12px;
+            font-family: inherit;
+            font-size: 11px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .clear-btn:hover {
+            background: var(--accent-red);
+            color: var(--bg-primary);
+        }
+
+        .stats-bar {
+            display: flex;
+            gap: 32px;
+            padding: 16px 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            margin-bottom: 24px;
+        }
+
+        .stat-item { display: flex; flex-direction: column; }
+
+        .stat-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            font-family: 'Space Mono', monospace;
+        }
+
+        .stat-value.green { color: var(--accent-green); }
+        .stat-value.cyan { color: var(--accent-cyan); }
+        .stat-value.yellow { color: var(--accent-yellow); }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .results-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+        }
+
+        .results-count {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .result-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 16px 20px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+
+        .result-card:hover { border-color: var(--text-muted); }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .result-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .speaker-tag {
+            padding: 4px 8px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border: 1px solid;
+        }
+
+        .speaker-tag.trump { color: var(--trump-color); border-color: var(--trump-color); }
+        .speaker-tag.vance { color: var(--vance-color); border-color: var(--vance-color); }
+        .speaker-tag.leavitt { color: var(--leavitt-color); border-color: var(--leavitt-color); }
+        .speaker-tag.powell { color: var(--powell-color); border-color: var(--powell-color); }
+        .speaker-tag.other { color: var(--text-secondary); border-color: var(--text-secondary); }
+
+        .result-time {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'Space Mono', monospace;
+        }
+
+        .mention-count {
+            font-size: 10px;
+            padding: 3px 6px;
+            background: var(--accent-purple);
+            color: var(--bg-primary);
+            font-weight: 600;
+        }
+
+        .result-text {
+            font-size: 14px;
+            line-height: 1.7;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .result-text mark {
+            background: var(--accent-yellow);
+            color: var(--bg-primary);
+            padding: 0 2px;
+        }
+
+        .result-footer {
+            display: flex;
+            gap: 16px;
+            font-size: 11px;
+            color: var(--text-muted);
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .result-footer span::before {
+            content: '›';
+            margin-right: 6px;
+            color: var(--accent-green);
+        }
+
+        .transcripts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 16px;
+        }
+
+        .transcript-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .transcript-card:hover {
+            border-color: var(--accent-green);
+            transform: translateY(-2px);
+        }
+
+        .transcript-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .event-type-tag {
+            font-size: 10px;
+            padding: 3px 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .transcript-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .transcript-location {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .transcript-card-footer {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+            font-family: 'Space Mono', monospace;
+        }
+
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        .analytics-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 20px;
+        }
+
+        .analytics-card.full-width { grid-column: 1 / -1; }
+
+        .analytics-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .bar-chart-item { margin-bottom: 12px; }
+
+        .bar-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .bar-name { color: var(--text-primary); }
+
+        .bar-value {
+            color: var(--accent-cyan);
+            font-family: 'Space Mono', monospace;
+        }
+
+        .bar-track {
+            height: 6px;
+            background: var(--bg-tertiary);
+        }
+
+        .bar-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .bar-fill.green { background: var(--accent-green); }
+        .bar-fill.cyan { background: var(--accent-cyan); }
+        .bar-fill.yellow { background: var(--accent-yellow); }
+        .bar-fill.purple { background: var(--accent-purple); }
+
+        .timeline-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            height: 150px;
+            padding-top: 20px;
+        }
+
+        .timeline-bar {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .timeline-value {
+            font-size: 10px;
+            color: var(--accent-purple);
+            font-family: 'Space Mono', monospace;
+        }
+
+        .timeline-fill {
+            width: 100%;
+            background: linear-gradient(180deg, var(--accent-purple), var(--accent-cyan));
+            min-height: 4px;
+            transition: height 0.3s ease;
+        }
+
+        .timeline-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            transform: rotate(-45deg);
+            white-space: nowrap;
+        }
+
+        .transcript-viewer {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 24px;
+        }
+
+        .back-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 8px 16px;
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .back-btn:hover {
+            border-color: var(--text-primary);
+            color: var(--text-primary);
+        }
+
+        .transcript-viewer-header {
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .transcript-viewer-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .transcript-viewer-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .segment {
+            display: flex;
+            gap: 16px;
+            padding: 16px;
+            margin-bottom: 8px;
+            border-left: 3px solid;
+            background: var(--bg-tertiary);
+        }
+
+        .segment.trump { border-color: var(--trump-color); }
+        .segment.vance { border-color: var(--vance-color); }
+        .segment.leavitt { border-color: var(--leavitt-color); }
+        .segment.powell { border-color: var(--powell-color); }
+        .segment.other { border-color: var(--text-muted); }
+
+        .segment-speaker { min-width: 100px; }
+
+        .segment-speaker-name {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .segment.trump .segment-speaker-name { color: var(--trump-color); }
+        .segment.vance .segment-speaker-name { color: var(--vance-color); }
+        .segment.leavitt .segment-speaker-name { color: var(--leavitt-color); }
+        .segment.powell .segment-speaker-name { color: var(--powell-color); }
+        .segment.other .segment-speaker-name { color: var(--text-secondary); }
+
+        .segment-time {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-family: 'Space Mono', monospace;
+        }
+
+        .segment-text {
+            flex: 1;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state p { margin-bottom: 8px; }
+
+        footer {
+            border-top: 1px solid var(--border-color);
+            padding: 20px 24px;
+            margin-top: 40px;
+        }
+
+        .footer-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        @media (max-width: 768px) {
+            .analytics-grid { grid-template-columns: 1fr; }
+            .transcripts-grid { grid-template-columns: 1fr; }
+            .stats-bar { flex-wrap: wrap; gap: 20px; }
+            .filters { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon">M</div>
+                    <div class="logo-text">Mention<span>Markets</span></div>
+                </div>
+                <nav>
+                    <button class="active" onclick="setView('search')">Search</button>
+                    <button onclick="setView('analytics')">Analytics</button>
+                </nav>
+            </div>
+        </header>
+
+        <main>
+            <section class="search-section">
+                <div class="search-box">
+                    <div class="search-input-wrapper">
+                        <span class="search-icon">⌕</span>
+                        <input type="text" class="search-input" id="searchInput"
+                            placeholder="Search transcripts... (tariffs, border, inflation, Powell)"
+                            onkeyup="handleSearchKeyup(event)">
+                    </div>
+                    <button class="search-btn" onclick="performSearch()">Search</button>
+                </div>
+
+                <div class="filters">
+                    <select class="filter-select" id="speakerFilter" onchange="applyFilters()">
+                        <option value="all">All Speakers</option>
+                        <option value="Donald Trump">Donald Trump</option>
+                        <option value="JD Vance">JD Vance</option>
+                        <option value="Karoline Leavitt">Karoline Leavitt</option>
+                    </select>
+                    <select class="filter-select" id="typeFilter" onchange="applyFilters()">
+                        <option value="all">All Event Types</option>
+                        <option value="Speech">Speech</option>
+                        <option value="Rally">Rally</option>
+                        <option value="Press Briefing">Press Briefing</option>
+                        <option value="Interview">Interview</option>
+                        <option value="Remarks">Remarks</option>
+                    </select>
+                    <input type="date" class="filter-input" id="startDate" onchange="applyFilters()">
+                    <input type="date" class="filter-input" id="endDate" onchange="applyFilters()">
+                    <button class="clear-btn" onclick="clearFilters()">Clear</button>
+                </div>
+            </section>
+
+            <div id="content"></div>
+        </main>
+
+        <footer>
+            <div class="footer-content">
+                <span>MENTION MARKETS — TRANSCRIPT INTELLIGENCE SYSTEM</span>
+                <span>DATA SOURCE: FACTBASE / ROLL CALL</span>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Sample transcripts data
+        const SAMPLE_TRANSCRIPTS = [
+            {
+                id: 'trump-rally-washington-2025',
+                title: 'Political Rally in Washington',
+                primary_speaker: 'Donald Trump',
+                event_date: '2025-01-19',
+                event_type: 'Rally',
+                location: 'Washington, DC',
+                total_words: 8265,
+                total_duration_seconds: 3816,
+                segments: [
+                    { speaker: 'Donald Trump', start_time: '00:00:00', text: 'Well, thank you very much. Thank you. Thank you very much. We won.' },
+                    { speaker: 'Donald Trump', start_time: '00:00:34', text: "We're going to make our country greater than ever before. Hello, Washington, and hello, America. We're all over America. I'm thrilled to be back with so many friends, supporters, and true American patriots on the eve of taking back our country." },
+                    { speaker: 'Donald Trump', start_time: '00:01:17', text: "Once and for all, we're going to end the reign of a failed and corrupt political establishment in Washington, a failed administration. We're not going to take it anymore. We're going to stop the invasion of our borders." },
+                    { speaker: 'Donald Trump', start_time: '00:01:53', text: "We're going to reclaim our wealth. We're going to unlock the liquid gold that's right under our feet, liquid gold. We're going to bring back law and order to our cities." },
+                    { speaker: 'Donald Trump', start_time: '00:07:00', text: "Our new administration will inherit disasters at home and abroad, an economy plagued by inflation and high interest rates, a catastrophic border crisis." },
+                    { speaker: 'Donald Trump', start_time: '00:08:13', text: "Since the election, the stock market has surged, and small business optimism has soared. Bitcoin has shattered one record high after another." },
+                    { speaker: 'Donald Trump', start_time: '00:08:39', text: "The major investment company known as DAMAC, the properties, has announced that it will be investing between $20 billion and $40 billion in the United States." },
+                    { speaker: 'Donald Trump', start_time: '00:09:02', text: "Today, I spoke with Tim Cook of Apple. He said they're going to make a massive investment in the United States because of our big election win." },
+                    { speaker: 'Donald Trump', start_time: '00:10:25', text: "And frankly, we have no choice. We have to save a lot of jobs. We don't want to give our business to China. We don't want to give our business to other people." },
+                    { speaker: 'Donald Trump', start_time: '00:11:56', text: "Perhaps most beautiful of all, this week we achieved an epic ceasefire agreement as a first step toward lasting peace in the Middle East." },
+                    { speaker: 'Elon Musk', start_time: '00:15:00', text: "This is an incredible moment. We are going to make America great again, and we're going to do it together." },
+                ]
+            },
+            {
+                id: 'trump-west-point-2025',
+                title: 'Commencement Address at West Point',
+                primary_speaker: 'Donald Trump',
+                event_date: '2025-05-24',
+                event_type: 'Speech',
+                location: 'West Point, NY',
+                total_words: 8169,
+                total_duration_seconds: 3558,
+                segments: [
+                    { speaker: 'Donald Trump', start_time: '00:00:00', text: "Well, I want to thank you very much. This is a beautiful place. I've been here many times going to high school, not so far away." },
+                    { speaker: 'Donald Trump', start_time: '00:00:49', text: 'And I just wanna say hello cadets and on behalf of our entire nation, let me begin by saying congratulations to the West Point class of 2025, you are winners, every single one of you.' },
+                    { speaker: 'Donald Trump', start_time: '00:05:00', text: 'We have ordered a $1 trillion military budget. The largest in history. We are rebuilding our military to be stronger than ever before.' },
+                    { speaker: 'Donald Trump', start_time: '00:17:00', text: 'And we have that Army geared up. We have ordered, you know, we just want $1 trillion military budget, general.' },
+                    { speaker: 'Donald Trump', start_time: '00:25:00', text: 'You are graduating into a time of peace through strength. America is back. Our enemies know it, and our allies know it.' },
+                ]
+            },
+            {
+                id: 'leavitt-briefing-jan-2025',
+                title: 'Press Briefing at The White House',
+                primary_speaker: 'Karoline Leavitt',
+                event_date: '2025-01-28',
+                event_type: 'Press Briefing',
+                location: 'White House, Washington DC',
+                total_words: 8568,
+                total_duration_seconds: 2803,
+                segments: [
+                    { speaker: 'Karoline Leavitt', start_time: '00:00:00', text: 'Good afternoon, everybody. How are we? It is a priority of this White House to honor the First Amendment.' },
+                    { speaker: 'Question', start_time: '00:02:00', text: 'Karoline, does the president see anything fishy about DeepSeek -- either its origins or its cost?' },
+                    { speaker: 'Karoline Leavitt', start_time: '00:02:30', text: 'Sure, the President was asked about DeepSeek last night on Air Force One. The president said that he believes that this is a wake-up call to the American AI industry.' },
+                    { speaker: 'Karoline Leavitt', start_time: '00:10:00', text: 'The president is very focused on tariffs. We expect announcements soon regarding our trade relationships with China, Mexico, and Canada.' },
+                    { speaker: 'Karoline Leavitt', start_time: '00:15:00', text: 'On the border, we have seen a dramatic reduction in illegal crossings since the president took office. The border is more secure than it has been in years.' },
+                ]
+            },
+            {
+                id: 'vance-economy-wisconsin-2025',
+                title: 'Discusses the Economy in La Crosse, Wisconsin',
+                primary_speaker: 'JD Vance',
+                event_date: '2025-08-28',
+                event_type: 'Speech',
+                location: 'La Crosse, Wisconsin',
+                total_words: 7010,
+                total_duration_seconds: 2329,
+                segments: [
+                    { speaker: 'JD Vance', start_time: '00:00:00', text: "Thank you. Thank you all. We love you. We've got -- we love you all. Thank you all, Wisconsin. It's great to be here." },
+                    { speaker: 'JD Vance', start_time: '00:05:00', text: "The best-looking group of welders and steel men and women I've seen in my entire life I think. This is a sharp crew." },
+                    { speaker: 'JD Vance', start_time: '00:15:00', text: 'We are bringing manufacturing back to America. The tariffs that President Trump has implemented are working. American factories are reopening.' },
+                    { speaker: 'JD Vance', start_time: '00:25:00', text: 'Inflation is coming down. Interest rates are stabilizing. The American worker is finally being put first.' },
+                    { speaker: 'JD Vance', start_time: '00:30:30', text: 'My message is simple: we are going to bring manufacturing back to America. We are going to create good-paying jobs for American workers.' },
+                ]
+            },
+            {
+                id: 'leavitt-briefing-march-2025',
+                title: 'Press Briefing at The White House',
+                primary_speaker: 'Karoline Leavitt',
+                event_date: '2025-03-05',
+                event_type: 'Press Briefing',
+                location: 'White House, Washington DC',
+                total_words: 5798,
+                total_duration_seconds: 1860,
+                segments: [
+                    { speaker: 'Karoline Leavitt', start_time: '00:00:00', text: "Hello, everybody. How are we? I apologize for my tardiness. It's quite the newsy day." },
+                    { speaker: 'Karoline Leavitt', start_time: '00:10:30', text: 'I can confirm. We spoke with the big three auto dealers. We are going to give a one month exemption on any autos coming through USMCA. Reciprocal tariffs will still go into effect on April 2nd.' },
+                    { speaker: 'Karoline Leavitt', start_time: '00:20:00', text: 'The president remains committed to fair trade. These tariffs are not about starting trade wars. They are about leveling the playing field for American workers.' },
+                ]
+            },
+            {
+                id: 'trump-phoenix-rally-2024',
+                title: 'Political Rally in Phoenix',
+                primary_speaker: 'Donald Trump',
+                event_date: '2024-12-22',
+                event_type: 'Rally',
+                location: 'Phoenix, Arizona',
+                total_words: 9500,
+                total_duration_seconds: 4200,
+                segments: [
+                    { speaker: 'Donald Trump', start_time: '00:00:00', text: 'Hello Phoenix! What a crowd. What a beautiful crowd. We love Arizona.' },
+                    { speaker: 'Donald Trump', start_time: '00:05:00', text: 'The border crisis is a disaster. We are going to seal that border on day one. Day one, folks.' },
+                    { speaker: 'Donald Trump', start_time: '00:15:00', text: 'Inflation is killing our families. Gas prices, food prices, everything is up. We are going to fix it.' },
+                    { speaker: 'Donald Trump', start_time: '00:30:00', text: 'China is ripping us off. We are going to put massive tariffs on China. They have been taking advantage of us for too long.' },
+                ]
+            },
+            {
+                id: 'trump-msg-rally-2024',
+                title: 'Campaign Rally at Madison Square Garden',
+                primary_speaker: 'Donald Trump',
+                event_date: '2024-10-27',
+                event_type: 'Rally',
+                location: 'New York, NY',
+                total_words: 12000,
+                total_duration_seconds: 5400,
+                segments: [
+                    { speaker: 'Donald Trump', start_time: '00:00:00', text: 'New York! Madison Square Garden! This is incredible. Thank you all for being here.' },
+                    { speaker: 'Donald Trump', start_time: '00:10:00', text: 'We are going to win this election. The polls are looking great. We are going to make America great again.' },
+                    { speaker: 'Donald Trump', start_time: '00:25:00', text: 'The economy under Biden has been a disaster. Inflation, interest rates, the border -- all disasters. We are going to fix all of it.' },
+                    { speaker: 'Donald Trump', start_time: '00:45:00', text: 'Jerome Powell at the Federal Reserve has been a disaster. Interest rates too high for too long. We need better leadership.' },
+                ]
+            }
+        ];
+
+        // State
+        let state = {
+            view: 'search',
+            query: '',
+            results: [],
+            transcripts: SAMPLE_TRANSCRIPTS,
+            selectedTranscript: null,
+            filters: {
+                speaker: 'all',
+                type: 'all',
+                startDate: '',
+                endDate: ''
+            }
+        };
+
+        // Helper functions
+        function getSpeakerClass(speaker) {
+            const name = speaker.toLowerCase();
+            if (name.includes('trump')) return 'trump';
+            if (name.includes('vance')) return 'vance';
+            if (name.includes('leavitt')) return 'leavitt';
+            if (name.includes('powell')) return 'powell';
+            return 'other';
+        }
+
+        function formatDuration(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        }
+
+        function highlightText(text, query) {
+            if (!query) return text;
+            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            return text.replace(regex, '<mark>$1</mark>');
+        }
+
+        // Search
+        function performSearch() {
+            const query = document.getElementById('searchInput').value.trim();
+            state.query = query;
+            
+            if (!query) {
+                state.results = [];
+                render();
+                return;
+            }
+
+            const results = [];
+            const queryLower = query.toLowerCase();
+
+            state.transcripts.forEach(transcript => {
+                if (state.filters.speaker !== 'all' && transcript.primary_speaker !== state.filters.speaker) return;
+                if (state.filters.type !== 'all' && transcript.event_type !== state.filters.type) return;
+                if (state.filters.startDate && transcript.event_date < state.filters.startDate) return;
+                if (state.filters.endDate && transcript.event_date > state.filters.endDate) return;
+
+                transcript.segments.forEach((segment, idx) => {
+                    if (segment.text.toLowerCase().includes(queryLower)) {
+                        const matches = (segment.text.toLowerCase().match(new RegExp(queryLower, 'g')) || []).length;
+                        results.push({
+                            transcript,
+                            segment,
+                            segmentIndex: idx,
+                            matchCount: matches
+                        });
+                    }
+                });
+            });
+
+            state.results = results.sort((a, b) => new Date(b.transcript.event_date) - new Date(a.transcript.event_date));
+            render();
+        }
+
+        function handleSearchKeyup(event) {
+            if (event.key === 'Enter') performSearch();
+        }
+
+        function applyFilters() {
+            state.filters.speaker = document.getElementById('speakerFilter').value;
+            state.filters.type = document.getElementById('typeFilter').value;
+            state.filters.startDate = document.getElementById('startDate').value;
+            state.filters.endDate = document.getElementById('endDate').value;
+            if (state.query) performSearch();
+            else render();
+        }
+
+        function clearFilters() {
+            document.getElementById('speakerFilter').value = 'all';
+            document.getElementById('typeFilter').value = 'all';
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            state.filters = { speaker: 'all', type: 'all', startDate: '', endDate: '' };
+            if (state.query) performSearch();
+            else render();
+        }
+
+        function setView(view) {
+            state.view = view;
+            state.selectedTranscript = null;
+            document.querySelectorAll('nav button').forEach(btn => {
+                btn.classList.toggle('active', btn.textContent.toLowerCase() === view);
+            });
+            render();
+        }
+
+        function selectTranscript(id) {
+            state.selectedTranscript = state.transcripts.find(t => t.id === id);
+            render();
+        }
+
+        function backToSearch() {
+            state.selectedTranscript = null;
+            render();
+        }
+
+        // Render
+        function render() {
+            const content = document.getElementById('content');
+            
+            if (state.selectedTranscript) {
+                content.innerHTML = renderTranscriptViewer();
+            } else if (state.view === 'analytics' && state.query) {
+                content.innerHTML = renderAnalytics();
+            } else if (state.query && state.results.length > 0) {
+                content.innerHTML = renderSearchResults();
+            } else if (state.query && state.results.length === 0) {
+                content.innerHTML = '<div class="empty-state"><p>No results found for "' + state.query + '"</p><p>Try a different search term or adjust filters</p></div>';
+            } else {
+                content.innerHTML = renderTranscriptList();
+            }
+        }
+
+        function renderSearchResults() {
+            const totalMentions = state.results.reduce((acc, r) => acc + r.matchCount, 0);
+            const uniqueTranscripts = new Set(state.results.map(r => r.transcript.id)).size;
+
+            return `
+                <div class="stats-bar">
+                    <div class="stat-item"><span class="stat-label">Results</span><span class="stat-value green">${state.results.length}</span></div>
+                    <div class="stat-item"><span class="stat-label">Total Mentions</span><span class="stat-value cyan">${totalMentions}</span></div>
+                    <div class="stat-item"><span class="stat-label">Transcripts</span><span class="stat-value yellow">${uniqueTranscripts}</span></div>
+                </div>
+                <div class="results-header">
+                    <span class="results-title">Search Results</span>
+                    <span class="results-count">${state.results.length} matches for "${state.query}"</span>
+                </div>
+                ${state.results.map(r => `
+                    <div class="result-card" onclick="selectTranscript('${r.transcript.id}')">
+                        <div class="result-header">
+                            <div class="result-meta">
+                                <span class="speaker-tag ${getSpeakerClass(r.segment.speaker)}">${r.segment.speaker}</span>
+                                <span class="result-time">${r.segment.start_time}</span>
+                            </div>
+                            <span class="mention-count">${r.matchCount} mention${r.matchCount > 1 ? 's' : ''}</span>
+                        </div>
+                        <div class="result-text">"${highlightText(r.segment.text, state.query)}"</div>
+                        <div class="result-footer">
+                            <span>${r.transcript.title}</span>
+                            <span>${r.transcript.event_type}</span>
+                            <span>${formatDate(r.transcript.event_date)}</span>
+                        </div>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+        function renderTranscriptList() {
+            let filtered = state.transcripts;
+            if (state.filters.speaker !== 'all') filtered = filtered.filter(t => t.primary_speaker === state.filters.speaker);
+            if (state.filters.type !== 'all') filtered = filtered.filter(t => t.event_type === state.filters.type);
+
+            return `
+                <div class="results-header">
+                    <span class="results-title">All Transcripts</span>
+                    <span class="results-count">${filtered.length} transcripts</span>
+                </div>
+                <div class="transcripts-grid">
+                    ${filtered.map(t => `
+                        <div class="transcript-card" onclick="selectTranscript('${t.id}')">
+                            <div class="transcript-card-header">
+                                <span class="speaker-tag ${getSpeakerClass(t.primary_speaker)}">${t.primary_speaker}</span>
+                                <span class="event-type-tag">${t.event_type}</span>
+                            </div>
+                            <div class="transcript-title">${t.title}</div>
+                            <div class="transcript-location">${t.location}</div>
+                            <div class="transcript-card-footer">
+                                <span>${formatDate(t.event_date)}</span>
+                                <span>${t.total_words.toLocaleString()} words</span>
+                                <span>${formatDuration(t.total_duration_seconds)}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderAnalytics() {
+            const bySpeaker = {}, byType = {}, byMonth = {};
+            let total = 0;
+
+            state.results.forEach(r => {
+                bySpeaker[r.segment.speaker] = (bySpeaker[r.segment.speaker] || 0) + r.matchCount;
+                byType[r.transcript.event_type] = (byType[r.transcript.event_type] || 0) + r.matchCount;
+                const month = r.transcript.event_date.substring(0, 7);
+                byMonth[month] = (byMonth[month] || 0) + r.matchCount;
+                total += r.matchCount;
+            });
+
+            const maxSpeaker = Math.max(...Object.values(bySpeaker), 1);
+            const maxType = Math.max(...Object.values(byType), 1);
+            const maxMonth = Math.max(...Object.values(byMonth), 1);
+            const colors = ['green', 'cyan', 'yellow', 'purple'];
+
+            return `
+                <div class="stats-bar">
+                    <div class="stat-item"><span class="stat-label">Query</span><span class="stat-value green">"${state.query}"</span></div>
+                    <div class="stat-item"><span class="stat-label">Total Mentions</span><span class="stat-value cyan">${total}</span></div>
+                    <div class="stat-item"><span class="stat-label">Speakers</span><span class="stat-value yellow">${Object.keys(bySpeaker).length}</span></div>
+                </div>
+                <div class="analytics-grid">
+                    <div class="analytics-card">
+                        <div class="analytics-title">Mentions by Speaker</div>
+                        ${Object.entries(bySpeaker).sort((a,b) => b[1]-a[1]).map(([speaker, count], i) => `
+                            <div class="bar-chart-item">
+                                <div class="bar-label"><span class="bar-name">${speaker}</span><span class="bar-value">${count}</span></div>
+                                <div class="bar-track"><div class="bar-fill ${colors[i % colors.length]}" style="width: ${(count/maxSpeaker)*100}%"></div></div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="analytics-card">
+                        <div class="analytics-title">Mentions by Event Type</div>
+                        ${Object.entries(byType).sort((a,b) => b[1]-a[1]).map(([type, count], i) => `
+                            <div class="bar-chart-item">
+                                <div class="bar-label"><span class="bar-name">${type}</span><span class="bar-value">${count}</span></div>
+                                <div class="bar-track"><div class="bar-fill ${colors[(i+1) % colors.length]}" style="width: ${(count/maxType)*100}%"></div></div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="analytics-card full-width">
+                        <div class="analytics-title">Mentions Over Time</div>
+                        <div class="timeline-chart">
+                            ${Object.entries(byMonth).sort((a,b) => a[0].localeCompare(b[0])).map(([month, count]) => `
+                                <div class="timeline-bar">
+                                    <span class="timeline-value">${count}</span>
+                                    <div class="timeline-fill" style="height: ${(count/maxMonth)*100}px"></div>
+                                    <span class="timeline-label">${month}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTranscriptViewer() {
+            const t = state.selectedTranscript;
+            return `
+                <div class="transcript-viewer">
+                    <button class="back-btn" onclick="backToSearch()">← Back to results</button>
+                    <div class="transcript-viewer-header">
+                        <div class="transcript-viewer-title">${t.title}</div>
+                        <div class="transcript-viewer-meta">${t.primary_speaker} · ${t.event_type} · ${t.location} · ${formatDate(t.event_date)} · ${t.total_words.toLocaleString()} words</div>
+                    </div>
+                    ${t.segments.map(seg => `
+                        <div class="segment ${getSpeakerClass(seg.speaker)}">
+                            <div class="segment-speaker">
+                                <div class="segment-speaker-name">${seg.speaker}</div>
+                                <div class="segment-time">${seg.start_time || ''}</div>
+                            </div>
+                            <div class="segment-text">${state.query ? highlightText(seg.text, state.query) : seg.text}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // Initialize
+        render();
+    </script>
+</body>
+</html>

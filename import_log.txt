@@ -1,0 +1,26 @@
+======================================================================
+MENTION MARKETS - TRANSCRIPT IMPORTER
+======================================================================
+
+Database not found. Initializing...
+Database initialized at /Users/alexandermiron/Downloads/mention-markets/data/transcripts.db
+Found 56 transcript URLs
+Already completed: 0
+No segments (skipped): 0
+Pending: 56
+
+Starting import (1.5s delay between requests)...
+Press Ctrl+C to stop and resume later
+
+TIP: If many fail, run: python3 import_all.py --debug-first
+
+[1/56] donald-trump-interview-jd-vance-bartirom...   DEBUG: Method used: method4_timestamp, segments: 122
+✓ 122 segs (method4_timestamp)
+[2/56] donald-trump-interview-jd-vance-lara-tru... ✓ 144 segs (method4_timestamp)
+[3/56] donald-trump-interview-nbc-lester-holt-m... ✓ 158 segs (method4_timestamp)
+[4/56] donald-trump-interview-sean-hannity-fox-... ✓ 220 segs (method4_timestamp)
+[5/56] donald-trump-interview-sean-hannity-octo... ✓ 464 segs (method4_timestamp)
+[6/56] donald-trump-press-briefing-karoline-lea... ✓ 2 segs (method3_colon)
+[7/56] donald-trump-press-conference-briefing-k... ✓ 2 segs (method3_colon)
+[8/56] donald-trump-press-conference-briefing-k... ✓ 2 segs (method3_colon)
+[9/56] donald-trump-press-conference-briefing-k... 

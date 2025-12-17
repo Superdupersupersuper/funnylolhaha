@@ -1,0 +1,373 @@
+#!/usr/bin/env python3
+"""
+Python API server for the Mention Market Tool
+Provides endpoints for querying data and triggering scraper updates
+"""
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+import sqlite3
+import json
+import threading
+import os
+# from full_scraper import FullScraper  # Not used
+# from database import Database  # Not used
+# from text_analysis import analyze_word_frequency, analyze_word_trends, count_words  # Not used
+
+app = Flask(__name__)
+CORS(app)  # Allow frontend to connect
+
+# Use absolute path to prevent working-directory issues
+# Allow override via environment variable
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.getenv('MENTION_MARKETS_DB_PATH', os.path.join(_script_dir, 'data', 'transcripts.db'))
+
+scraper_status = {'running': False, 'progress': '', 'last_run': None}
+
+def get_db():
+    """Get database connection"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row  # Return rows as dictionaries
+    return conn
+
+def run_scraper_async():
+    """Run scraper in background"""
+    import subprocess
+    import os
+    global scraper_status
+    scraper_status['running'] = True
+    scraper_status['progress'] = 'Starting robust scraper...'
+
+    try:
+        # Run the robust scraper script
+        script_path = os.path.join(os.path.dirname(__file__), 'rollcall_scraper_robust.py')
+        result = subprocess.run(
+            ['python3', script_path],
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 minute timeout
+        )
+
+        if result.returncode == 0:
+            # Parse output to get count
+            output = result.stdout
+            if 'transcripts saved' in output.lower():
+                scraper_status['progress'] = 'Complete! Check logs for details'
+            else:
+                scraper_status['progress'] = 'Complete!'
+            scraper_status['last_run'] = {'success': True, 'output': output[:500]}
+        else:
+            scraper_status['progress'] = f'Error: {result.stderr[:200]}'
+            scraper_status['last_run'] = {'success': False, 'error': result.stderr}
+    except subprocess.TimeoutExpired:
+        scraper_status['progress'] = 'Timeout after 10 minutes'
+    except Exception as e:
+        scraper_status['progress'] = f'Error: {str(e)}'
+    finally:
+        scraper_status['running'] = False
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint with database info"""
+    db_exists = os.path.exists(DB_PATH)
+    
+    health_data = {
+        'status': 'healthy' if db_exists else 'warning',
+        'database': {
+            'path': DB_PATH,
+            'exists': db_exists,
+            'size_mb': round(os.path.getsize(DB_PATH) / (1024 * 1024), 2) if db_exists else 0
+        },
+        'transcripts': {
+            'count': 0,
+            'error': None
+        }
+    }
+    
+    if db_exists:
+        try:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM transcripts")
+            count = cursor.fetchone()['count']
+            health_data['transcripts']['count'] = count
+            
+            # Also get a quick sample
+            cursor.execute("SELECT COUNT(*) as empty_count FROM transcripts WHERE word_count = 0")
+            empty_count = cursor.fetchone()['empty_count']
+            health_data['transcripts']['empty_count'] = empty_count
+            
+            conn.close()
+            
+            if count == 0:
+                health_data['status'] = 'warning'
+                health_data['message'] = 'Database is empty. Run scraper to populate.'
+        except Exception as e:
+            health_data['status'] = 'error'
+            health_data['transcripts']['error'] = str(e)
+    else:
+        health_data['message'] = f'Database file not found at {DB_PATH}'
+    
+    return jsonify(health_data)
+
+@app.route('/api/stats', methods=['GET'])
+def get_stats():
+    """Get database statistics"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Total transcripts
+    cursor.execute("SELECT COUNT(*) as count FROM transcripts")
+    total = cursor.fetchone()['count']
+
+    # Total words
+    cursor.execute("SELECT SUM(word_count) as total FROM transcripts")
+    total_words = cursor.fetchone()['total'] or 0
+
+    # Date range
+    cursor.execute("""
+        SELECT
+            MIN(CASE WHEN date LIKE '____-__-__' THEN date END) as min_date,
+            MAX(CASE WHEN date LIKE '____-__-__' THEN date END) as max_date
+        FROM transcripts
+    """)
+    date_range = cursor.fetchone()
+
+    # Speech types
+    cursor.execute("""
+        SELECT speech_type, COUNT(*) as count
+        FROM transcripts
+        GROUP BY speech_type
+        ORDER BY count DESC
+    """)
+    speech_types = [dict(row) for row in cursor.fetchall()]
+
+    # Year distribution
+    cursor.execute("""
+        SELECT
+            SUBSTR(date, 1, 4) as year,
+            COUNT(*) as count
+        FROM transcripts
+        WHERE date LIKE '____-__-__'
+        GROUP BY SUBSTR(date, 1, 4)
+        ORDER BY year
+    """)
+    years = [dict(row) for row in cursor.fetchall()]
+
+    conn.close()
+
+    return jsonify({
+        'totalTranscripts': total,
+        'totalWords': total_words,
+        'dateRange': {
+            'minDate': date_range['min_date'],
+            'maxDate': date_range['max_date']
+        },
+        'speechTypes': speech_types,
+        'yearDistribution': years
+    })
+
+@app.route('/api/transcripts', methods=['GET'])
+def get_transcripts():
+    """Get ALL transcripts with FULL dialogue text"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get ALL transcripts with FULL text
+    cursor.execute("""
+        SELECT
+            id,
+            title,
+            date,
+            speech_type,
+            location,
+            url,
+            word_count,
+            full_dialogue as preview,
+            speakers_json
+        FROM transcripts
+        ORDER BY date DESC
+    """)
+
+    transcripts = []
+    for row in cursor.fetchall():
+        transcripts.append({
+            'id': row['id'],
+            'title': row['title'],
+            'date': row['date'],
+            'speech_type': row['speech_type'],
+            'location': row['location'] or '',
+            'url': row['url'],
+            'word_count': row['word_count'] or 0,
+            'preview': row['preview'] or '',  # FULL TRANSCRIPT TEXT
+            'speakers': json.loads(row['speakers_json']) if row['speakers_json'] else []
+        })
+
+    conn.close()
+
+    return jsonify(transcripts)
+
+@app.route('/api/transcripts/<int:id>', methods=['GET'])
+def get_transcript(id):
+    """Get single transcript"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM transcripts WHERE id = ?", (id,))
+    transcript = cursor.fetchone()
+
+    conn.close()
+
+    if transcript:
+        return jsonify(dict(transcript))
+    return jsonify({'error': 'Not found'}), 404
+
+@app.route('/api/analysis/word-frequency', methods=['GET'])
+def word_frequency():
+    """Get word frequency analysis"""
+    start_date = request.args.get('startDate', '')
+    end_date = request.args.get('endDate', '')
+    speech_type = request.args.get('speechType', '')
+    top_n = int(request.args.get('topN', 50))
+    exclude_common = request.args.get('excludeCommon', 'true') == 'true'
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    query = "SELECT full_text FROM transcripts WHERE 1=1"
+    params = []
+
+    if start_date:
+        query += " AND date >= ?"
+        params.append(start_date)
+
+    if end_date:
+        query += " AND date <= ?"
+        params.append(end_date)
+
+    if speech_type and speech_type != 'all':
+        query += " AND speech_type = ?"
+        params.append(speech_type)
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return jsonify({'words': [], 'totalWords': 0, 'transcriptCount': 0})
+
+    # Combine all text
+    combined_text = ' '.join([row['full_text'] for row in rows])
+
+    # Analyze
+    frequencies = analyze_word_frequency(combined_text, exclude_common=exclude_common, max_words=top_n)
+    words = [{'word': word, 'frequency': freq} for word, freq in frequencies.items()]
+
+    return jsonify({
+        'words': words,
+        'totalWords': count_words(combined_text),
+        'transcriptCount': len(rows)
+    })
+
+@app.route('/api/scraper/refresh', methods=['POST'])
+def refresh_scraper():
+    """Trigger scraper to get new transcripts"""
+    global scraper_status
+
+    if scraper_status['running']:
+        return jsonify({
+            'status': 'already_running',
+            'message': 'Scraper is already running',
+            'progress': scraper_status['progress']
+        })
+
+    # Start scraper in background thread
+    thread = threading.Thread(target=run_scraper_async)
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({
+        'status': 'started',
+        'message': 'Scraper started in background'
+    })
+
+@app.route('/api/scraper/status', methods=['GET'])
+def scraper_status_endpoint():
+    """Get scraper status"""
+    return jsonify(scraper_status)
+
+@app.route('/api/speech-types', methods=['GET'])
+def get_speech_types():
+    """Get all speech types"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT DISTINCT speech_type, COUNT(*) as count
+        FROM transcripts
+        GROUP BY speech_type
+        ORDER BY count DESC
+    """)
+
+    types = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    return jsonify(types)
+
+@app.route('/api/date-range', methods=['GET'])
+def get_date_range():
+    """Get min/max dates"""
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            MIN(CASE WHEN date LIKE '____-__-__' THEN date END) as minDate,
+            MAX(CASE WHEN date LIKE '____-__-__' THEN date END) as maxDate
+        FROM transcripts
+    """)
+
+    result = dict(cursor.fetchone())
+    conn.close()
+
+    return jsonify(result)
+
+if __name__ == '__main__':
+    print("="*80)
+    print("MENTION MARKET TOOL - API SERVER")
+    print("="*80)
+    print("\nStarting server on http://localhost:5001")
+    
+    # Validate database path
+    print(f"\n📁 Database path: {DB_PATH}")
+    if os.path.exists(DB_PATH):
+        db_size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
+        print(f"✓ Database found ({db_size_mb:.1f} MB)")
+        
+        # Quick check of transcript count
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM transcripts")
+            count = cursor.fetchone()[0]
+            conn.close()
+            print(f"✓ Database contains {count} transcripts")
+        except Exception as e:
+            print(f"⚠ Warning: Could not read transcript count: {e}")
+    else:
+        print(f"✗ WARNING: Database file not found!")
+        print(f"  Expected at: {DB_PATH}")
+        print(f"  API will return empty results until database is created.")
+        print(f"  Run the scraper to populate the database.")
+    
+    print("\nEndpoints:")
+    print("  GET  /api/health - Health check with DB info")
+    print("  GET  /api/stats - Database statistics")
+    print("  GET  /api/transcripts - List transcripts")
+    print("  GET  /api/transcripts/<id> - Get specific transcript")
+    print("  GET  /api/analysis/word-frequency - Word frequency analysis")
+    print("  POST /api/scraper/refresh - Trigger scraper refresh")
+    print("  GET  /api/scraper/status - Check scraper status")
+    print("\nPress Ctrl+C to stop")
+    print("="*80 + "\n")
+
+    app.run(host='0.0.0.0', port=5001, debug=True, use_reloader=False)

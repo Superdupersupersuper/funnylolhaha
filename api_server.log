@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/Users/alexandermiron/Downloads/mention-markets/api_server.py", line 11, in <module>
+    from full_scraper import FullScraper
+ModuleNotFoundError: No module named 'full_scraper'
