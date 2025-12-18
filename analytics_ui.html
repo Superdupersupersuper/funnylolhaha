@@ -1184,7 +1184,7 @@
                             if (hitCountEl) {
                                 const expectedCount = t.mention_count || 0;
                                 const match = hitCount === expectedCount;
-                                hitCountEl.innerHTML = `${hitCount}${match ? ' ✓' : ` <span style="color: #ef4444;">⚠️ Expected ${expectedCount}</span>'}`;
+                                hitCountEl.innerHTML = `${hitCount}${match ? ' ✓' : ` <span style="color: #ef4444;">⚠️ Expected ${expectedCount}</span>`}`;
                             }
                         }
 
@@ -1196,7 +1196,7 @@
                                 const chartValue = dataPoint.y;
                                 const expectedValue = t.mention_count || 0;
                                 const match = chartValue === expectedValue;
-                                chartValueEl.innerHTML = `${chartValue}${match ? ' ✓' : ` <span style="color: #ef4444;">⚠️ Expected ${expectedValue}</span>'}`;
+                                chartValueEl.innerHTML = `${chartValue}${match ? ' ✓' : ` <span style="color: #ef4444;">⚠️ Expected ${expectedValue}</span>`}`;
                                 
                                 // Log mismatch to console for debugging
                                 if (!match) {
