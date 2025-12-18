@@ -585,6 +585,10 @@
                     <input type="checkbox" id="showContext" checked>
                     <label for="showContext">Show Context</label>
                 </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="debugMode">
+                    <label for="debugMode" style="color: #fbbf24;">🔍 Debug Mode</label>
+                </div>
             </div>
         </div>
 
@@ -995,19 +999,20 @@
                 let contentHTML = '';
 
                 // Create YouTube-style progress bar with blue (Trump) and brown (other) markers
+                // Now using Trump-only, word-based locations (0..1 normalized)
                 let progressBarHTML = '';
                 const showMarkers = document.getElementById('showMatchLocations').checked;
                 const hasMarkers = (mentionLocations.length > 0) || ((t.other_mention_locations || []).length > 0);
                 
                 if (hasMarkers && showMarkers) {
-                    // Blue markers for Trump mentions
-                    const blueMarkersHTML = mentionLocations.map(loc =>
-                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="Trump: ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(event, ${t.id}, ${loc.position}, 'trump')"></div>`
+                    // Blue markers for Trump mentions (now word-index based)
+                    const blueMarkersHTML = mentionLocations.map((loc, idx) =>
+                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="Trump: ${(loc.location * 100).toFixed(1)}% (word ${loc.position_word || 0})" onclick="seekToMention(event, ${t.id}, ${loc.position_word || loc.char_pos || 0}, 'trump', ${idx})"></div>`
                     ).join('');
 
-                    // Brown markers for other speaker mentions
-                    const brownMarkersHTML = (t.other_mention_locations || []).map(loc =>
-                        `<div class="progress-marker other" style="left: ${loc.location * 100}%;" title="Other: ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(event, ${t.id}, ${loc.position}, 'other')"></div>`
+                    // Brown markers for other speaker mentions (still char-based for backward compat)
+                    const brownMarkersHTML = (t.other_mention_locations || []).map((loc, idx) =>
+                        `<div class="progress-marker other" style="left: ${loc.location * 100}%;" title="Other: ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(event, ${t.id}, ${loc.position}, 'other', ${idx})"></div>`
                     ).join('');
 
                     progressBarHTML = `
@@ -1098,11 +1103,40 @@
                     });
                 }
 
+                // Build debug info panel if debug mode is enabled
+                let debugHTML = '';
+                const debugMode = document.getElementById('debugMode') && document.getElementById('debugMode').checked;
+                if (debugMode) {
+                    const firstMentionLoc = mentionLocations.length > 0 ? mentionLocations[0].location : null;
+                    const debugStyle = mentionCount > 0 ? 'background: rgba(34, 197, 94, 0.1); border-left: 3px solid #22c55e;' : 'background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444;';
+                    
+                    debugHTML = `
+                        <div class="debug-panel" style="
+                            ${debugStyle}
+                            padding: 8px 12px;
+                            margin: 8px 0;
+                            font-size: 11px;
+                            font-family: 'Courier New', monospace;
+                            border-radius: 4px;
+                        ">
+                            <div style="color: #fbbf24; font-weight: 600; margin-bottom: 4px;">🔍 DEBUG INFO</div>
+                            <div style="color: #e5e7eb;">
+                                <div>📊 <strong>Computed mention_count:</strong> ${mentionCount}</div>
+                                <div>🎯 <strong>Rendered .hit-trump spans:</strong> <span id="debug-hit-count-${t.id}">calculating...</span></div>
+                                <div>📈 <strong>Dot plot Y-value:</strong> <span id="debug-chart-value-${t.id}">calculating...</span></div>
+                                ${firstMentionLoc !== null ? `<div>📍 <strong>First mention location:</strong> ${(firstMentionLoc * 100).toFixed(1)}%</div>` : ''}
+                                ${mentionCount > 0 && mentionLocations.length === 0 ? '<div style="color: #ef4444;">⚠️ MISMATCH: Has count but no locations!</div>' : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+
                 return `
-                    <div class="transcript-card" id="card-${t.id}" data-date="${t.date}">
+                    <div class="transcript-card" id="card-${t.id}" data-date="${t.date}" data-mention-count="${mentionCount}">
                         <div class="transcript-title">${t.title}</div>
                         <div class="transcript-date">${t.date} | ${t.speech_type}${t.location ? ' | ' + t.location : ''}</div>
                         ${totalsHTML}
+                        ${debugHTML}
                         ${hasPreview ? `
                             <div class="preview-toggle" onclick="togglePreview(${t.id})" style="
                                 cursor: pointer;
@@ -1135,6 +1169,52 @@
                     </div>
                 `;
             }).join('');
+
+            // After rendering, populate debug information if debug mode is enabled
+            const debugMode = document.getElementById('debugMode') && document.getElementById('debugMode').checked;
+            if (debugMode) {
+                // Use setTimeout to ensure DOM is updated
+                setTimeout(() => {
+                    transcripts.forEach(t => {
+                        // Count actual rendered .hit-trump spans
+                        const previewEl = document.getElementById(`preview-${t.id}`);
+                        if (previewEl) {
+                            const hitCount = previewEl.querySelectorAll('.hit-trump').length;
+                            const hitCountEl = document.getElementById(`debug-hit-count-${t.id}`);
+                            if (hitCountEl) {
+                                const expectedCount = t.mention_count || 0;
+                                const match = hitCount === expectedCount;
+                                hitCountEl.innerHTML = `${hitCount}${match ? ' ✓' : ` <span style="color: #ef4444;">⚠️ Expected ${expectedCount}</span>'}`;
+                            }
+                        }
+
+                        // Get dot plot value from chart data
+                        const chartValueEl = document.getElementById(`debug-chart-value-${t.id}`);
+                        if (chartValueEl && mentionsChart && mentionsChart.data.datasets[0].data) {
+                            const dataPoint = mentionsChart.data.datasets[0].data.find(d => d.transcriptId === t.id);
+                            if (dataPoint) {
+                                const chartValue = dataPoint.y;
+                                const expectedValue = t.mention_count || 0;
+                                const match = chartValue === expectedValue;
+                                chartValueEl.innerHTML = `${chartValue}${match ? ' ✓' : ` <span style="color: #ef4444;">⚠️ Expected ${expectedValue}</span>'}`;
+                                
+                                // Log mismatch to console for debugging
+                                if (!match) {
+                                    console.error(`🔴 MISMATCH for transcript ${t.id}:`, {
+                                        title: t.title,
+                                        date: t.date,
+                                        mention_count: t.mention_count,
+                                        chart_y_value: chartValue,
+                                        debug: t._match_debug
+                                    });
+                                }
+                            } else {
+                                chartValueEl.innerHTML = '<span style="color: #ef4444;">Not in chart!</span>';
+                            }
+                        }
+                    });
+                }, 100);
+            }
         }
 
         // Perform search
@@ -1181,7 +1261,7 @@
                 console.log('Categories:', selectedCategories);
                 console.log('Total transcripts to search:', transcriptsData.length);
 
-                // Client-side search using turn parser - ONLY Trump matches count for filtering
+                // Client-side search using UNIFIED Trump-only match computation
                 const results = transcriptsData.filter(t => {
                     // Filter by date and category
                     const tDate = new Date(t.date);
@@ -1191,76 +1271,65 @@
                     // Filter by minimum word count
                     if ((t.word_count || 0) < minWordCount) return false;
 
-                    // Parse turns and check ONLY Trump's dialogue for matches
+                    // Use unified match computation to check for matches
                     const preview = t.preview || '';
-                    const { turns } = parseTranscriptTurns(preview);
-
-                    // Check if search term appears in any of Trump's turns
-                    const trumpTurns = turns.filter(turn => turn.speaker === 'Donald Trump');
-                    const found = trumpTurns.some(turn => {
-                        const dialogue = turn.dialogueLines.join(' ').toLowerCase();
-                        return terms.some(term => dialogue.includes(term));
-                    });
-
-                    return found;
-                }).map(t => {
-                    // Calculate mention_count and mention_locations for Trump (blue) and others (brown)
-                    const preview = t.preview || '';
-                    const { turns, totalLength } = parseTranscriptTurns(preview);
+                    const matchData = computeTrumpMatches(preview, terms);
                     
-                    const mentions = [];
-                    const mentionLocations = []; // Trump mentions (blue)
-                    const otherMentionLocations = []; // Other speaker mentions (brown)
-                    let mentionCount = 0; // Trump only
-                    let otherMentionCount = 0; // Others (for context)
+                    return matchData.mention_count > 0;
+                }).map(t => {
+                    // Calculate mention_count and mention_locations using UNIFIED helper
+                    const preview = t.preview || '';
+                    const matchData = computeTrumpMatches(preview, terms);
+                    
+                    // Also compute other speaker mentions for brown markers (backward compat)
+                    const { turns, totalLength } = parseTranscriptTurns(preview);
+                    const otherMentionLocations = [];
+                    let otherMentionCount = 0;
 
-                    // Process each turn
+                    // Process non-Trump turns for brown markers
                     turns.forEach(turn => {
                         const dialogue = turn.dialogueLines.join('\n');
                         const dialogueLower = dialogue.toLowerCase();
                         const isTrump = turn.speaker === 'Donald Trump';
 
-                        // Find all term matches in this turn's dialogue
-                        terms.forEach(term => {
-                            let pos = 0;
-                            while ((pos = dialogueLower.indexOf(term, pos)) !== -1) {
-                                // Calculate absolute position in full transcript
-                                const absolutePos = turn.dialogueStartOffset + pos;
-                                const location = absolutePos / totalLength;
-
-                                if (isTrump) {
-                                    mentionCount++;
-                                    mentionLocations.push({
-                                        location: location,
-                                        position: absolutePos
-                                    });
-
-                                    // Add context for Trump mentions
-                                    mentions.push({
-                                        context: `${turn.speaker}\n${dialogue}`,
-                                        highlight_start: 0,
-                                        highlight_end: 0
-                                    });
-                                } else {
+                        if (!isTrump) {
+                            // Find all term matches in other speakers' dialogue
+                            terms.forEach(term => {
+                                let pos = 0;
+                                while ((pos = dialogueLower.indexOf(term, pos)) !== -1) {
+                                    const absolutePos = turn.dialogueStartOffset + pos;
+                                    const location = absolutePos / totalLength;
+                                    
                                     otherMentionCount++;
                                     otherMentionLocations.push({
                                         location: location,
                                         position: absolutePos
                                     });
-                                }
 
-                                pos += term.length;
-                            }
-                        });
+                                    pos += term.length;
+                                }
+                            });
+                        }
                     });
+
+                    // Build context snippets from Trump's dialogue
+                    const mentions = [];
+                    if (matchData.mention_count > 0) {
+                        mentions.push({
+                            context: matchData.trump_only_text.substring(0, 500),
+                            highlight_start: 0,
+                            highlight_end: 0
+                        });
+                    }
 
                     return {
                         ...t,
-                        mention_count: mentionCount,
+                        mention_count: matchData.mention_count,
                         mentions: mentions,
-                        mention_locations: mentionLocations,
+                        mention_locations: matchData.mention_locations,
                         other_mention_locations: otherMentionLocations,
-                        other_mention_count: otherMentionCount
+                        other_mention_count: otherMentionCount,
+                        _match_debug: matchData.debug  // Store debug info
                     };
                 });
 
@@ -1311,7 +1380,7 @@
             }
         }
 
-        // Update mentions DOT chart
+        // Update mentions DOT chart - REFACTORED to avoid date-bucketing bugs
         function updateMentionsChart(results) {
             // Get current date range from filters
             const startDate = new Date(document.getElementById('startDate').value);
@@ -1331,70 +1400,48 @@
             });
 
             console.log('All transcripts in range:', allTranscriptsInRange.length);
-            console.log('Search results:', results.length);
+            console.log('Search results with matches:', results.length);
 
-            // Group transcripts by date - HANDLE MULTIPLE TRANSCRIPTS PER DATE
-            const transcriptsByDate = new Map();
-            allTranscriptsInRange.forEach(t => {
-                if (!transcriptsByDate.has(t.date)) {
-                    transcriptsByDate.set(t.date, []);
-                }
-                transcriptsByDate.get(t.date).push(t);
-            });
-
-            // Create a map of dates to mention data from search results
-            const mentionsByDate = new Map();
+            // Create a lookup map for results by transcript ID for O(1) access
+            const resultsById = new Map();
             results.forEach(r => {
-                if (!mentionsByDate.has(r.date)) {
-                    mentionsByDate.set(r.date, []);
-                }
-                mentionsByDate.get(r.date).push({
-                    count: r.mention_count || 0,
-                    transcriptId: r.id
-                });
+                resultsById.set(r.id, r);
             });
 
-            // Build data array with ALL dates
+            // Build data array by iterating over ALL transcripts in range
+            // This ensures no transcript is lost due to date-bucketing issues
             const data = [];
-            transcriptsByDate.forEach((transcripts, date) => {
-                const dateResults = mentionsByDate.get(date) || [];
-
-                if (dateResults.length === 0) {
-                    // No mentions on this date - show a single point at 0
-                    data.push({
-                        x: date,
-                        y: 0,
-                        transcriptId: transcripts[0].id,
-                        title: transcripts[0].title
-                    });
-                } else {
-                    // Add a point for EACH transcript with mentions on this date
-                    dateResults.forEach(result => {
-                        const transcript = results.find(r => r.id === result.transcriptId);
-                        data.push({
-                            x: date,
-                            y: result.count,
-                            transcriptId: result.transcriptId,
-                            title: transcript ? transcript.title : ''
-                        });
-                    });
-                }
+            allTranscriptsInRange.forEach(t => {
+                const resultData = resultsById.get(t.id);
+                const mentionCount = resultData ? (resultData.mention_count || 0) : 0;
+                
+                data.push({
+                    x: t.date,
+                    y: mentionCount,
+                    transcriptId: t.id,
+                    title: t.title,
+                    _debug_in_results: !!resultData,
+                    _debug_count_source: resultData ? 'from_results' : 'zero_default'
+                });
             });
 
             // Sort by date
             data.sort((a, b) => new Date(a.x) - new Date(b.x));
 
             console.log('Chart data points:', data.length);
+            console.log('Points with matches:', data.filter(d => d.y > 0).length);
+            console.log('Points at zero:', data.filter(d => d.y === 0).length);
 
             mentionsChart.data.datasets[0].data = data;
             mentionsChart.update();
         }
 
-        // Update location chart
+        // Update location chart - now using Trump-only, word-based locations from computeTrumpMatches
         function updateLocationChart(results) {
             const allLocations = [];
             const firstMentionLocations = [];
 
+            // Extract locations (now Trump-only, word-based normalized to 0..1)
             results.forEach(r => {
                 if (r.mention_locations && r.mention_locations.length > 0) {
                     r.mention_locations.forEach(loc => allLocations.push(loc.location));
@@ -1413,6 +1460,7 @@
             allLocations.sort((a, b) => a - b);
             firstMentionLocations.sort((a, b) => a - b);
 
+            // Build cumulative distribution (0% to 100% through speech)
             const labels = [];
             const cumulativeData = [];
             const firstMentionData = [];
@@ -1655,7 +1703,7 @@
         }
 
         // Seek functions for progress bar - with precise positioning and flash highlight
-        function seekToMention(event, transcriptId, absPos, type) {
+        function seekToMention(event, transcriptId, positionOrWordIndex, type, markerIndex) {
             // Stop propagation to prevent bar click handler
             if (event) {
                 event.stopPropagation();
@@ -1674,21 +1722,34 @@
             }
 
             function performSeekAndFlash() {
-                // Find the closest hit span by absolute position
-                const hits = previewEl.querySelectorAll('.hit[data-abspos]');
+                // Find all hit spans of the correct type
+                const hitClass = type === 'trump' ? 'hit-trump' : 'hit-other';
+                const hits = Array.from(previewEl.querySelectorAll(`.hit.${hitClass}`));
+                
                 let closestHit = null;
-                let minDiff = Infinity;
+                
+                // If we have a marker index, use it directly (most reliable for Trump hits)
+                if (typeof markerIndex !== 'undefined' && markerIndex >= 0 && markerIndex < hits.length) {
+                    closestHit = hits[markerIndex];
+                } else {
+                    // Fallback: find closest by position (for backward compat with other speakers)
+                    let minDiff = Infinity;
+                    hits.forEach(hit => {
+                        const hitAbsPos = parseInt(hit.getAttribute('data-abspos'), 10);
+                        if (!isNaN(hitAbsPos)) {
+                            const diff = Math.abs(hitAbsPos - positionOrWordIndex);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closestHit = hit;
+                            }
+                        }
+                    });
+                }
 
-                hits.forEach(hit => {
-                    const hitAbsPos = parseInt(hit.getAttribute('data-abspos'), 10);
-                    const diff = Math.abs(hitAbsPos - absPos);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        closestHit = hit;
-                    }
-                });
-
-                if (!closestHit) return;
+                if (!closestHit) {
+                    console.warn(`No hit found for marker ${markerIndex} of type ${type}`);
+                    return;
+                }
 
                 // Calculate scroll position to place hit in top ~1/3
                 const targetTop = closestHit.offsetTop;
@@ -1905,6 +1966,88 @@
             }
 
             return { turns, totalLength: preview.length };
+        }
+
+        /**
+         * UNIFIED TRUMP-ONLY, WORD-BASED MATCH COMPUTATION
+         * This is the single source of truth for all match counts and positions.
+         * Used by: performSearch, updateMentionsChart, displayTranscripts, updateLocationChart
+         */
+        function computeTrumpMatches(preview, terms) {
+            if (!preview || !terms || terms.length === 0) {
+                return {
+                    mention_count: 0,
+                    mention_locations: [],
+                    trump_only_words: [],
+                    trump_only_text: '',
+                    debug: { terms, preview_length: preview ? preview.length : 0 }
+                };
+            }
+
+            // Parse transcript into turns
+            const { turns } = parseTranscriptTurns(preview);
+            
+            // Extract Trump-only dialogue and build word stream
+            const trumpTurns = turns.filter(turn => turn.speaker === 'Donald Trump');
+            const trumpOnlyText = trumpTurns.map(turn => turn.dialogueLines.join(' ')).join(' ');
+            
+            // Tokenize into words (split on whitespace)
+            const words = trumpOnlyText.split(/\s+/).filter(w => w.length > 0);
+            const totalWords = words.length;
+
+            if (totalWords === 0) {
+                return {
+                    mention_count: 0,
+                    mention_locations: [],
+                    trump_only_words: [],
+                    trump_only_text: '',
+                    debug: { terms, trump_turns: trumpTurns.length, total_words: 0 }
+                };
+            }
+
+            // Find all matches in Trump's dialogue
+            const mentionLocations = [];
+            let mentionCount = 0;
+            const trumpOnlyLower = trumpOnlyText.toLowerCase();
+
+            terms.forEach(term => {
+                const termLower = term.toLowerCase();
+                let pos = 0;
+                
+                while ((pos = trumpOnlyLower.indexOf(termLower, pos)) !== -1) {
+                    // Count words up to this position to get word index
+                    const textBeforeMatch = trumpOnlyText.substring(0, pos);
+                    const wordsBeforeMatch = textBeforeMatch.split(/\s+/).filter(w => w.length > 0);
+                    const wordIndex = wordsBeforeMatch.length;
+                    
+                    // Calculate normalized location (0..1) with clamping
+                    const location = Math.max(0, Math.min(1, wordIndex / Math.max(totalWords, 1)));
+                    
+                    mentionCount++;
+                    mentionLocations.push({
+                        location: location,
+                        position_word: wordIndex,
+                        total_words: totalWords,
+                        term: term,
+                        char_pos: pos  // Keep for backward compat during transition
+                    });
+                    
+                    pos += termLower.length;
+                }
+            });
+
+            return {
+                mention_count: mentionCount,
+                mention_locations: mentionLocations,
+                trump_only_words: words,
+                trump_only_text: trumpOnlyText,
+                debug: {
+                    terms: terms,
+                    trump_turns: trumpTurns.length,
+                    total_words: totalWords,
+                    matches_found: mentionCount
+                }
+            };
         }
 
         // Parse speakers from text
