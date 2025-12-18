@@ -1603,7 +1603,10 @@
         // Removed auto-search on input - only search on button click or Enter key
 
         // Load transcript data from API (FULL transcripts from database)
-        const API_BASE = 'http://localhost:5001';
+        // Use production Render API by default, fallback to localhost for development
+        const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+            ? 'http://localhost:5001' 
+            : 'https://funnylolhaha.onrender.com';
         const API_URL = `${API_BASE}/api/transcripts`;
 
         // Load transcript data from API
