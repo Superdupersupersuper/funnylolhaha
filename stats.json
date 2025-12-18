@@ -1,0 +1,18 @@
+{
+  "totalTranscripts": 2645,
+  "dateRange": {
+    "min": "2016-01-04",
+    "max": "2025-12-11"
+  },
+  "speechTypes": [
+    "Campaign Rally",
+    "Executive Order",
+    "Interview",
+    "Press Conference",
+    "Press Release",
+    "Proclamation",
+    "Remarks",
+    "Speech",
+    "Statement"
+  ]
+}

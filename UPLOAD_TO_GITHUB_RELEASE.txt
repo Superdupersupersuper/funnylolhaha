@@ -1,0 +1,40 @@
+🚀 FINAL STEP: Upload Database to GitHub Release
+================================================
+
+Your updated database is ready at:
+/Users/alexandermiron/Desktop/Mention Market Tool/scraper_python/transcripts.db.zip
+
+FOLLOW THESE STEPS:
+
+1. Go to: https://github.com/Superdupersupersuper/funnylolhaha/releases
+
+2. Click "Create a new release"
+
+3. Fill in:
+   - Tag: v2.0 (should already exist)
+   - Title: "Updated Database v2.0 - 2024-2025 RollCall Data"
+   - Description:
+     ```
+     ## Database Updates
+     - ✅ Separated 519 tweets into separate table
+     - ✅ Added 1,257 new transcripts from RollCall (2024-2025)
+     - ✅ Standardized speech types to 9 categories
+     - ✅ Total: 2,645 speeches + 519 tweets
+
+     ## Changes
+     - Fixed date range queries
+     - Improved speech type categorization
+     - Updated to latest Trump speeches through December 2025
+     ```
+
+4. Under "Attach binaries", drag and drop:
+   transcripts.db.zip (located at /Users/alexandermiron/Desktop/Mention Market Tool/scraper_python/)
+
+5. Click "Publish release"
+
+6. DONE! Your live site at https://funnylolhaha.vercel.app/ will automatically use the new database!
+
+The site downloads from:
+https://github.com/Superdupersupersuper/funnylolhaha/releases/download/v2.0/transcripts.db.zip
+
+Once you upload, the new database will be live!
