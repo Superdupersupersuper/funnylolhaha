@@ -1,9 +1,1814 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta http-equiv="refresh" content="0; url=/analytics_ui.html">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MentionMarkets - Trump Transcript Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: #1a2332;
+            color: #e5e7eb;
+            font-size: 14px;
+        }
+
+        .container {
+            max-width: 100%;
+            padding: 20px;
+        }
+
+        /* SEARCH SECTION */
+        .search-section {
+            background: #2d3748;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .search-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #3b82f6;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 15px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            color: #e5e7eb;
+            font-size: 15px;
+            margin-bottom: 15px;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        .search-options {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .search-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+        }
+
+        .search-option input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .options-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .option-label {
+            font-size: 13px;
+            color: #d1d5db;
+        }
+
+        .context-size-input {
+            width: 80px;
+            padding: 6px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            color: #e5e7eb;
+            font-size: 13px;
+        }
+
+        .sort-select {
+            padding: 6px 10px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            color: #e5e7eb;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        /* CHARTS SECTION */
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .chart-wrapper {
+            background: #2d3748;
+            border-radius: 8px;
+            padding: 20px;
+            height: 400px;
+        }
+
+        .chart-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #f3f4f6;
+        }
+
+        .chart-canvas {
+            height: calc(100% - 30px);
+        }
+
+        /* FILTERS SECTION - HORIZONTAL */
+        .filters-section {
+            background: #2d3748;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .filters-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #f3f4f6;
+        }
+
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .filter-group-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #d1d5db;
+        }
+
+        .filter-items {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            background: #1a2332;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #374151;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .filter-item input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .filter-item label {
+            cursor: pointer;
+        }
+
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .filter-btn {
+            padding: 6px 12px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .filter-btn:hover {
+            background: #2563eb;
+        }
+
+        .filter-btn.secondary {
+            background: #4b5563;
+        }
+
+        .filter-btn.secondary:hover {
+            background: #6b7280;
+        }
+
+        .date-input {
+            padding: 8px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            color: #e5e7eb;
+            font-size: 13px;
+            width: 100%;
+        }
+
+        /* STATISTICS SECTION */
+        .stats-section {
+            background: #2d3748;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .stats-title {
+            font-size: 14px;
+            margin-bottom: 15px;
+            color: #9ca3af;
+        }
+
+        .stats-item {
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+
+        .bar-container {
+            width: 100%;
+            height: 12px;
+            background: #1a2332;
+            border-radius: 4px;
+            margin-top: 6px;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .bar-segment {
+            height: 100%;
+            transition: all 0.3s;
+        }
+
+        .bar-segment.mentioned {
+            background: #3b82f6;
+        }
+
+        .bar-segment.not-mentioned {
+            background: #4b5563;
+        }
+
+        /* TRANSCRIPTS SECTION - HORIZONTAL GRID */
+        .transcripts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 15px;
+        }
+
+        .transcript-card {
+            background: #2d3748;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 15px;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .transcript-card:hover {
+            border-color: #3b82f6;
+            transform: translateY(-2px);
+        }
+
+        .transcript-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #f3f4f6;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .transcript-date {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-bottom: 10px;
+        }
+
+        .transcript-totals {
+            font-size: 13px;
+            margin-bottom: 10px;
+            color: #d1d5db;
+        }
+
+        .transcript-totals strong {
+            color: #3b82f6;
+        }
+
+        .transcript-content {
+            background: #1a2332;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #d1d5db;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .transcript-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .transcript-content::-webkit-scrollbar-track {
+            background: #374151;
+            border-radius: 3px;
+        }
+
+        .transcript-content::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+
+        .highlight {
+            background-color: #fbbf24;
+            color: #000;
+            padding: 2px 4px;
+            border-radius: 2px;
+            font-weight: 600;
+        }
+
+        /* YOUTUBE-STYLE PROGRESS BAR - ONLY MARKERS */
+        .progress-bar-container {
+            position: relative;
+            height: 12px;
+            background: #4b5563;
+            border-radius: 6px;
+            cursor: pointer;
+            overflow: visible;
+        }
+
+        .progress-bar-container:hover {
+            height: 14px;
+        }
+
+        .progress-bar-markers {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .progress-marker {
+            position: absolute;
+            top: 0;
+            width: 3px;
+            height: 100%;
+            background: #3b82f6;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-radius: 2px;
+        }
+
+        .progress-marker:hover {
+            width: 5px;
+            height: 120%;
+            top: -10%;
+            background: #60a5fa;
+        }
+
+        /* STATS BARS - PROPORTIONAL WITH COLOR CODING */
+        .stats-bar-item {
+            height: 100%;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-right: 1px solid #1a2332;
+        }
+
+        .stats-bar-item:hover {
+            opacity: 0.8;
+            transform: scaleY(1.1);
+        }
+
+        .stats-bar-item.mentions-0 {
+            background: #4b5563;
+        }
+
+        .stats-bar-item.mentions-1-3 {
+            background: #60a5fa;
+        }
+
+        .stats-bar-item.mentions-3-7 {
+            background: #3b82f6;
+        }
+
+        .stats-bar-item.mentions-7plus {
+            background: #1e40af;
+        }
+
+        .speaker-separator {
+            height: 15px;
+            background: transparent;
+        }
+
+        /* Loading & Empty states */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #9ca3af;
+            grid-column: 1 / -1;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9ca3af;
+            grid-column: 1 / -1;
+        }
+
+        .empty-state h3 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        /* Scrollbar styling */
+        .filter-items::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .filter-items::-webkit-scrollbar-track {
+            background: #374151;
+            border-radius: 3px;
+        }
+
+        .filter-items::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+    </style>
 </head>
 <body>
-    <p>Redirecting to analytics...</p>
+    <div class="container">
+        <!-- SEARCH SECTION -->
+        <div class="search-section">
+            <div class="search-title">MentionMarkets.com</div>
+            <div style="position: relative;">
+                <input type="text" class="search-input" id="searchInput" placeholder="Search terms (e.g., trump derangement syndrome)" style="padding-right: 45px;">
+                <button id="searchBtn" onclick="performSearch()" style="
+                    position: absolute;
+                    right: 5px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                    border: none;
+                    border-radius: 4px;
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    color: white;
+                    font-size: 16px;
+                    transition: all 0.2s;
+                ">🔍</button>
+            </div>
+
+            <div class="search-options">
+                <div class="search-option">
+                    <input type="checkbox" id="matchBeginning" checked>
+                    <label for="matchBeginning">Match Beginning</label>
+                </div>
+                <div class="search-option">
+                    <input type="checkbox" id="matchEnding" checked>
+                    <label for="matchEnding">Match Ending</label>
+                </div>
+                <div class="search-option">
+                    <input type="checkbox" id="includePlural" checked>
+                    <label for="includePlural">Include Plural/Possessive</label>
+                </div>
+                <div class="search-option">
+                    <input type="checkbox" id="includeHyphenation" checked>
+                    <label for="includeHyphenation">Include Hyphenation</label>
+                </div>
+                <div class="search-option">
+                    <input type="checkbox" id="caseSensitive">
+                    <label for="caseSensitive">Case-Sensitive</label>
+                </div>
+            </div>
+
+            <div class="options-row">
+                <span class="option-label">Context Size:</span>
+                <input type="number" class="context-size-input" id="contextSize" value="200" min="50" max="500">
+
+                <span class="option-label" style="margin-left: 20px;">Sort Results:</span>
+                <select class="sort-select" id="sortSelect">
+                    <option value="newest">Newest</option>
+                    <option value="oldest">Oldest</option>
+                    <option value="most-mentions">Most Mentions</option>
+                </select>
+
+                <div class="checkbox-group" style="margin-left: auto;">
+                    <input type="checkbox" id="showResults" checked>
+                    <label for="showResults">Show Results</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="showMatchLocations" checked>
+                    <label for="showMatchLocations">Show Match Locations</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="showContext" checked>
+                    <label for="showContext">Show Context</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- CHARTS SECTION -->
+        <div class="charts-container">
+            <div class="chart-wrapper">
+                <div class="chart-title">Mentions Over Time</div>
+                <canvas id="mentionsChart" class="chart-canvas"></canvas>
+            </div>
+            <div class="chart-wrapper">
+                <div class="chart-title">Location in Event (from Start to Finish)</div>
+                <canvas id="locationChart" class="chart-canvas"></canvas>
+            </div>
+        </div>
+
+        <!-- FILTERS SECTION - HORIZONTAL -->
+        <div class="filters-section">
+            <div class="filters-title">Filters</div>
+            <div class="filters-grid">
+                <!-- Date Range -->
+                <div class="filter-group">
+                    <div class="filter-group-title">Date Range</div>
+                    <label style="font-size: 12px; margin-bottom: 5px; color: #9ca3af;">Start Date</label>
+                    <input type="date" class="date-input" id="startDate" value="2016-01-01">
+                    <label style="font-size: 12px; margin-top: 8px; margin-bottom: 5px; color: #9ca3af;">End Date</label>
+                    <input type="date" class="date-input" id="endDate" value="2025-12-31">
+                </div>
+
+                <!-- Minimum Word Count -->
+                <div class="filter-group">
+                    <div class="filter-group-title">Minimum Word Count</div>
+                    <label style="font-size: 12px; margin-bottom: 5px; color: #9ca3af;">Exclude transcripts shorter than:</label>
+                    <input type="number" class="date-input" id="minWordCount" value="500" min="0" step="100" placeholder="e.g., 500">
+                    <div style="font-size: 11px; color: #6b7280; margin-top: 5px;">
+                        Filters out brief remarks and short gaggles
+                    </div>
+                </div>
+
+                <!-- Categories -->
+                <div class="filter-group">
+                    <div class="filter-group-title">Categories</div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn" onclick="selectAllCategories()">All</button>
+                        <button class="filter-btn secondary" onclick="selectNoneCategories()">None</button>
+                    </div>
+                    <div class="filter-items" id="categoriesFilter">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Speakers -->
+                <div class="filter-group">
+                    <div class="filter-group-title">Speakers</div>
+                    <input type="text" id="speakerSearch" placeholder="Search speakers..." onkeyup="filterSpeakers()" style="
+                        width: 100%;
+                        padding: 8px;
+                        background: #1a2332;
+                        border: 1px solid #374151;
+                        border-radius: 4px;
+                        color: #e5e7eb;
+                        font-size: 13px;
+                        margin-bottom: 10px;
+                    ">
+                    <div class="filter-buttons">
+                        <button class="filter-btn" onclick="selectAllSpeakers()">All</button>
+                        <button class="filter-btn secondary" onclick="selectNoneSpeakers()">None</button>
+                    </div>
+                    <div class="filter-items" id="speakersFilter" style="max-height: 200px; overflow-y: auto;">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Events -->
+                <div class="filter-group">
+                    <div class="filter-group-title">Events</div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn" onclick="selectAllEvents()">All</button>
+                        <button class="filter-btn secondary" onclick="selectNoneEvents()">None</button>
+                    </div>
+                    <div class="filter-items" id="eventsFilter">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Apply Filters Button -->
+            <div style="margin-top: 15px; text-align: center;">
+                <button id="applyFiltersBtn" onclick="applyFilters()" style="
+                    padding: 12px 32px;
+                    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+                ">
+                    Apply Filters
+                </button>
+            </div>
+        </div>
+
+        <!-- STATISTICS SECTION -->
+        <div class="stats-section" id="statsSection" style="display: none;">
+            <div class="stats-title">Statistics</div>
+            <div class="stats-item">
+                <span id="eventPercentage">0.0%</span> of events have at least <span id="minMentions">3</span> mentions.
+            </div>
+            <div class="stats-item">
+                Monthly matches: <span id="monthlyMatches">0.0%</span>
+                <div class="bar-container" id="monthlyBar"></div>
+            </div>
+            <div class="stats-item">
+                Weekly matches: <span id="weeklyMatches">0.0%</span>
+                <div class="bar-container" id="weeklyBar"></div>
+            </div>
+        </div>
+
+        <!-- TRANSCRIPTS SECTION - HORIZONTAL GRID -->
+        <div class="transcripts-section" id="transcriptsSection">
+            <div class="loading">Loading transcripts...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let mentionsChart = null;
+        let locationChart = null;
+        let allTranscripts = [];
+        let transcriptsData = [];
+
+        // Initialize charts
+        function initCharts() {
+            const mentionsCtx = document.getElementById('mentionsChart').getContext('2d');
+            const locationCtx = document.getElementById('locationChart').getContext('2d');
+
+            // SCATTER/DOT CHART for mentions over time
+            mentionsChart = new Chart(mentionsCtx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Mentions',
+                        data: [],
+                        backgroundColor: '#3b82f6',
+                        borderColor: '#3b82f6',
+                        pointRadius: 6,
+                        pointHoverRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const dataIndex = elements[0].index;
+                            const dataset = mentionsChart.data.datasets[0];
+                            const point = dataset.data[dataIndex];
+                            if (point && point.transcriptId) {
+                                const card = document.getElementById(`card-${point.transcriptId}`);
+                                if (card) {
+                                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    card.style.border = '2px solid #3b82f6';
+                                    setTimeout(() => { card.style.border = '1px solid #374151'; }, 2000);
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#1a2332',
+                            titleColor: '#f3f4f6',
+                            bodyColor: '#d1d5db',
+                            borderColor: '#374151',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    const point = context.dataset.data[context.dataIndex];
+                                    const transcript = transcriptsData.find(t => t.id === point.transcriptId);
+                                    const title = transcript ? transcript.title.substring(0, 50) : 'Unknown';
+                                    return [
+                                        `${context.parsed.y} mentions`,
+                                        `${title}${transcript && transcript.title.length > 50 ? '...' : ''}`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'category',
+                            grid: { color: '#374151' },
+                            ticks: {
+                                color: '#9ca3af',
+                                font: { size: 10 },
+                                maxRotation: 45,
+                                minRotation: 45
+                            },
+                            title: {
+                                display: true,
+                                text: 'Event Date',
+                                color: '#9ca3af'
+                            }
+                        },
+                        y: {
+                            grid: { color: '#374151' },
+                            ticks: {
+                                color: '#9ca3af',
+                                font: { size: 11 },
+                                stepSize: 1
+                            },
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Mentions',
+                                color: '#9ca3af'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // STEPPED LINE CHART for location (cumulative %)
+            locationChart = new Chart(locationCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'All Mentions',
+                        data: [],
+                        borderColor: '#60a5fa',
+                        backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                        stepped: true,
+                        fill: true,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    }, {
+                        label: 'First Mentions',
+                        data: [],
+                        borderColor: '#fbbf24',
+                        backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                        stepped: true,
+                        fill: true,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: '#d1d5db', font: { size: 11 } }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1a2332',
+                            titleColor: '#f3f4f6',
+                            bodyColor: '#d1d5db',
+                            borderColor: '#374151',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#374151' },
+                            ticks: {
+                                color: '#9ca3af',
+                                font: { size: 10 },
+                                callback: function(value, index) {
+                                    // Show every 10th label
+                                    return index % 10 === 0 ? this.getLabelForValue(value) : '';
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Time in Speech',
+                                color: '#9ca3af',
+                                font: { size: 11 }
+                            }
+                        },
+                        y: {
+                            grid: { color: '#374151' },
+                            ticks: { color: '#9ca3af', font: { size: 11 } },
+                            min: 0,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Cumulative Percent',
+                                color: '#9ca3af'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load initial data
+        async function loadInitialData() {
+            try {
+                // Get unique speech types from data
+                const speechTypes = [...new Set(transcriptsData.map(t => t.speech_type))].sort();
+
+                // Populate categories
+                const categoriesFilter = document.getElementById('categoriesFilter');
+                categoriesFilter.innerHTML = speechTypes.map((type, idx) => `
+                    <div class="filter-item">
+                        <input type="checkbox" id="cat-${idx}" value="${type}" checked>
+                        <label for="cat-${idx}">${type}</label>
+                    </div>
+                `).join('');
+
+                // Get all unique speakers from transcripts and count frequency
+                const speakerCounts = {};
+                transcriptsData.forEach(t => {
+                    if (t.speakers && Array.isArray(t.speakers)) {
+                        t.speakers.forEach(speaker => {
+                            speakerCounts[speaker] = (speakerCounts[speaker] || 0) + 1;
+                        });
+                    }
+                });
+
+                // Sort by frequency (most frequent first)
+                const uniqueSpeakers = Object.keys(speakerCounts).sort((a, b) => {
+                    return speakerCounts[b] - speakerCounts[a];
+                });
+
+                // Populate speakers filter
+                const speakersFilter = document.getElementById('speakersFilter');
+                console.log('Found speakers:', uniqueSpeakers.length, uniqueSpeakers.slice(0, 5));
+
+                if (uniqueSpeakers.length > 0) {
+                    speakersFilter.innerHTML = uniqueSpeakers.map((speaker, idx) => `
+                        <div class="filter-item">
+                            <input type="checkbox" id="speaker-${idx}" value="${speaker}" checked>
+                            <label for="speaker-${idx}">${speaker} <span style="color: #6b7280; font-size: 11px;">(${speakerCounts[speaker]})</span></label>
+                        </div>
+                    `).join('');
+                } else {
+                    speakersFilter.innerHTML = '<div style="padding: 10px; color: #9ca3af;">No speakers found</div>';
+                }
+
+                // Get recent transcripts (last 20)
+                allTranscripts = transcriptsData
+                    .sort((a, b) => new Date(b.date) - new Date(a.date))
+                    .slice(0, 20);
+
+                // Populate events
+                const eventsFilter = document.getElementById('eventsFilter');
+                eventsFilter.innerHTML = allTranscripts.map((t, idx) => `
+                    <div class="filter-item">
+                        <input type="checkbox" id="event-${idx}" value="${t.id}" checked>
+                        <label for="event-${idx}" title="${t.title}">${t.title.substring(0, 60)}${t.title.length > 60 ? '...' : ''}</label>
+                    </div>
+                `).join('');
+
+                displayTranscripts(allTranscripts);
+
+                // Update stats display
+                const latestDate = transcriptsData
+                    .map(t => t.date)
+                    .filter(d => d)
+                    .sort((a, b) => new Date(b) - new Date(a))[0] || 'N/A';
+
+                document.querySelector('.search-section').insertAdjacentHTML('afterbegin', `
+                    <div style="margin-bottom: 15px; padding: 10px; background: rgba(59, 130, 246, 0.1); border-radius: 6px; font-size: 13px;">
+                        📊 <strong>${transcriptsData.length}</strong> transcripts loaded | Latest: ${latestDate}
+                    </div>
+                `);
+
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('transcriptsSection').innerHTML = '<div class="empty-state"><h3>Error loading data</h3><p>Try refreshing the page.</p></div>';
+            }
+        }
+
+        // Display transcripts in horizontal grid
+        function displayTranscripts(transcripts) {
+            console.log('displayTranscripts called with', transcripts.length, 'transcripts');
+            const container = document.getElementById('transcriptsSection');
+            console.log('Container element:', container);
+            const isSearching = document.getElementById('searchInput').value.trim().length > 0;
+
+            if (transcripts.length === 0) {
+                container.innerHTML = '<div class="empty-state"><h3>No transcripts found</h3><p>Try adjusting your search or filters.</p></div>';
+                return;
+            }
+
+            console.log('Generating HTML for transcripts...');
+            container.innerHTML = transcripts.map(t => {
+                const mentionCount = t.mention_count || 0;
+                const mentions = t.mentions || [];
+                const mentionLocations = t.mention_locations || [];
+
+                // Get all speakers who mentioned the term
+                let totalsHTML = '';
+                if (mentionCount > 0) {
+                    const speakerCounts = {'Donald Trump': mentionCount};
+                    const speakersStr = Object.entries(speakerCounts)
+                        .map(([speaker, count]) => `${speaker}: ${count}`)
+                        .join(', ');
+                    totalsHTML = `<div class="transcript-totals"><strong>Totals:</strong> ${speakersStr}</div>`;
+                }
+
+                // Context is now handled by "Show Full Transcript" - no separate context box needed
+                let contentHTML = '';
+
+                // Create YouTube-style progress bar - ONLY MARKERS (no blue fill)
+                let progressBarHTML = '';
+                if (mentionLocations.length > 0 && document.getElementById('showMatchLocations').checked) {
+                    const markersHTML = mentionLocations.map(loc =>
+                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
+                    ).join('');
+
+                    progressBarHTML = `
+                        <div class="progress-bar-container" onclick="seekInTranscript(event, ${t.id})">
+                            <div class="progress-bar-markers">${markersHTML}</div>
+                        </div>
+                    `;
+                }
+
+                // FULL TRANSCRIPT - Show ENTIRE thing with search terms highlighted
+                let previewText = t.preview || '';
+                const hasPreview = previewText.length > 0;
+
+                if (hasPreview) {
+                    // Step 1: Escape HTML
+                    previewText = previewText
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
+
+                    // Step 2: Make search terms BOLD and BLUE (BEFORE converting newlines)
+                    if (isSearching && mentions.length > 0) {
+                        const searchTerms = document.getElementById('searchInput').value.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
+                        searchTerms.forEach(term => {
+                            // Create case-insensitive regex for the FULL word
+                            const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const regex = new RegExp(`(${escapedTerm})`, 'gi');
+
+                            // Replace with placeholder that uses unique characters that won't be in the text
+                            previewText = previewText.replace(regex, '###BLUESTART###$1###BLUEEND###');
+                        });
+                    }
+
+                    // Step 3: Convert newlines to <br>
+                    previewText = previewText.replace(/\n/g, '<br>');
+
+                    // Step 4: Make speaker names bold with colon
+                    previewText = previewText.replace(/([A-Z][a-zA-Z\s\.]+?)<br>/g, '<strong>$1:</strong><br>');
+
+                    // Step 5: Convert blue text placeholders to actual HTML (AFTER all other replacements)
+                    previewText = previewText.replace(/###BLUESTART###/g, '<strong style="color: #3b82f6;">');
+                    previewText = previewText.replace(/###BLUEEND###/g, '</strong>');
+                }
+
+                return `
+                    <div class="transcript-card" id="card-${t.id}" data-date="${t.date}">
+                        <div class="transcript-title">${t.title}</div>
+                        <div class="transcript-date">${t.date} | ${t.speech_type}${t.location ? ' | ' + t.location : ''}</div>
+                        ${totalsHTML}
+                        ${hasPreview ? `
+                            <div class="preview-toggle" onclick="togglePreview(${t.id})" style="
+                                cursor: pointer;
+                                color: #3b82f6;
+                                font-size: 13px;
+                                margin-top: 8px;
+                                user-select: none;
+                                font-weight: 600;
+                            ">
+                                <span id="preview-icon-${t.id}">▶</span> Show Full Transcript
+                            </div>
+                            <div id="preview-${t.id}" style="
+                                display: none;
+                                margin-top: 10px;
+                                padding: 15px;
+                                background: rgba(0, 0, 0, 0.3);
+                                border-radius: 6px;
+                                font-size: 13px;
+                                line-height: 1.7;
+                                color: #e5e7eb;
+                                max-height: 600px;
+                                overflow-y: auto;
+                                border: 1px solid #374151;
+                            ">${previewText}</div>
+                        ` : ''}
+                        ${contentHTML && document.getElementById('showContext').checked ? `
+                            <div class="transcript-content" id="content-${t.id}">${contentHTML}</div>
+                        ` : ''}
+                        ${progressBarHTML}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Perform search
+        async function performSearch() {
+            const searchBtn = document.getElementById('searchBtn');
+            const searchInput = document.getElementById('searchInput').value.trim();
+
+            // Visual feedback - show loading
+            searchBtn.textContent = '⏳';
+            searchBtn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+
+            if (!searchInput) {
+                // Apply current filters
+                applyFilters();
+                document.getElementById('statsSection').style.display = 'none';
+
+                // Clear charts
+                mentionsChart.data.datasets[0].data = [];
+                mentionsChart.update();
+                locationChart.data.labels = [];
+                locationChart.data.datasets[0].data = [];
+                locationChart.data.datasets[1].data = [];
+                locationChart.update();
+
+                // Reset button
+                searchBtn.textContent = '🔍';
+                searchBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+                return;
+            }
+
+            // Simulate async for smooth UX
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            const terms = searchInput.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
+            const startDate = new Date(document.getElementById('startDate').value);
+            const endDate = new Date(document.getElementById('endDate').value);
+            const minWordCount = parseInt(document.getElementById('minWordCount').value) || 0;
+            const selectedCategories = Array.from(document.querySelectorAll('#categoriesFilter input:checked')).map(cb => cb.value);
+
+            try {
+                console.log('Searching for:', terms);
+                console.log('Date range:', startDate, 'to', endDate);
+                console.log('Min word count:', minWordCount);
+                console.log('Categories:', selectedCategories);
+                console.log('Total transcripts to search:', transcriptsData.length);
+
+                // Client-side search in preview text - ONLY in Trump's dialogue
+                const results = transcriptsData.filter(t => {
+                    // Filter by date and category
+                    const tDate = new Date(t.date);
+                    if (tDate < startDate || tDate > endDate) return false;
+                    if (!selectedCategories.includes(t.speech_type)) return false;
+
+                    // Filter by minimum word count
+                    if ((t.word_count || 0) < minWordCount) return false;
+
+                    // ONLY search in Donald Trump's dialogue (not title, not other speakers)
+                    const preview = t.preview || '';
+                    const lines = preview.split('\n');
+
+                    // Find sections where Donald Trump is speaking
+                    let trumpSections = [];
+                    for (let i = 0; i < lines.length; i++) {
+                        if (lines[i].trim().toLowerCase().includes('donald trump')) {
+                            // This is a speaker line, get the next line (what Trump said)
+                            if (i + 1 < lines.length) {
+                                trumpSections.push(lines[i + 1]);
+                            }
+                        }
+                    }
+
+                    // Check if search term appears in any of Trump's sections
+                    const trumpText = trumpSections.join(' ').toLowerCase();
+                    const found = terms.some(term => trumpText.includes(term));
+                    return found;
+                }).map(t => {
+                    // Calculate mention_count and mention_locations ONLY in Trump's dialogue
+                    const preview = t.preview || '';
+                    const lines = preview.split('\n');
+                    const mentions = [];
+                    const mentionLocations = [];
+                    let mentionCount = 0;
+
+                    // Find Trump's sections
+                    let trumpSections = [];
+                    let trumpPositions = []; // Track where in the full text these sections are
+                    let currentPos = 0;
+
+                    for (let i = 0; i < lines.length; i++) {
+                        const lineLength = lines[i].length + 1; // +1 for newline
+
+                        if (lines[i].trim().toLowerCase().includes('donald trump')) {
+                            // This is a speaker line, get the next line (what Trump said)
+                            if (i + 1 < lines.length) {
+                                const trumpLine = lines[i + 1];
+                                trumpSections.push(trumpLine);
+                                trumpPositions.push(currentPos + lineLength); // Position of Trump's dialogue
+                            }
+                        }
+                        currentPos += lineLength;
+                    }
+
+                    // Search ONLY in Trump's sections
+                    terms.forEach(term => {
+                        trumpSections.forEach((section, sectionIdx) => {
+                            let pos = 0;
+                            const sectionLower = section.toLowerCase();
+
+                            while ((pos = sectionLower.indexOf(term, pos)) !== -1) {
+                                mentionCount++;
+
+                                // Get FULL Trump section with speaker name
+                                // Include "Donald Trump" speaker line + the full dialogue section
+                                const speakerLine = "Donald Trump";
+                                const fullContext = speakerLine + "\n" + section;
+
+                                mentions.push({
+                                    context: fullContext,
+                                    highlight_start: 0,  // Will be handled by search term highlighting
+                                    highlight_end: 0
+                                });
+
+                                // Calculate location in full document
+                                const absolutePos = trumpPositions[sectionIdx] + pos;
+                                const location = absolutePos / preview.length;
+                                mentionLocations.push({
+                                    location: location,
+                                    position: absolutePos
+                                });
+
+                                pos += term.length;
+                            }
+                        });
+                    });
+
+                    return {
+                        ...t,
+                        mention_count: mentionCount,
+                        mentions: mentions,
+                        mention_locations: mentionLocations
+                    };
+                });
+
+                console.log('Found results:', results.length);
+
+                // Sort by date descending
+                results.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                // Display results
+                displayTranscripts(results);
+
+                // Update charts with search results
+                updateMentionsChart(results);
+                updateLocationChart(results);
+
+                // Show message if no results
+                if (results.length === 0) {
+                    document.getElementById('transcriptsSection').innerHTML = `
+                        <div class="empty-state">
+                            <h3>No results found for "${searchInput}"</h3>
+                            <p>Try different keywords or adjust your filters</p>
+                            <p style="font-size: 12px; color: #6b7280; margin-top: 10px;">
+                                Searched in ${transcriptsData.length} transcripts from ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}
+                            </p>
+                        </div>
+                    `;
+                }
+
+                // Show success feedback
+                searchBtn.textContent = '✓';
+                searchBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+
+                // Reset button after 1 second
+                setTimeout(() => {
+                    searchBtn.textContent = '🔍';
+                    searchBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+                }, 1000);
+
+            } catch (error) {
+                console.error('Search error:', error);
+                searchBtn.textContent = '✗';
+                searchBtn.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+
+                setTimeout(() => {
+                    searchBtn.textContent = '🔍';
+                    searchBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+                }, 2000);
+            }
+        }
+
+        // Update mentions DOT chart
+        function updateMentionsChart(results) {
+            // Get current date range from filters
+            const startDate = new Date(document.getElementById('startDate').value);
+            const endDate = new Date(document.getElementById('endDate').value);
+            const minWordCount = parseInt(document.getElementById('minWordCount').value) || 0;
+            const selectedCategories = Array.from(document.querySelectorAll('#categoriesFilter input:checked')).map(cb => cb.value);
+
+            console.log('Chart date range:', startDate, 'to', endDate);
+
+            // Get ALL transcripts within date range (from original data, not just search results)
+            const allTranscriptsInRange = transcriptsData.filter(t => {
+                const tDate = new Date(t.date);
+                const inDateRange = tDate >= startDate && tDate <= endDate;
+                const inCategory = selectedCategories.includes(t.speech_type);
+                const meetsMinWordCount = (t.word_count || 0) >= minWordCount;
+                return inDateRange && inCategory && meetsMinWordCount;
+            });
+
+            console.log('All transcripts in range:', allTranscriptsInRange.length);
+            console.log('Search results:', results.length);
+
+            // Group transcripts by date - HANDLE MULTIPLE TRANSCRIPTS PER DATE
+            const transcriptsByDate = new Map();
+            allTranscriptsInRange.forEach(t => {
+                if (!transcriptsByDate.has(t.date)) {
+                    transcriptsByDate.set(t.date, []);
+                }
+                transcriptsByDate.get(t.date).push(t);
+            });
+
+            // Create a map of dates to mention data from search results
+            const mentionsByDate = new Map();
+            results.forEach(r => {
+                if (!mentionsByDate.has(r.date)) {
+                    mentionsByDate.set(r.date, []);
+                }
+                mentionsByDate.get(r.date).push({
+                    count: r.mention_count || 0,
+                    transcriptId: r.id
+                });
+            });
+
+            // Build data array with ALL dates
+            const data = [];
+            transcriptsByDate.forEach((transcripts, date) => {
+                const dateResults = mentionsByDate.get(date) || [];
+
+                if (dateResults.length === 0) {
+                    // No mentions on this date - show a single point at 0
+                    data.push({
+                        x: date,
+                        y: 0,
+                        transcriptId: transcripts[0].id,
+                        title: transcripts[0].title
+                    });
+                } else {
+                    // Add a point for EACH transcript with mentions on this date
+                    dateResults.forEach(result => {
+                        const transcript = results.find(r => r.id === result.transcriptId);
+                        data.push({
+                            x: date,
+                            y: result.count,
+                            transcriptId: result.transcriptId,
+                            title: transcript ? transcript.title : ''
+                        });
+                    });
+                }
+            });
+
+            // Sort by date
+            data.sort((a, b) => new Date(a.x) - new Date(b.x));
+
+            console.log('Chart data points:', data.length);
+
+            mentionsChart.data.datasets[0].data = data;
+            mentionsChart.update();
+        }
+
+        // Update location chart
+        function updateLocationChart(results) {
+            const allLocations = [];
+            const firstMentionLocations = [];
+
+            results.forEach(r => {
+                if (r.mention_locations && r.mention_locations.length > 0) {
+                    r.mention_locations.forEach(loc => allLocations.push(loc.location));
+                    firstMentionLocations.push(Math.min(...r.mention_locations.map(l => l.location)));
+                }
+            });
+
+            if (allLocations.length === 0) {
+                locationChart.data.labels = [];
+                locationChart.data.datasets[0].data = [];
+                locationChart.data.datasets[1].data = [];
+                locationChart.update();
+                return;
+            }
+
+            allLocations.sort((a, b) => a - b);
+            firstMentionLocations.sort((a, b) => a - b);
+
+            const labels = [];
+            const cumulativeData = [];
+            const firstMentionData = [];
+
+            for (let i = 0; i <= 1.0; i += 0.01) {
+                labels.push(i.toFixed(2));
+                cumulativeData.push((allLocations.filter(loc => loc <= i).length / allLocations.length) * 100);
+                firstMentionData.push((firstMentionLocations.filter(loc => loc <= i).length / firstMentionLocations.length) * 100);
+            }
+
+            locationChart.data.labels = labels;
+            locationChart.data.datasets[0].data = cumulativeData;
+            locationChart.data.datasets[1].data = firstMentionData;
+            locationChart.update();
+        }
+
+        // Update statistics with proportional, color-coded bars
+        function updateStats(results, timeline) {
+            if (results.length === 0) {
+                document.getElementById('statsSection').style.display = 'none';
+                return;
+            }
+
+            document.getElementById('statsSection').style.display = 'block';
+
+            const eventsWithMentions = results.filter(r => r.mention_count >= 3).length;
+            const eventPercentage = ((eventsWithMentions / results.length) * 100).toFixed(1);
+            document.getElementById('eventPercentage').textContent = eventPercentage + '%';
+
+            // Get current month from most recent result
+            const latestDate = new Date(Math.max(...results.map(r => new Date(r.date))));
+            const currentMonth = `${latestDate.getFullYear()}-${String(latestDate.getMonth() + 1).padStart(2, '0')}`;
+
+            // Filter transcripts for current month only
+            const currentMonthTranscripts = results.filter(r => r.date.startsWith(currentMonth));
+
+            if (currentMonthTranscripts.length > 0) {
+                const totalWordCount = currentMonthTranscripts.reduce((sum, r) => sum + (r.word_count || 0), 0);
+
+                const monthlyBar = document.getElementById('monthlyBar');
+                monthlyBar.innerHTML = currentMonthTranscripts.map(t => {
+                    const widthPercent = (t.word_count / totalWordCount) * 100;
+                    const mentions = t.mention_count || 0;
+
+                    let colorClass = 'mentions-0';
+                    if (mentions > 7) colorClass = 'mentions-7plus';
+                    else if (mentions > 3) colorClass = 'mentions-3-7';
+                    else if (mentions > 0) colorClass = 'mentions-1-3';
+
+                    return `<div class="stats-bar-item ${colorClass}"
+                        style="flex: ${widthPercent};"
+                        title="${t.date}: ${mentions} mentions"
+                        onclick="scrollToTranscript(${t.id})"></div>`;
+                }).join('');
+
+                const eventsWithMentions = currentMonthTranscripts.filter(t => t.mention_count > 0).length;
+                const monthlyPercentage = ((eventsWithMentions / currentMonthTranscripts.length) * 100).toFixed(1);
+                document.getElementById('monthlyMatches').textContent = monthlyPercentage + '%';
+            }
+
+            // Get current week from most recent result
+            const currentWeekNum = getWeekNumber(latestDate);
+            const currentWeek = `${latestDate.getFullYear()}-W${String(currentWeekNum).padStart(2, '0')}`;
+
+            // Filter transcripts for current week only
+            const currentWeekTranscripts = results.filter(r => {
+                const date = new Date(r.date);
+                const week = `${date.getFullYear()}-W${String(getWeekNumber(date)).padStart(2, '0')}`;
+                return week === currentWeek;
+            });
+
+            if (currentWeekTranscripts.length > 0) {
+                const totalWeekWordCount = currentWeekTranscripts.reduce((sum, r) => sum + (r.word_count || 0), 0);
+
+                const weeklyBar = document.getElementById('weeklyBar');
+                weeklyBar.innerHTML = currentWeekTranscripts.map(t => {
+                    const widthPercent = (t.word_count / totalWeekWordCount) * 100;
+                    const mentions = t.mention_count || 0;
+
+                    let colorClass = 'mentions-0';
+                    if (mentions > 7) colorClass = 'mentions-7plus';
+                    else if (mentions > 3) colorClass = 'mentions-3-7';
+                    else if (mentions > 0) colorClass = 'mentions-1-3';
+
+                    return `<div class="stats-bar-item ${colorClass}"
+                        style="flex: ${widthPercent};"
+                        title="${t.date}: ${mentions} mentions"
+                        onclick="scrollToTranscript(${t.id})"></div>`;
+                }).join('');
+
+                const eventsWithMentions = currentWeekTranscripts.filter(t => t.mention_count > 0).length;
+                const weeklyPercentage = ((eventsWithMentions / currentWeekTranscripts.length) * 100).toFixed(1);
+                document.getElementById('weeklyMatches').textContent = weeklyPercentage + '%';
+            }
+        }
+
+        // Helper function to get week number
+        function getWeekNumber(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        }
+
+        // Scroll to transcript
+        function scrollToTranscript(transcriptId) {
+            const card = document.getElementById(`card-${transcriptId}`);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.style.border = '2px solid #3b82f6';
+                setTimeout(() => { card.style.border = '1px solid #374151'; }, 2000);
+            }
+        }
+
+        // Filter helper functions
+        function togglePreview(transcriptId) {
+            const preview = document.getElementById(`preview-${transcriptId}`);
+            const icon = document.getElementById(`preview-icon-${transcriptId}`);
+            const toggle = icon.parentElement;
+
+            if (preview.style.display === 'none') {
+                preview.style.display = 'block';
+                icon.textContent = '▼';
+                toggle.childNodes[1].textContent = ' Hide Full Transcript';
+            } else {
+                preview.style.display = 'none';
+                icon.textContent = '▶';
+                toggle.childNodes[1].textContent = ' Show Full Transcript';
+            }
+        }
+
+        function selectAllCategories() {
+            document.querySelectorAll('#categoriesFilter input').forEach(cb => cb.checked = true);
+            applyFilters();
+        }
+        function selectNoneCategories() {
+            document.querySelectorAll('#categoriesFilter input').forEach(cb => cb.checked = false);
+            applyFilters();
+        }
+        function filterSpeakers() {
+            const searchText = document.getElementById('speakerSearch').value.toLowerCase();
+            const filterItems = document.querySelectorAll('#speakersFilter .filter-item');
+
+            filterItems.forEach(item => {
+                const label = item.querySelector('label').textContent.toLowerCase();
+                if (label.includes(searchText)) {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        function selectAllSpeakers() {
+            const searchText = document.getElementById('speakerSearch').value.toLowerCase();
+            document.querySelectorAll('#speakersFilter .filter-item').forEach(item => {
+                const label = item.querySelector('label').textContent.toLowerCase();
+                // Only select visible speakers (matching search)
+                if (item.style.display !== 'none' && (!searchText || label.includes(searchText))) {
+                    item.querySelector('input').checked = true;
+                }
+            });
+        }
+        function selectNoneSpeakers() {
+            const searchText = document.getElementById('speakerSearch').value.toLowerCase();
+            document.querySelectorAll('#speakersFilter .filter-item').forEach(item => {
+                const label = item.querySelector('label').textContent.toLowerCase();
+                // Only deselect visible speakers (matching search)
+                if (item.style.display !== 'none' && (!searchText || label.includes(searchText))) {
+                    item.querySelector('input').checked = false;
+                }
+            });
+        }
+        function selectAllEvents() {
+            document.querySelectorAll('#eventsFilter input').forEach(cb => cb.checked = true);
+            applyFilters();
+        }
+        function selectNoneEvents() {
+            document.querySelectorAll('#eventsFilter input').forEach(cb => cb.checked = false);
+            applyFilters();
+        }
+        function applyFilters() {
+            const btn = document.getElementById('applyFiltersBtn');
+            const originalText = btn.textContent;
+
+            // Visual feedback
+            btn.textContent = '✓ Applied!';
+            btn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+
+            // Get filter values
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const minWordCount = parseInt(document.getElementById('minWordCount').value) || 0;
+            const selectedCategories = Array.from(document.querySelectorAll('#categoriesFilter input:checked')).map(cb => cb.value);
+            const selectedSpeakers = Array.from(document.querySelectorAll('#speakersFilter input:checked')).map(cb => cb.value);
+
+            // Filter transcripts
+            let filtered = transcriptsData.filter(t => {
+                // Convert date to comparable format
+                const tDate = new Date(t.date);
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+
+                // Check date range
+                if (tDate < start || tDate > end) return false;
+
+                // Check category
+                if (!selectedCategories.includes(t.speech_type)) return false;
+
+                // Check minimum word count
+                if ((t.word_count || 0) < minWordCount) return false;
+
+                // Check speakers (if transcript has speakers, at least one must be selected)
+                if (selectedSpeakers.length > 0 && t.speakers && t.speakers.length > 0) {
+                    if (!t.speakers.some(speaker => selectedSpeakers.includes(speaker))) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+
+            // Sort by date descending
+            filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            // Display filtered transcripts
+            displayTranscripts(filtered);
+
+            // Reset button after 1 second
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+            }, 1000);
+
+            // If there's a search query, also perform search
+            if (document.getElementById('searchInput').value.trim()) {
+                performSearch();
+            }
+        }
+
+        // Seek functions for progress bar
+        function seekToMention(transcriptId, position) {
+            const preview = document.getElementById(`preview-${transcriptId}`);
+            if (preview) {
+                // First, make sure preview is visible
+                if (preview.style.display === 'none') {
+                    togglePreview(transcriptId);
+                }
+                // Then scroll to position
+                preview.scrollTop = position / 10;
+            }
+        }
+
+        function seekInTranscript(event, transcriptId) {
+            const bar = event.currentTarget;
+            const rect = bar.getBoundingClientRect();
+            const percent = (event.clientX - rect.left) / rect.width;
+
+            const preview = document.getElementById(`preview-${transcriptId}`);
+            if (preview) {
+                // First, make sure preview is visible
+                if (preview.style.display === 'none') {
+                    togglePreview(transcriptId);
+                }
+                // Calculate scroll position based on transcript length
+                const maxScroll = preview.scrollHeight - preview.clientHeight;
+                preview.scrollTop = percent * maxScroll;
+            }
+        }
+
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+        // Removed auto-search on input - only search on button click or Enter key
+
+        // Load transcript data from API (FULL transcripts from database)
+        // Use production Render API by default, fallback to localhost for development
+        const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+            ? 'http://localhost:5001' 
+            : 'https://funnylolhaha.onrender.com';
+        const API_URL = `${API_BASE}/api/transcripts`;
+
+        // Load transcript data from API
+        async function loadStaticData() {
+            try {
+                console.log('📡 Loading transcripts from API...');
+                const response = await fetch(API_URL);
+                
+                if (!response.ok) {
+                    throw new Error(`API returned ${response.status}: ${response.statusText}`);
+                }
+                
+                transcriptsData = await response.json();
+                console.log(`✅ Loaded ${transcriptsData.length} transcripts from API`);
+                
+                if (transcriptsData.length === 0) {
+                    // Check health endpoint for more info
+                    try {
+                        const healthResponse = await fetch(`${API_BASE}/api/health`);
+                        const health = await healthResponse.json();
+                        console.error('⚠️ API returned 0 transcripts. Health check:', health);
+                        
+                        let errorMsg = '<div class="empty-state">';
+                        errorMsg += '<h3>⚠️ No Transcripts Available</h3>';
+                        errorMsg += '<p><strong>The API is running but the database is empty.</strong></p>';
+                        errorMsg += `<p>Database: <code>${health.database?.path || 'unknown'}</code></p>`;
+                        
+                        if (!health.database?.exists) {
+                            errorMsg += '<p>❌ Database file not found!</p>';
+                        } else {
+                            errorMsg += `<p>📊 Database size: ${health.database?.size_mb || 0} MB</p>`;
+                            errorMsg += `<p>📝 Transcript count: ${health.transcripts?.count || 0}</p>`;
+                        }
+                        
+                        errorMsg += '<p><strong>To fix:</strong></p>';
+                        errorMsg += '<ol style="text-align: left; margin: 10px auto; max-width: 500px;">';
+                        errorMsg += '<li>Make sure the API server is running from the correct directory:<br/><code>cd /Users/alexandermiron/Downloads/mention-markets && python3 api_server.py</code></li>';
+                        errorMsg += '<li>Check the console output for the database path</li>';
+                        errorMsg += '<li>If database is empty, run the scraper to populate it</li>';
+                        errorMsg += '</ol>';
+                        errorMsg += `<p><a href="${API_BASE}/api/health" target="_blank">View full health check →</a></p>`;
+                        errorMsg += '</div>';
+                        
+                        document.getElementById('transcriptsSection').innerHTML = errorMsg;
+                    } catch (healthError) {
+                        console.error('Could not fetch health info:', healthError);
+                    }
+                } else if (transcriptsData.length > 0) {
+                    console.log(`✅ First transcript: ${transcriptsData[0].preview.length} characters`);
+                    console.log(`✅ First 200 chars: ${transcriptsData[0].preview.substring(0, 200)}`);
+                }
+                
+                return transcriptsData;
+            } catch (error) {
+                console.error('❌ Error loading from API:', error);
+                
+                // Show connection error
+                let errorMsg = '<div class="empty-state">';
+                errorMsg += '<h3>❌ Cannot Connect to API</h3>';
+                errorMsg += '<p><strong>Could not reach the API server.</strong></p>';
+                errorMsg += `<p>Error: ${error.message}</p>`;
+                errorMsg += '<p><strong>To fix:</strong></p>';
+                errorMsg += '<ol style="text-align: left; margin: 10px auto; max-width: 500px;">';
+                errorMsg += '<li>Start the API server:<br/><code>cd /Users/alexandermiron/Downloads/mention-markets && python3 api_server.py</code></li>';
+                errorMsg += '<li>Make sure it\'s running on port 5001</li>';
+                errorMsg += '<li>Refresh this page</li>';
+                errorMsg += '</ol>';
+                errorMsg += `<p>Expected API at: <code>${API_URL}</code></p>`;
+                errorMsg += '</div>';
+                
+                document.getElementById('transcriptsSection').innerHTML = errorMsg;
+                
+                return [];
+            }
+        }
+
+        // Speaker list for parsing (186 speakers)
+        const SPEAKERS = ["Donald Trump", "Keir Starmer", "Unidentified Speaker", "Emmanuel Macron", "Narendra Modi", "Shigeru Ishiba", "Benjamin Netanyahu", "Sean Duffy", "Pete Hegseth", "J.D. Vance", "Anne Fundner", "Mike Johnson", "Janet Mills", "Jim Pillen", "Richard Attias", "Rosanna Maietta", "Borge Brende", "Stephen Schwarzman", "Patrick Pouyanné", "Brian Moynihan", "Ana Botin", "Laura Ingraham", "Kamala Harris", "Tammy Nobles", "Jonathan Martinez", "Tom Cole", "Steve Eagar", "Elon Musk", "R. Lee Ermey", "Rachel Levine", "Matthew Modine", "Kylie Minogue", "Qveen Herby", "Marines", "Kid Rock", "Will Scharf", "Aide", "Paula White-Cain", "Alina Habba", "Pam Bondi", "Randy Fine", "Howard Lutnick", "Nicole Malliotakis", "Sergio Gor", "Charles Kushner", "James Blair", "David Perdue", "Leah Campos", "Michael Waltz", "John Arrigo", "Kevin Cabrera", "Tom Barrack", "Pete Hoekstra", "Ron Johnson", "Matt Whitaker", "George Glass", "Ken Howery", "Stacey Feinberg", "Nicole McGraw", "Brandon Judd", "Brian Burch", "Somers Farkas", "Joe Popolo", "Mike Huckabee", "Tilman Fertitta", "Warren Stephens", "Jimmy Patronis", "Alek Skarlatos", "Kimberly Guilfoyle", "Doug Burgum", "Brooke Rollins", "Kelly Loeffler", "Lee Zeldin", "Doug Collins", "Chris Wright", "Linda McMahon", "Robert F. Kennedy, Jr.", "Kristi Noem", "Marco Rubio", "Scott Bessent", "Euisun Chung", "Steve Scalise", "Jeff Landry", "David W. Allvin", "Dale R. White", "Mary Martin", "Chuck Robbins", "Gianni Infantino", "Kevin Hassett", "David Sacks", "Tom Emmer", "Cameron Winklevoss", "Tyler Winklevoss", "Sergey Nazarov", "Rodolphe Saadé", "Lindsey Halligan", "Maria Bartiromo", "C.C. Wei", "Scott Turner", "Ron DeSantis", "Tiger Woods", "Tim Scott", "Leo Terrell", "Phil Heath", "Neil Gorsuch", "Cheryl Hines", "Tulsi Gabbard", "Abraham Williams", "Steve Witkoff", "Marc Fogel", "Dave McCormick", "Mark Fogel", "Stephen Miller", "Clarence Thomas", "Nancy Mace", "Tim Burchett", "Ronny Jackson", "Payton McNabb", "Paul Maurice", "Sergei Bobrovsky", "Vinnie Viola", "Sam Reinhart", "Matthew Tkachuk", "Allyson Phillips", "Franklin Graham", "Melania Trump", "Karen Bass", "Brad Sherman", "Judy Chu", "Kathryn Barger", "Vince Fong", "Kevin Kiley", "Joel Pollak", "Jay Obernolte", "Young Kim", "George Whitesides", "Traci Park", "Tom McClintock", "Ed Ring", "Ric Grenell", "Michael Whatley", "Larry Ellison", "Masayoshi Son", "Sam Altman", "Amy Klobuchar", "John Thune", "Chuck Schumer", "Hakeem Jeffries", "Deb Fischer", "John Roberts", "Chris LaNeve", "Joe Biden", "Karoline Leavitt", "Sarah Huckabee Sanders", "Peter Navarro", "Russell Vought", "Charlie Kirk", "Lara Trump", "Eric Trump", "Mike Pompeo", "Sean Hannity", "Nikki Haley", "Greg Abbott", "Brian Kemp", "Tom Homan", "Marty Makary", "Adam Boehler", "Bruce LeVell", "Bryson DeChambeau", "Chip Roy", "David Pecker", "Emil Bove", "Hope Hicks", "Jake Tapper", "Joshua Steinglass", "Juan Merchan", "Matthew Colangelo", "Mike Lindell", "Patty Morin", "Sean O'Brien", "Saudi Protocol Officer", "Tamim bin Hamad Al Thani", "Todd Blanche", "Tom Hauser", "Mark Rutte"];
+
+        // Parse speakers from text
+        function parseSpeakers(text) {
+            const found = [];
+            for (const speaker of SPEAKERS) {
+                const pattern = new RegExp(`(?:^|\\n)\\s*${speaker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:`, 'im');
+                if (pattern.test(text)) {
+                    found.push(speaker);
+                }
+            }
+            return found;
+        }
+
+        // Sync/Refresh transcripts from RollCall
+        async function syncTranscripts() {
+            const btn = document.getElementById('syncBtn');
+            btn.textContent = '⟳ Syncing...';
+            btn.disabled = true;
+
+            try {
+                // Trigger scraper via API
+                const response = await fetch(`${API_BASE}/api/scraper/refresh`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to start scraper');
+                }
+
+                const data = await response.json();
+                console.log('Scraper response:', data);
+
+                if (data.status === 'already_running') {
+                    btn.textContent = 'Already Running';
+                    setTimeout(() => {
+                        btn.textContent = '⟳ Sync Transcripts';
+                        btn.disabled = false;
+                    }, 2000);
+                    return;
+                }
+
+                // Poll for status
+                btn.textContent = 'Running...';
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const statusResponse = await fetch(`${API_BASE}/api/scraper/status`);
+                        const status = await statusResponse.json();
+
+                        console.log('Scraper status:', status);
+
+                        if (status.progress) {
+                            btn.textContent = status.progress.substring(0, 20);
+                        }
+
+                        if (!status.running) {
+                            clearInterval(pollInterval);
+                            btn.textContent = '✓ Complete!';
+
+                            // Reload data
+                            await loadStaticData();
+
+                            setTimeout(() => {
+                                btn.textContent = '⟳ Sync Transcripts';
+                                btn.disabled = false;
+                            }, 2000);
+                        }
+                    } catch (e) {
+                        console.error('Status poll error:', e);
+                    }
+                }, 2000);
+
+                // Timeout after 5 minutes
+                setTimeout(() => {
+                    clearInterval(pollInterval);
+                    btn.textContent = '⟳ Sync Transcripts';
+                    btn.disabled = false;
+                }, 300000);
+
+            } catch (error) {
+                console.error('Sync error:', error);
+                btn.textContent = '✗ Sync Failed';
+                setTimeout(() => {
+                    btn.textContent = '⟳ Sync Transcripts';
+                    btn.disabled = false;
+                }, 3000);
+            }
+        }
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', async () => {
+            initCharts();
+
+            // ALWAYS load from API - NO CACHE
+            console.log('🔄 Loading transcripts from API (cache disabled)...');
+            transcriptsData = await loadStaticData();
+
+            console.log('✅ Loaded transcripts:', transcriptsData.length);
+
+            await loadInitialData();
+
+            // Apply initial filters to show transcripts within default date range
+            applyFilters();
+        });
+    </script>
+
+    <!-- Floating Sync Button -->
+    <button id="syncBtn" onclick="syncTranscripts()" style="
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        padding: 12px 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 25px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        transition: all 0.3s ease;
+        z-index: 1000;
+    " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.6)'"
+       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.4)'">
+        ⟳ Sync Transcripts
+    </button>
 </body>
 </html>

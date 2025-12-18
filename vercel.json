@@ -1,7 +1,15 @@
 {
+  "buildCommand": "echo 'No build needed'",
+  "outputDirectory": ".",
+  "cleanUrls": true,
+  "trailingSlash": false,
   "rewrites": [
     {
       "source": "/",
+      "destination": "/analytics_ui.html"
+    },
+    {
+      "source": "/index.html",
       "destination": "/analytics_ui.html"
     }
   ],
@@ -12,6 +20,10 @@
         {
           "key": "Access-Control-Allow-Origin",
           "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
         }
       ]
     }
