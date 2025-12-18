@@ -65,6 +65,23 @@ def run_scraper_async():
     finally:
         scraper_status['running'] = False
 
+@app.route('/', methods=['GET'])
+@app.route('/analytics_ui.html', methods=['GET'])
+@app.route('/index.html', methods=['GET'])
+def serve_frontend():
+    """Serve the analytics UI"""
+    try:
+        # Serve analytics_ui.html from the same directory as this script
+        html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'analytics_ui.html')
+        with open(html_path, 'r', encoding='utf-8') as f:
+            return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
+    except FileNotFoundError:
+        return jsonify({
+            'error': 'Frontend not found',
+            'message': 'analytics_ui.html is missing. This is the API server.',
+            'api_endpoints': ['/api/health', '/api/stats', '/api/transcripts']
+        }), 404
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint with database info"""
