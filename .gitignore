@@ -1,12 +1,42 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+*.egg-info/
+.env
 venv/
-ENV/
-.venv
-*.log
-.DS_Store
-.vercel
+env/
+
+# Database files (too large for GitHub)
+*.db
+*.db-journal
+*.db.zip
 data/transcripts.db
+data/transcripts_*.db
+data/*_backup_*.db
+
+# Logs
+*.log
+scraper.log
+api_server.log
+scrape_*.log
+
+# Node modules (if any)
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+debug/

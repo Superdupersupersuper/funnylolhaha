@@ -1,0 +1,27 @@
+services:
+  # API Server
+  - type: web
+    name: mention-markets-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn api_server:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: MENTION_MARKETS_DB_PATH
+        value: /opt/render/project/src/data/transcripts.db
+    healthCheckPath: /api/health
+    
+  # Static Site (Frontend)
+  - type: web
+    name: mention-markets-frontend
+    runtime: static
+    plan: free
+    buildCommand: echo "No build needed"
+    staticPublishPath: .
+    routes:
+      - type: rewrite
+        source: /
+        destination: /analytics_ui.html
+
