@@ -9,9 +9,15 @@ import sqlite3
 import json
 import threading
 import os
-# from full_scraper import FullScraper  # Not used
-# from database import Database  # Not used
-# from text_analysis import analyze_word_frequency, analyze_word_trends, count_words  # Not used
+import logging
+
+# Import our incremental sync module
+try:
+    from rollcall_sync import run_incremental_sync, SyncSummary
+    HAS_SYNC = True
+except ImportError:
+    HAS_SYNC = False
+    logging.warning("rollcall_sync module not available")
 
 app = Flask(__name__)
 CORS(app)  # Allow frontend to connect
@@ -21,7 +27,18 @@ CORS(app)  # Allow frontend to connect
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.getenv('MENTION_MARKETS_DB_PATH', os.path.join(_script_dir, 'data', 'transcripts.db'))
 
-scraper_status = {'running': False, 'progress': '', 'last_run': None}
+# Enhanced scraper status with detailed counts
+scraper_status = {
+    'running': False, 
+    'progress': '', 
+    'last_run': None,
+    'processed': 0,
+    'total': 0,
+    'added': 0,
+    'updated': 0,
+    'failed': 0,
+    'discovered': 0
+}
 
 def get_db():
     """Get database connection"""
@@ -30,38 +47,73 @@ def get_db():
     return conn
 
 def run_scraper_async():
-    """Run scraper in background"""
-    import subprocess
-    import os
+    """Run incremental sync in background"""
     global scraper_status
+    
+    if not HAS_SYNC:
+        scraper_status['running'] = False
+        scraper_status['progress'] = 'Error: Sync module not available'
+        scraper_status['last_run'] = {'success': False, 'error': 'rollcall_sync module not found'}
+        return
+    
     scraper_status['running'] = True
-    scraper_status['progress'] = 'Starting robust scraper...'
+    scraper_status['progress'] = 'Starting incremental sync...'
+    scraper_status['processed'] = 0
+    scraper_status['total'] = 0
+    scraper_status['added'] = 0
+    scraper_status['updated'] = 0
+    scraper_status['failed'] = 0
+    scraper_status['discovered'] = 0
+    
+    def progress_callback(message, counts):
+        """Update scraper_status with progress"""
+        global scraper_status
+        scraper_status['progress'] = message
+        # Update counts from callback
+        if 'processed' in counts:
+            scraper_status['processed'] = counts['processed']
+        if 'total' in counts:
+            scraper_status['total'] = counts['total']
+        if 'added' in counts:
+            scraper_status['added'] = counts['added']
+        if 'updated' in counts:
+            scraper_status['updated'] = counts['updated']
+        if 'failed' in counts:
+            scraper_status['failed'] = counts['failed']
+        if 'discovered' in counts:
+            scraper_status['discovered'] = counts['discovered']
 
     try:
-        # Run the robust scraper script
-        script_path = os.path.join(os.path.dirname(__file__), 'rollcall_scraper_robust.py')
-        result = subprocess.run(
-            ['python3', script_path],
-            capture_output=True,
-            text=True,
-            timeout=600  # 10 minute timeout
-        )
-
-        if result.returncode == 0:
-            # Parse output to get count
-            output = result.stdout
-            if 'transcripts saved' in output.lower():
-                scraper_status['progress'] = 'Complete! Check logs for details'
-            else:
-                scraper_status['progress'] = 'Complete!'
-            scraper_status['last_run'] = {'success': True, 'output': output[:500]}
+        # Run incremental sync
+        summary = run_incremental_sync(DB_PATH, progress_callback)
+        
+        # Update final status
+        if summary.error:
+            scraper_status['progress'] = f'Error: {summary.error}'
+            scraper_status['last_run'] = {
+                'success': False, 
+                'error': summary.error,
+                'date_range': f"{summary.start_date} to {summary.end_date}"
+            }
         else:
-            scraper_status['progress'] = f'Error: {result.stderr[:200]}'
-            scraper_status['last_run'] = {'success': False, 'error': result.stderr}
-    except subprocess.TimeoutExpired:
-        scraper_status['progress'] = 'Timeout after 10 minutes'
+            scraper_status['progress'] = f'Complete! Added: {summary.added}, Updated: {summary.updated}, Failed: {summary.failed}'
+            scraper_status['added'] = summary.added
+            scraper_status['updated'] = summary.updated
+            scraper_status['failed'] = summary.failed
+            scraper_status['last_run'] = {
+                'success': True,
+                'added': summary.added,
+                'updated': summary.updated,
+                'failed': summary.failed,
+                'discovered': summary.total_discovered,
+                'date_range': f"{summary.start_date} to {summary.end_date}"
+            }
+    
     except Exception as e:
+        logging.error(f"Sync error: {e}", exc_info=True)
         scraper_status['progress'] = f'Error: {str(e)}'
+        scraper_status['last_run'] = {'success': False, 'error': str(e)}
+    
     finally:
         scraper_status['running'] = False
 
