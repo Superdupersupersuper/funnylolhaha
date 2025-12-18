@@ -664,7 +664,6 @@
     </div>
 
     <script>
-        const API_BASE = '/api';
         let mentionsChart = null;
         let locationChart = null;
         let allTranscripts = [];
@@ -1603,20 +1602,48 @@
         // Removed auto-search on input - only search on button click or Enter key
 
         // Load transcript data from API (FULL transcripts from database)
-        // Use production Render API by default, fallback to localhost for development
-        const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-            ? 'http://localhost:5001' 
-            : 'https://funnylolhaha.onrender.com';
-        const API_URL = `${API_BASE}/api/transcripts`;
+        // Use same-origin relative URLs (works in both production and local via Flask)
+        const API_TRANSCRIPTS_URL = '/api/transcripts';
+        const API_HEALTH_URL = '/api/health';
 
         // Load transcript data from API
         async function loadStaticData() {
             try {
                 console.log('📡 Loading transcripts from API...');
-                const response = await fetch(API_URL);
+                const response = await fetch(API_TRANSCRIPTS_URL);
                 
                 if (!response.ok) {
-                    throw new Error(`API returned ${response.status}: ${response.statusText}`);
+                    // Show HTTP error with details
+                    let errorMsg = '<div class="empty-state">';
+                    errorMsg += '<h3>❌ API Request Failed</h3>';
+                    errorMsg += '<p><strong>The API returned an error.</strong></p>';
+                    
+                    errorMsg += '<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 6px; padding: 15px; margin: 15px auto; max-width: 600px; text-align: left;">';
+                    errorMsg += '<p style="margin-bottom: 8px;"><strong>Endpoint:</strong> <code>' + API_TRANSCRIPTS_URL + '</code></p>';
+                    errorMsg += '<p style="margin-bottom: 8px;"><strong>Status:</strong> ' + response.status + ' ' + response.statusText + '</p>';
+                    errorMsg += '</div>';
+                    
+                    errorMsg += '<p><strong>What to try:</strong></p>';
+                    errorMsg += '<ul style="text-align: left; margin: 10px auto; max-width: 500px; line-height: 1.8;">';
+                    
+                    if (response.status === 404) {
+                        errorMsg += '<li>The API endpoint was not found. Check that the server is running the correct version.</li>';
+                    } else if (response.status >= 500) {
+                        errorMsg += '<li>The API server encountered an error. Check server logs or try again in a few moments.</li>';
+                        errorMsg += '<li>If on Render, the server may be starting up (cold start). Wait 30-60 seconds and refresh.</li>';
+                    } else if (response.status === 403 || response.status === 401) {
+                        errorMsg += '<li>Access denied. Check authentication settings.</li>';
+                    }
+                    
+                    errorMsg += '<li>Check the <a href="' + API_HEALTH_URL + '" target="_blank" style="color: #3b82f6;">/api/health</a> endpoint for more info</li>';
+                    errorMsg += '<li>Reload the page to try again</li>';
+                    errorMsg += '</ul>';
+                    
+                    errorMsg += '<button onclick="location.reload()" style="margin-top: 20px; padding: 12px 24px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">Reload Page</button>';
+                    errorMsg += '</div>';
+                    
+                    document.getElementById('transcriptsSection').innerHTML = errorMsg;
+                    return [];
                 }
                 
                 transcriptsData = await response.json();
@@ -1625,7 +1652,7 @@
                 if (transcriptsData.length === 0) {
                     // Check health endpoint for more info
                     try {
-                        const healthResponse = await fetch(`${API_BASE}/api/health`);
+                        const healthResponse = await fetch(API_HEALTH_URL);
                         const health = await healthResponse.json();
                         console.error('⚠️ API returned 0 transcripts. Health check:', health);
                         
@@ -1643,11 +1670,11 @@
                         
                         errorMsg += '<p><strong>To fix:</strong></p>';
                         errorMsg += '<ol style="text-align: left; margin: 10px auto; max-width: 500px;">';
-                        errorMsg += '<li>Make sure the API server is running from the correct directory:<br/><code>cd /Users/alexandermiron/Downloads/mention-markets && python3 api_server.py</code></li>';
-                        errorMsg += '<li>Check the console output for the database path</li>';
+                        errorMsg += '<li>Ensure the API server is running with the correct database</li>';
+                        errorMsg += '<li>Check the server console output for the database path</li>';
                         errorMsg += '<li>If database is empty, run the scraper to populate it</li>';
                         errorMsg += '</ol>';
-                        errorMsg += `<p><a href="${API_BASE}/api/health" target="_blank">View full health check →</a></p>`;
+                        errorMsg += `<p><a href="${API_HEALTH_URL}" target="_blank">View full health check →</a></p>`;
                         errorMsg += '</div>';
                         
                         document.getElementById('transcriptsSection').innerHTML = errorMsg;
@@ -1663,18 +1690,27 @@
             } catch (error) {
                 console.error('❌ Error loading from API:', error);
                 
-                // Show connection error
+                // Show detailed error message
                 let errorMsg = '<div class="empty-state">';
-                errorMsg += '<h3>❌ Cannot Connect to API</h3>';
-                errorMsg += '<p><strong>Could not reach the API server.</strong></p>';
-                errorMsg += `<p>Error: ${error.message}</p>`;
-                errorMsg += '<p><strong>To fix:</strong></p>';
-                errorMsg += '<ol style="text-align: left; margin: 10px auto; max-width: 500px;">';
-                errorMsg += '<li>Start the API server:<br/><code>cd /Users/alexandermiron/Downloads/mention-markets && python3 api_server.py</code></li>';
-                errorMsg += '<li>Make sure it\'s running on port 5001</li>';
-                errorMsg += '<li>Refresh this page</li>';
-                errorMsg += '</ol>';
-                errorMsg += `<p>Expected API at: <code>${API_URL}</code></p>`;
+                errorMsg += '<h3>❌ Failed to Load Transcripts</h3>';
+                errorMsg += '<p><strong>Could not fetch data from the API.</strong></p>';
+                
+                // Show error details
+                errorMsg += '<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 6px; padding: 15px; margin: 15px auto; max-width: 600px; text-align: left;">';
+                errorMsg += '<p style="margin-bottom: 8px;"><strong>Endpoint:</strong> <code>' + API_TRANSCRIPTS_URL + '</code></p>';
+                errorMsg += '<p style="margin-bottom: 8px;"><strong>Error:</strong> ' + error.message + '</p>';
+                errorMsg += '</div>';
+                
+                // Provide troubleshooting steps
+                errorMsg += '<p><strong>Common causes:</strong></p>';
+                errorMsg += '<ul style="text-align: left; margin: 10px auto; max-width: 500px; line-height: 1.8;">';
+                errorMsg += '<li><strong>Render cold start:</strong> If the server has been inactive, wait 30-60 seconds and refresh</li>';
+                errorMsg += '<li><strong>Network issue:</strong> Check your internet connection</li>';
+                errorMsg += '<li><strong>Browser extension:</strong> Try disabling ad blockers</li>';
+                errorMsg += '<li><strong>API down:</strong> Check <a href="' + API_HEALTH_URL + '" target="_blank" style="color: #3b82f6;">/api/health</a> for status</li>';
+                errorMsg += '</ul>';
+                
+                errorMsg += '<button onclick="location.reload()" style="margin-top: 20px; padding: 12px 24px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">Reload Page</button>';
                 errorMsg += '</div>';
                 
                 document.getElementById('transcriptsSection').innerHTML = errorMsg;
@@ -1706,7 +1742,7 @@
 
             try {
                 // Trigger scraper via API
-                const response = await fetch(`${API_BASE}/api/scraper/refresh`, {
+                const response = await fetch('/api/scraper/refresh', {
                     method: 'POST'
                 });
 
@@ -1730,7 +1766,7 @@
                 btn.textContent = 'Running...';
                 const pollInterval = setInterval(async () => {
                     try {
-                        const statusResponse = await fetch(`${API_BASE}/api/scraper/status`);
+                        const statusResponse = await fetch('/api/scraper/status');
                         const status = await statusResponse.json();
 
                         console.log('Scraper status:', status);
