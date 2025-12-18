@@ -358,6 +358,35 @@
             font-weight: 600;
         }
 
+        /* Hit spans for precise marker jumping */
+        .hit {
+            border-radius: 2px;
+            padding: 0 2px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .hit-trump {
+            color: #3b82f6;
+            background: rgba(59, 130, 246, 0.15);
+        }
+
+        .hit-other {
+            color: #b45309;
+            background: rgba(180, 83, 9, 0.15);
+        }
+
+        /* Flash highlight animation */
+        .hit-flash-trump {
+            outline: 2px solid rgba(59, 130, 246, 0.9);
+            background: rgba(59, 130, 246, 0.35);
+        }
+
+        .hit-flash-other {
+            outline: 2px solid rgba(180, 83, 9, 0.9);
+            background: rgba(180, 83, 9, 0.35);
+        }
+
         /* YOUTUBE-STYLE PROGRESS BAR - ONLY MARKERS */
         .progress-bar-container {
             position: relative;
@@ -383,7 +412,7 @@
         .progress-marker {
             position: absolute;
             top: 0;
-            width: 3px;
+            width: 6px;
             height: 100%;
             background: #3b82f6;
             cursor: pointer;
@@ -391,8 +420,19 @@
             border-radius: 2px;
         }
 
+        /* Enlarged hitbox for easier clicking */
+        .progress-marker::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            right: -8px;
+            top: -8px;
+            bottom: -8px;
+            cursor: pointer;
+        }
+
         .progress-marker:hover {
-            width: 5px;
+            width: 8px;
             height: 120%;
             top: -10%;
             background: #60a5fa;
@@ -962,12 +1002,12 @@
                 if (hasMarkers && showMarkers) {
                     // Blue markers for Trump mentions
                     const blueMarkersHTML = mentionLocations.map(loc =>
-                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="Trump: ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
+                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="Trump: ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(event, ${t.id}, ${loc.position}, 'trump')"></div>`
                     ).join('');
 
                     // Brown markers for other speaker mentions
                     const brownMarkersHTML = (t.other_mention_locations || []).map(loc =>
-                        `<div class="progress-marker other" style="left: ${loc.location * 100}%;" title="Other: ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
+                        `<div class="progress-marker other" style="left: ${loc.location * 100}%;" title="Other: ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(event, ${t.id}, ${loc.position}, 'other')"></div>`
                     ).join('');
 
                     progressBarHTML = `
@@ -977,7 +1017,7 @@
                     `;
                 }
 
-                // FULL TRANSCRIPT - Render with structured turns and proper highlighting
+                // FULL TRANSCRIPT - Render with structured turns and proper highlighting with hit spans
                 let previewText = '';
                 const hasPreview = t.preview && t.preview.length > 0;
 
@@ -987,43 +1027,75 @@
                         ? document.getElementById('searchInput').value.toLowerCase().split(',').map(s => s.trim()).filter(s => s)
                         : [];
 
-                    // Build HTML from turns
+                    // Build HTML from turns with position tracking
+                    let currentOffset = 0; // Track position in original preview string
+                    const originalLines = t.preview.split('\n');
+                    let lineIdx = 0;
+
                     turns.forEach(turn => {
                         const isTrump = turn.speaker === 'Donald Trump';
                         
                         // Add speaker label (never highlighted)
                         previewText += `<strong>${turn.speaker.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}:</strong><br>`;
+                        
+                        // Skip speaker line in original
+                        if (lineIdx < originalLines.length) {
+                            currentOffset += originalLines[lineIdx].length + 1; // +1 for \n
+                            lineIdx++;
+                        }
 
                         // Process dialogue lines
-                        turn.dialogueLines.forEach(line => {
+                        turn.dialogueLines.forEach((line, dialogueLineIdx) => {
                             // Escape HTML first
                             let escapedLine = line
                                 .replace(/&/g, '&amp;')
                                 .replace(/</g, '&lt;')
                                 .replace(/>/g, '&gt;');
 
-                            // Apply highlighting if searching
+                            // Apply highlighting with hit spans if searching
                             if (searchTerms.length > 0) {
+                                const hitClass = isTrump ? 'hit-trump' : 'hit-other';
+                                const matchType = isTrump ? 'trump' : 'other';
+                                
                                 searchTerms.forEach(term => {
                                     const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                    const regex = new RegExp(`(${escapedTerm})`, 'gi');
                                     
-                                    // Use different colors for Trump vs others
-                                    const color = isTrump ? '#3b82f6' : '#b45309';
-                                    const placeholder = isTrump ? '###BLUESTART###$1###BLUEEND###' : '###BROWNSTART###$1###BROWNEND###';
-                                    escapedLine = escapedLine.replace(regex, placeholder);
+                                    // Find all matches in this line with positions
+                                    const lineLower = line.toLowerCase();
+                                    let pos = 0;
+                                    const replacements = [];
+                                    
+                                    while ((pos = lineLower.indexOf(term, pos)) !== -1) {
+                                        const absPos = currentOffset + pos;
+                                        replacements.push({
+                                            start: pos,
+                                            end: pos + term.length,
+                                            absPos: absPos
+                                        });
+                                        pos += term.length;
+                                    }
+
+                                    // Apply replacements in reverse order to maintain positions
+                                    replacements.reverse().forEach(repl => {
+                                        const before = escapedLine.substring(0, repl.start);
+                                        const match = escapedLine.substring(repl.start, repl.end);
+                                        const after = escapedLine.substring(repl.end);
+                                        escapedLine = before + 
+                                            `<span class="hit ${hitClass}" data-abspos="${repl.absPos}" data-type="${matchType}">${match}</span>` + 
+                                            after;
+                                    });
                                 });
                             }
 
                             previewText += escapedLine + '<br>';
+                            
+                            // Update offset for next line
+                            if (lineIdx < originalLines.length) {
+                                currentOffset += originalLines[lineIdx].length + 1;
+                                lineIdx++;
+                            }
                         });
                     });
-
-                    // Replace placeholders with actual HTML
-                    previewText = previewText.replace(/###BLUESTART###/g, '<strong style="color: #3b82f6;">');
-                    previewText = previewText.replace(/###BLUEEND###/g, '</strong>');
-                    previewText = previewText.replace(/###BROWNSTART###/g, '<strong style="color: #b45309;">');
-                    previewText = previewText.replace(/###BROWNEND###/g, '</strong>');
                 }
 
                 return `
@@ -1582,16 +1654,56 @@
             }
         }
 
-        // Seek functions for progress bar
-        function seekToMention(transcriptId, position) {
-            const preview = document.getElementById(`preview-${transcriptId}`);
-            if (preview) {
-                // First, make sure preview is visible
-                if (preview.style.display === 'none') {
-                    togglePreview(transcriptId);
-                }
-                // Then scroll to position
-                preview.scrollTop = position / 10;
+        // Seek functions for progress bar - with precise positioning and flash highlight
+        function seekToMention(event, transcriptId, absPos, type) {
+            // Stop propagation to prevent bar click handler
+            if (event) {
+                event.stopPropagation();
+            }
+
+            const previewEl = document.getElementById(`preview-${transcriptId}`);
+            if (!previewEl) return;
+
+            // Auto-open preview if collapsed
+            if (previewEl.style.display === 'none') {
+                togglePreview(transcriptId);
+                // Wait a moment for the preview to expand
+                setTimeout(() => performSeekAndFlash(), 50);
+            } else {
+                performSeekAndFlash();
+            }
+
+            function performSeekAndFlash() {
+                // Find the closest hit span by absolute position
+                const hits = previewEl.querySelectorAll('.hit[data-abspos]');
+                let closestHit = null;
+                let minDiff = Infinity;
+
+                hits.forEach(hit => {
+                    const hitAbsPos = parseInt(hit.getAttribute('data-abspos'), 10);
+                    const diff = Math.abs(hitAbsPos - absPos);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closestHit = hit;
+                    }
+                });
+
+                if (!closestHit) return;
+
+                // Calculate scroll position to place hit in top ~1/3
+                const targetTop = closestHit.offsetTop;
+                const desiredTop = targetTop - previewEl.clientHeight * 0.33;
+                const maxScroll = previewEl.scrollHeight - previewEl.clientHeight;
+                previewEl.scrollTop = Math.max(0, Math.min(desiredTop, maxScroll));
+
+                // Add flash highlight
+                const flashClass = type === 'trump' ? 'hit-flash-trump' : 'hit-flash-other';
+                closestHit.classList.add(flashClass);
+
+                // Remove flash after 1500ms
+                setTimeout(() => {
+                    closestHit.classList.remove(flashClass);
+                }, 1500);
             }
         }
 

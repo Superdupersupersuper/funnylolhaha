@@ -124,3 +124,4 @@ Your API key (`rnd_XToSneCSEQP0QdaeAYQTtlZWCNzy`) is:
 
 Ready to try? Start with **Option A** (MCP setup)!
 
+
