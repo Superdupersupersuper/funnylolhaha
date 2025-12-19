@@ -451,6 +451,32 @@ def word_frequency():
         'transcriptCount': len(rows)
     })
 
+@app.route('/api/database/clean-december', methods=['POST'])
+def clean_december_transcripts_api():
+    """Clean December 2025 transcripts - remove metadata artifacts"""
+    try:
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from clean_december_transcripts import clean_december_transcripts as run_cleanup
+        
+        logging.info("🧹 Starting December 2025 transcript cleanup...")
+        
+        # Run cleanup on production database
+        run_cleanup(DB_PATH, dry_run=False)
+        
+        logging.info("✅ December cleanup complete")
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'December 2025 transcripts cleaned successfully'
+        })
+    except Exception as e:
+        logging.error(f"❌ Cleanup error: {e}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 @app.route('/api/scraper/refresh', methods=['POST'])
 def refresh_scraper():
     """Trigger scraper to get new transcripts"""
