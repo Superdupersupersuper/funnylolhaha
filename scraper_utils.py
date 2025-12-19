@@ -115,71 +115,118 @@ class DialogueExtractor:
     
     def _parse_speaker_sections(self, text: str) -> List[Dict]:
         """
-        Parse text into speaker sections
+        Parse RollCall transcript format into speaker sections
         
-        Handles formats like:
-        - SPEAKER NAME: text
-        - Speaker Name\ntext
-        - Speaker Name (timestamp)\ntext
+        RollCall Format Pattern:
+        Donald Trump 00
+        00:00-00:00:10 (10 sec)
+        
+        NO STRESSLENS: or NO SIGNAL (0.125):
+        Actual dialogue text here...
+        
+        This parser STRICTLY extracts only speaker names and dialogue,
+        stripping ALL metadata (timestamps, ratings, numeric suffixes).
         """
         dialogue = []
         lines = text.split('\n')
         
-        current_speaker = None
-        current_text = []
-        
-        for line in lines:
-            line = line.strip()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            # Skip empty lines
             if not line:
+                i += 1
                 continue
             
-            # Check if line is a speaker name
-            # Pattern 1: "NAME:" or "NAME (timestamp):"
-            if ':' in line:
-                parts = line.split(':', 1)
-                potential_speaker = parts[0].strip()
+            # Skip header/boilerplate
+            if any(keyword in line for keyword in [
+                'StressLens', 'Topics', 'Entities', 'Moderation', 'Speakers', 
+                'Full Transcript:', 'CAPITOL HILL SINCE', 'About Contact Us',
+                'CQ and Roll Call', 'FiscalNote'
+            ]):
+                i += 1
+                continue
+            
+            # Check if this line is a speaker name
+            # RollCall format: "Name Name 00" or "Name Name"
+            # Typically 2-4 words, title case, may have " 00" suffix
+            is_speaker_line = False
+            clean_speaker = None
+            
+            # Pattern 1: Name with numeric suffix (RollCall specific)
+            if re.match(r'^[A-Z][a-zA-Z\s\.]+\s+\d{1,2}$', line):
+                # e.g., "Donald Trump 00" or "Mark Levin 00"
+                clean_speaker = re.sub(r'\s+\d{1,2}$', '', line).strip()
+                is_speaker_line = True
+            
+            # Pattern 2: Title case name (2-4 words, no numbers)
+            elif re.match(r'^[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,3}$', line):
+                # e.g., "Donald Trump" or "Mark Levin"
+                clean_speaker = line.strip()
+                is_speaker_line = True
+            
+            if is_speaker_line and clean_speaker:
+                # Found a speaker line, now extract their dialogue
+                i += 1
                 
-                # Speaker names are typically short (1-4 words)
-                if len(potential_speaker.split()) <= 4:
-                    # Save previous speaker's text
-                    if current_speaker and current_text:
+                # Skip timestamp line (format: 00:00-00:00:10 (10 sec))
+                if i < len(lines) and re.match(r'^\d{1,2}:\d{2}-\d{1,2}:\d{2}:\d{2}', lines[i]):
+                    i += 1
+                
+                # Skip blank lines
+                while i < len(lines) and not lines[i].strip():
+                    i += 1
+                
+                # Skip rating line (NO STRESSLENS:, NO SIGNAL (0.123):, MEDIUM (1.5):, WEAK (1.0):)
+                if i < len(lines):
+                    rating_line = lines[i].strip()
+                    if re.match(r'^(NO STRESSLENS|NO SIGNAL|MEDIUM|WEAK|STRONG|HIGH)(\s*\([0-9\.]+\))?:', rating_line):
+                        i += 1
+                
+                # Now collect actual dialogue text until next speaker
+                dialogue_lines = []
+                while i < len(lines):
+                    potential_line = lines[i].strip()
+                    
+                    # Stop if we hit another speaker line
+                    if re.match(r'^[A-Z][a-zA-Z\s\.]+\s+\d{1,2}$', potential_line):
+                        break
+                    if re.match(r'^[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,3}$', potential_line) and \
+                       i + 1 < len(lines) and re.match(r'^\d{1,2}:\d{2}-', lines[i + 1]):
+                        break
+                    
+                    # Skip metadata lines
+                    if re.match(r'^\d{1,2}:\d{2}-\d{1,2}:\d{2}:\d{2}', potential_line):
+                        i += 1
+                        continue
+                    if re.match(r'^(NO STRESSLENS|NO SIGNAL|MEDIUM|WEAK|STRONG|HIGH)(\s*\([0-9\.]+\))?:', potential_line):
+                        i += 1
+                        continue
+                    if not potential_line:
+                        i += 1
+                        continue
+                    
+                    # This is actual dialogue
+                    dialogue_lines.append(potential_line)
+                    i += 1
+                
+                # Save this speaker's dialogue
+                if dialogue_lines:
+                    dialogue_text = ' '.join(dialogue_lines)
+                    # Remove inline annotations like [Inaudible], [Audience members call out...], [Laughter], [Crosstalk]
+                    dialogue_text = re.sub(r'\[.*?\]', '', dialogue_text)
+                    # Clean up extra spaces
+                    dialogue_text = ' '.join(dialogue_text.split())
+                    
+                    if dialogue_text.strip():
                         dialogue.append({
-                            'speaker': current_speaker,
-                            'text': ' '.join(current_text),
+                            'speaker': clean_speaker,
+                            'text': dialogue_text,
                             'timestamp': ''
                         })
-                    
-                    # Start new speaker
-                    current_speaker = potential_speaker
-                    remaining_text = parts[1].strip() if len(parts) > 1 else ''
-                    current_text = [remaining_text] if remaining_text else []
-                    continue
-            
-            # Pattern 2: ALL CAPS line (likely speaker)
-            if line.isupper() and len(line.split()) <= 4 and len(line) > 2:
-                # Save previous
-                if current_speaker and current_text:
-                    dialogue.append({
-                        'speaker': current_speaker,
-                        'text': ' '.join(current_text),
-                        'timestamp': ''
-                    })
-                
-                current_speaker = line
-                current_text = []
-                continue
-            
-            # Otherwise, it's dialogue text
-            if current_speaker:
-                current_text.append(line)
-        
-        # Don't forget last speaker
-        if current_speaker and current_text:
-            dialogue.append({
-                'speaker': current_speaker,
-                'text': ' '.join(current_text),
-                'timestamp': ''
-            })
+            else:
+                i += 1
         
         return dialogue
     

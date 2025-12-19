@@ -96,10 +96,13 @@ def strip_rollcall_artifacts(text: str) -> Tuple[str, Dict[str, int]]:
     Remove RollCall-specific artifacts and boilerplate from transcript text
     
     Removes:
+    - Header metadata (StressLens, Topics, Entities, etc.)
+    - Timestamp lines (00:00-00:00:10)
+    - Rating lines (NO STRESSLENS:, NO SIGNAL (0.125):, etc.)
     - Signal rating blocks
     - RollCall site boilerplate (header/footer)
     - Advertisement text
-    - Navigation elements
+    - Inline annotations ([Inaudible], [Laughter], etc.)
     
     Args:
         text: Raw transcript text
@@ -112,15 +115,19 @@ def strip_rollcall_artifacts(text: str) -> Tuple[str, Dict[str, int]]:
     
     stats = {
         'signal_rating_blocks': 0,
-        'boilerplate_lines': 0
+        'boilerplate_lines': 0,
+        'timestamp_lines': 0,
+        'rating_lines': 0,
+        'annotations_removed': 0
     }
     
     lines = text.split('\n')
     cleaned_lines = []
-    skip_until_newline = False
     
     # Known boilerplate patterns (case-insensitive)
     boilerplate_patterns = [
+        r'StressLens.*Topics.*Entities',
+        r'Moderation.*Speakers.*Full Transcript',
         r'CAPITOL HILL SINCE \d{4}',
         r'About Contact Us Advertise Events Privacy',
         r'RC Jobs Newsletters The Staff Subscriptions',
@@ -134,6 +141,9 @@ def strip_rollcall_artifacts(text: str) -> Tuple[str, Dict[str, int]]:
         r'Cookie Policy|Cookie Settings'
     ]
     
+    # Patterns for RollCall metadata lines
+    timestamp_pattern = re.compile(r'^\d{1,2}:\d{2}-\d{1,2}:\d{2}:\d{2}\s*\(.*\)$')
+    rating_pattern = re.compile(r'^(NO STRESSLENS|NO SIGNAL|MEDIUM|WEAK|STRONG|HIGH)(\s*\([0-9\.]+\))?:')
     signal_rating_pattern = re.compile(r'signal\s+rating', re.IGNORECASE)
     
     for line in lines:
@@ -146,13 +156,22 @@ def strip_rollcall_artifacts(text: str) -> Tuple[str, Dict[str, int]]:
                 cleaned_lines.append('')
             continue
         
-        # Check for signal rating
-        if signal_rating_pattern.search(stripped):
-            stats['signal_rating_blocks'] += 1
-            skip_until_newline = True
+        # Skip timestamp lines (00:00-00:00:10 (10 sec))
+        if timestamp_pattern.match(stripped):
+            stats['timestamp_lines'] += 1
             continue
         
-        # Check for boilerplate
+        # Skip rating lines (NO STRESSLENS:, NO SIGNAL (0.125):, etc.)
+        if rating_pattern.match(stripped):
+            stats['rating_lines'] += 1
+            continue
+        
+        # Skip signal rating blocks
+        if signal_rating_pattern.search(stripped):
+            stats['signal_rating_blocks'] += 1
+            continue
+        
+        # Skip boilerplate
         is_boilerplate = False
         for pattern in boilerplate_patterns:
             if re.search(pattern, stripped, re.IGNORECASE):
@@ -163,22 +182,22 @@ def strip_rollcall_artifacts(text: str) -> Tuple[str, Dict[str, int]]:
         if is_boilerplate:
             continue
         
-        # Skip lines that are part of signal rating block
-        if skip_until_newline:
-            # Signal rating blocks typically have rating numbers/summary on next lines
-            # Skip lines that look like ratings: numbers, stars, etc.
-            if re.match(r'^[\d\s\.\-\*]+$', stripped) or len(stripped) < 3:
-                continue
-            else:
-                skip_until_newline = False
-        
         cleaned_lines.append(line)
     
     # Join and normalize whitespace
     cleaned_text = '\n'.join(cleaned_lines)
     
+    # Remove inline annotations: [Inaudible], [Laughter], [Audience...], [Crosstalk], etc.
+    annotation_pattern = r'\[(?:Inaudible|Laughter|Laughs|Applause|Crosstalk|Audience.*?)\]'
+    annotation_count = len(re.findall(annotation_pattern, cleaned_text, re.IGNORECASE))
+    stats['annotations_removed'] = annotation_count
+    cleaned_text = re.sub(annotation_pattern, '', cleaned_text, flags=re.IGNORECASE)
+    
     # Remove excessive blank lines (more than 2 consecutive)
     cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+    
+    # Clean up spaces
+    cleaned_text = re.sub(r' +', ' ', cleaned_text)
     
     return cleaned_text.strip(), stats
 
@@ -201,7 +220,10 @@ def normalize_transcript_format(dialogue_sections: List[Dict],
     normalization_stats = {
         'speaker_labels_normalized': 0,
         'signal_rating_blocks': 0,
-        'boilerplate_lines': 0
+        'boilerplate_lines': 0,
+        'timestamp_lines': 0,
+        'rating_lines': 0,
+        'annotations_removed': 0
     }
     
     full_dialogue = []
@@ -220,10 +242,13 @@ def normalize_transcript_format(dialogue_sections: List[Dict],
         
         speakers.add(normalized_speaker)
         
-        # Strip artifacts from text (signal ratings, boilerplate)
+        # Strip artifacts from text (signal ratings, boilerplate, timestamps, etc.)
         cleaned_text, text_stats = strip_rollcall_artifacts(raw_text)
         normalization_stats['signal_rating_blocks'] += text_stats.get('signal_rating_blocks', 0)
         normalization_stats['boilerplate_lines'] += text_stats.get('boilerplate_lines', 0)
+        normalization_stats['timestamp_lines'] += text_stats.get('timestamp_lines', 0)
+        normalization_stats['rating_lines'] += text_stats.get('rating_lines', 0)
+        normalization_stats['annotations_removed'] += text_stats.get('annotations_removed', 0)
         
         # Skip empty sections
         if not cleaned_text or not cleaned_text.strip():
@@ -258,6 +283,9 @@ class SyncSummary:
     speaker_labels_normalized: int = 0
     signal_rating_blocks_removed: int = 0
     boilerplate_lines_removed: int = 0
+    timestamp_lines_removed: int = 0
+    rating_lines_removed: int = 0
+    annotations_removed: int = 0
 
 
 class RollCallIncrementalSync:
@@ -548,6 +576,9 @@ class RollCallIncrementalSync:
                 self._current_sync_stats['speaker_labels_normalized'] += norm_stats.get('speaker_labels_normalized', 0)
                 self._current_sync_stats['signal_rating_blocks'] += norm_stats.get('signal_rating_blocks', 0)
                 self._current_sync_stats['boilerplate_lines'] += norm_stats.get('boilerplate_lines', 0)
+                self._current_sync_stats['timestamp_lines'] += norm_stats.get('timestamp_lines', 0)
+                self._current_sync_stats['rating_lines'] += norm_stats.get('rating_lines', 0)
+                self._current_sync_stats['annotations_removed'] += norm_stats.get('annotations_removed', 0)
             
             # Extract duration if available
             duration = self._extract_duration(self.driver.page_source)
@@ -649,7 +680,10 @@ class RollCallIncrementalSync:
         self._current_sync_stats = {
             'speaker_labels_normalized': 0,
             'signal_rating_blocks': 0,
-            'boilerplate_lines': 0
+            'boilerplate_lines': 0,
+            'timestamp_lines': 0,
+            'rating_lines': 0,
+            'annotations_removed': 0
         }
         
         try:
@@ -727,6 +761,9 @@ class RollCallIncrementalSync:
             summary.speaker_labels_normalized = self._current_sync_stats['speaker_labels_normalized']
             summary.signal_rating_blocks_removed = self._current_sync_stats['signal_rating_blocks']
             summary.boilerplate_lines_removed = self._current_sync_stats['boilerplate_lines']
+            summary.timestamp_lines_removed = self._current_sync_stats['timestamp_lines']
+            summary.rating_lines_removed = self._current_sync_stats['rating_lines']
+            summary.annotations_removed = self._current_sync_stats['annotations_removed']
             
             # Final summary
             self._report_progress(
@@ -736,8 +773,11 @@ class RollCallIncrementalSync:
                 failed=summary.failed,
                 total=len(urls_to_scrape),
                 speaker_labels_normalized=summary.speaker_labels_normalized,
+                timestamp_lines_removed=summary.timestamp_lines_removed,
+                rating_lines_removed=summary.rating_lines_removed,
                 signal_rating_blocks_removed=summary.signal_rating_blocks_removed,
-                boilerplate_lines_removed=summary.boilerplate_lines_removed
+                boilerplate_lines_removed=summary.boilerplate_lines_removed,
+                annotations_removed=summary.annotations_removed
             )
             
         except Exception as e:
@@ -792,8 +832,11 @@ if __name__ == '__main__':
     print(f"Failed: {summary.failed}")
     print(f"\nNormalization Stats:")
     print(f"  Speaker labels normalized: {summary.speaker_labels_normalized}")
+    print(f"  Timestamp lines removed: {summary.timestamp_lines_removed}")
+    print(f"  Rating lines removed: {summary.rating_lines_removed}")
     print(f"  Signal rating blocks removed: {summary.signal_rating_blocks_removed}")
     print(f"  Boilerplate lines removed: {summary.boilerplate_lines_removed}")
+    print(f"  Annotations removed: {summary.annotations_removed}")
     if summary.error:
         print(f"\nError: {summary.error}")
     print("="*80)
