@@ -5,13 +5,24 @@ Provides endpoints for querying data and triggering scraper updates
 """
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from flask_compress import Compress
 import sqlite3
 import json
 import threading
 import os
 import logging
 import sys
+
+# Version info for deployment tracking
+API_VERSION = "2.0.1"
+DEPLOY_TIMESTAMP = "2025-12-19T01:30:00Z"
+
+# Try to import flask_compress, but don't fail if not available
+try:
+    from flask_compress import Compress
+    HAS_COMPRESS = True
+except ImportError:
+    HAS_COMPRESS = False
+    logging.warning("flask-compress not available - responses will not be compressed")
 
 # Configure logging to stdout for debugging
 logging.basicConfig(
@@ -32,12 +43,13 @@ app = Flask(__name__)
 CORS(app)  # Allow frontend to connect
 
 # Add compression to reduce response size (gzip)
-try:
-    compress = Compress()
-    compress.init_app(app)
-    logging.info("✅ Flask compression enabled")
-except ImportError:
-    logging.warning("⚠️  flask-compress not available - install with: pip install flask-compress")
+if HAS_COMPRESS:
+    try:
+        compress = Compress()
+        compress.init_app(app)
+        logging.info("✅ Flask compression enabled")
+    except Exception as e:
+        logging.warning(f"⚠️  Could not enable compression: {e}")
 
 # Use absolute path to prevent working-directory issues
 # Allow override via environment variable
@@ -66,29 +78,6 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # Return rows as dictionaries
     return conn
-
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM transcripts")
-        count = cursor.fetchone()['count']
-        conn.close()
-        
-        return jsonify({
-            'status': 'healthy',
-            'database': 'connected',
-            'transcripts_count': count,
-            'db_path': DB_PATH
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'unhealthy',
-            'error': str(e),
-            'db_path': DB_PATH
-        }), 500
 
 def run_scraper_async():
     """Run incremental sync in background"""
@@ -182,9 +171,11 @@ def serve_frontend():
 def health_check():
     """Health check endpoint with database info"""
     db_exists = os.path.exists(DB_PATH)
-    
+
     health_data = {
         'status': 'healthy' if db_exists else 'warning',
+        'version': API_VERSION,
+        'deploy_timestamp': DEPLOY_TIMESTAMP,
         'database': {
             'path': DB_PATH,
             'exists': db_exists,
