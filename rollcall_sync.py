@@ -45,6 +45,204 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# TRANSCRIPT NORMALIZATION FUNCTIONS
+# ============================================================================
+
+def normalize_speaker_label(raw_speaker: str) -> Tuple[str, bool]:
+    """
+    Normalize speaker label to canonical form
+    
+    Removes:
+    - Trailing numeric suffixes: "Donald Trump 00" -> "Donald Trump"
+    - Timestamps: "Donald Trump (00:10:12)" -> "Donald Trump"
+    - Timestamp-like patterns: "Donald Trump 00:10:12" -> "Donald Trump"
+    - Trailing colons: "Donald Trump:" -> "Donald Trump"
+    
+    Args:
+        raw_speaker: Raw speaker label from scraper
+    
+    Returns:
+        (normalized_label, was_modified) tuple
+    """
+    if not raw_speaker:
+        return raw_speaker, False
+    
+    original = raw_speaker
+    cleaned = raw_speaker.strip()
+    
+    # Remove timestamps in parentheses: (00:10:12)
+    cleaned = re.sub(r'\s*\([^)]*\)\s*$', '', cleaned)
+    
+    # Remove timestamp-like patterns: 00:10:12 or 0:10:12
+    cleaned = re.sub(r'\s+\d{1,2}:\d{2}(?::\d{2})?\s*$', '', cleaned)
+    
+    # Remove trailing numeric suffixes: " 00", " 01", etc.
+    cleaned = re.sub(r'\s+\d{1,2}\s*$', '', cleaned)
+    
+    # Remove trailing colons
+    cleaned = re.sub(r'\s*:\s*$', '', cleaned)
+    
+    # Normalize whitespace
+    cleaned = ' '.join(cleaned.split())
+    
+    was_modified = (cleaned != original)
+    
+    return cleaned, was_modified
+
+
+def strip_rollcall_artifacts(text: str) -> Tuple[str, Dict[str, int]]:
+    """
+    Remove RollCall-specific artifacts and boilerplate from transcript text
+    
+    Removes:
+    - Signal rating blocks
+    - RollCall site boilerplate (header/footer)
+    - Advertisement text
+    - Navigation elements
+    
+    Args:
+        text: Raw transcript text
+    
+    Returns:
+        (cleaned_text, stats) where stats contains removal counts
+    """
+    if not text:
+        return text, {}
+    
+    stats = {
+        'signal_rating_blocks': 0,
+        'boilerplate_lines': 0
+    }
+    
+    lines = text.split('\n')
+    cleaned_lines = []
+    skip_until_newline = False
+    
+    # Known boilerplate patterns (case-insensitive)
+    boilerplate_patterns = [
+        r'CAPITOL HILL SINCE \d{4}',
+        r'About Contact Us Advertise Events Privacy',
+        r'RC Jobs Newsletters The Staff Subscriptions',
+        r'CQ and Roll Call are part of',
+        r'FiscalNote.*provider of political',
+        r'Sign up for our newsletters',
+        r'Subscribe to.*Roll Call',
+        r'©.*Roll Call',
+        r'All Rights Reserved',
+        r'Privacy Policy|Terms of Service',
+        r'Cookie Policy|Cookie Settings'
+    ]
+    
+    signal_rating_pattern = re.compile(r'signal\s+rating', re.IGNORECASE)
+    
+    for line in lines:
+        stripped = line.strip()
+        
+        # Skip empty lines (will add back controlled spacing)
+        if not stripped:
+            # Don't add multiple consecutive blank lines
+            if cleaned_lines and cleaned_lines[-1] != '':
+                cleaned_lines.append('')
+            continue
+        
+        # Check for signal rating
+        if signal_rating_pattern.search(stripped):
+            stats['signal_rating_blocks'] += 1
+            skip_until_newline = True
+            continue
+        
+        # Check for boilerplate
+        is_boilerplate = False
+        for pattern in boilerplate_patterns:
+            if re.search(pattern, stripped, re.IGNORECASE):
+                stats['boilerplate_lines'] += 1
+                is_boilerplate = True
+                break
+        
+        if is_boilerplate:
+            continue
+        
+        # Skip lines that are part of signal rating block
+        if skip_until_newline:
+            # Signal rating blocks typically have rating numbers/summary on next lines
+            # Skip lines that look like ratings: numbers, stars, etc.
+            if re.match(r'^[\d\s\.\-\*]+$', stripped) or len(stripped) < 3:
+                continue
+            else:
+                skip_until_newline = False
+        
+        cleaned_lines.append(line)
+    
+    # Join and normalize whitespace
+    cleaned_text = '\n'.join(cleaned_lines)
+    
+    # Remove excessive blank lines (more than 2 consecutive)
+    cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+    
+    return cleaned_text.strip(), stats
+
+
+def normalize_transcript_format(dialogue_sections: List[Dict], 
+                                existing_dialogue: Optional[str] = None) -> Tuple[str, str, int, int, Dict[str, int]]:
+    """
+    Normalize transcript format before DB insertion
+    
+    Args:
+        dialogue_sections: List of {speaker, text, timestamp} dicts from scraper
+        existing_dialogue: Existing full_dialogue from DB (for comparison)
+    
+    Returns:
+        (full_dialogue, speakers_json, word_count, trump_word_count, normalization_stats)
+    """
+    if not dialogue_sections:
+        return '', '[]', 0, 0, {}
+    
+    normalization_stats = {
+        'speaker_labels_normalized': 0,
+        'signal_rating_blocks': 0,
+        'boilerplate_lines': 0
+    }
+    
+    full_dialogue = []
+    trump_word_count = 0
+    speakers = set()
+    
+    for section in dialogue_sections:
+        raw_speaker = section.get('speaker', 'Unknown')
+        raw_text = section.get('text', '')
+        timestamp = section.get('timestamp', '')
+        
+        # Normalize speaker label (remove timestamps, numeric suffixes)
+        normalized_speaker, was_modified = normalize_speaker_label(raw_speaker)
+        if was_modified:
+            normalization_stats['speaker_labels_normalized'] += 1
+        
+        speakers.add(normalized_speaker)
+        
+        # Strip artifacts from text (signal ratings, boilerplate)
+        cleaned_text, text_stats = strip_rollcall_artifacts(raw_text)
+        normalization_stats['signal_rating_blocks'] += text_stats.get('signal_rating_blocks', 0)
+        normalization_stats['boilerplate_lines'] += text_stats.get('boilerplate_lines', 0)
+        
+        # Skip empty sections
+        if not cleaned_text or not cleaned_text.strip():
+            continue
+        
+        # Build consistent format: "Speaker\nText\n" (no timestamps in output)
+        full_dialogue.append(f"{normalized_speaker}\n{cleaned_text}\n")
+        
+        # Count Trump's words
+        if 'donald trump' in normalized_speaker.lower() or normalized_speaker.lower() == 'trump':
+            trump_word_count += len(cleaned_text.split())
+    
+    full_dialogue_text = '\n'.join(full_dialogue)
+    total_word_count = len(full_dialogue_text.split())
+    speakers_json = json.dumps(sorted(list(speakers)))
+    
+    return full_dialogue_text, speakers_json, total_word_count, trump_word_count, normalization_stats
+
+
 @dataclass
 class SyncSummary:
     """Summary of sync operation"""
@@ -56,6 +254,10 @@ class SyncSummary:
     end_date: str = ''
     total_discovered: int = 0
     error: Optional[str] = None
+    # Normalization stats
+    speaker_labels_normalized: int = 0
+    signal_rating_blocks_removed: int = 0
+    boilerplate_lines_removed: int = 0
 
 
 class RollCallIncrementalSync:
@@ -245,7 +447,7 @@ class RollCallIncrementalSync:
         Filter discovered URLs to those that need scraping
         
         Returns:
-            List of (url, date) tuples that need to be scraped
+            List of (url, date) tuples that need to be scraped or re-normalized
         """
         if not discovered_urls:
             return []
@@ -264,10 +466,34 @@ class RollCallIncrementalSync:
                 # New URL, need to scrape
                 to_scrape.append((url, date))
             else:
-                # Exists - check if it's empty/broken
+                # Exists - check if it needs updating
                 transcript_id, word_count, full_dialogue = row
+                
+                needs_rescrape = False
+                
+                # Check 1: Empty or broken content
                 if not word_count or word_count == 0 or not full_dialogue or full_dialogue.strip() == '':
-                    # Empty transcript, need to re-scrape
+                    needs_rescrape = True
+                    logger.info(f"Re-scraping (empty content): {url}")
+                
+                # Check 2: Has formatting artifacts that need normalization
+                elif full_dialogue:
+                    # Check for numeric suffixes in speaker labels: "Donald Trump 00"
+                    if re.search(r'(Donald Trump|Trump)\s+\d{1,2}\s*\n', full_dialogue):
+                        needs_rescrape = True
+                        logger.info(f"Re-scraping (speaker format): {url}")
+                    
+                    # Check for signal rating blocks
+                    elif re.search(r'signal\s+rating', full_dialogue, re.IGNORECASE):
+                        needs_rescrape = True
+                        logger.info(f"Re-scraping (signal rating artifact): {url}")
+                    
+                    # Check for timestamps in speaker lines: "Donald Trump (00:10:12)"
+                    elif re.search(r'(Donald Trump|Trump)\s*\([0-9:]+\)', full_dialogue):
+                        needs_rescrape = True
+                        logger.info(f"Re-scraping (timestamp format): {url}")
+                
+                if needs_rescrape:
                     to_scrape.append((url, date))
         
         conn.close()
@@ -313,29 +539,15 @@ class RollCallIncrementalSync:
                 logger.warning(f"No dialogue found for {url}")
                 return None
             
-            # Build full dialogue text
-            full_dialogue = []
-            trump_word_count = 0
-            speakers = set()
+            # Normalize transcript format (clean speaker labels, remove artifacts)
+            full_dialogue_text, speakers_json, total_word_count, trump_word_count, norm_stats = \
+                normalize_transcript_format(dialogue_sections)
             
-            for section in dialogue_sections:
-                speaker = section.get('speaker', 'Unknown')
-                text = section.get('text', '')
-                timestamp = section.get('timestamp', '')
-                
-                speakers.add(speaker)
-                
-                if timestamp:
-                    full_dialogue.append(f"{speaker} ({timestamp})\n{text}\n")
-                else:
-                    full_dialogue.append(f"{speaker}\n{text}\n")
-                
-                # Count Trump's words
-                if 'donald trump' in speaker.lower() or 'trump' == speaker.lower():
-                    trump_word_count += len(text.split())
-            
-            full_dialogue_text = '\n'.join(full_dialogue)
-            total_word_count = len(full_dialogue_text.split())
+            # Track normalization stats
+            if hasattr(self, '_current_sync_stats'):
+                self._current_sync_stats['speaker_labels_normalized'] += norm_stats.get('speaker_labels_normalized', 0)
+                self._current_sync_stats['signal_rating_blocks'] += norm_stats.get('signal_rating_blocks', 0)
+                self._current_sync_stats['boilerplate_lines'] += norm_stats.get('boilerplate_lines', 0)
             
             # Extract duration if available
             duration = self._extract_duration(self.driver.page_source)
@@ -350,7 +562,7 @@ class RollCallIncrementalSync:
                 'trump_word_count': trump_word_count,
                 'speech_duration_seconds': duration,
                 'full_dialogue': full_dialogue_text,
-                'speakers_json': json.dumps(list(speakers))
+                'speakers_json': speakers_json
             }
             
             return result
@@ -433,6 +645,13 @@ class RollCallIncrementalSync:
         """
         summary = SyncSummary()
         
+        # Initialize normalization stats tracker
+        self._current_sync_stats = {
+            'speaker_labels_normalized': 0,
+            'signal_rating_blocks': 0,
+            'boilerplate_lines': 0
+        }
+        
         try:
             # Step 1: Determine sync window
             self._report_progress("Determining sync window...")
@@ -504,13 +723,21 @@ class RollCallIncrementalSync:
                 # Rate limiting
                 time.sleep(self.delay)
             
+            # Copy normalization stats to summary
+            summary.speaker_labels_normalized = self._current_sync_stats['speaker_labels_normalized']
+            summary.signal_rating_blocks_removed = self._current_sync_stats['signal_rating_blocks']
+            summary.boilerplate_lines_removed = self._current_sync_stats['boilerplate_lines']
+            
             # Final summary
             self._report_progress(
                 f"Sync complete! Added: {summary.added}, Updated: {summary.updated}, Failed: {summary.failed}",
                 added=summary.added,
                 updated=summary.updated,
                 failed=summary.failed,
-                total=len(urls_to_scrape)
+                total=len(urls_to_scrape),
+                speaker_labels_normalized=summary.speaker_labels_normalized,
+                signal_rating_blocks_removed=summary.signal_rating_blocks_removed,
+                boilerplate_lines_removed=summary.boilerplate_lines_removed
             )
             
         except Exception as e:
@@ -563,7 +790,11 @@ if __name__ == '__main__':
     print(f"Added: {summary.added}")
     print(f"Updated: {summary.updated}")
     print(f"Failed: {summary.failed}")
+    print(f"\nNormalization Stats:")
+    print(f"  Speaker labels normalized: {summary.speaker_labels_normalized}")
+    print(f"  Signal rating blocks removed: {summary.signal_rating_blocks_removed}")
+    print(f"  Boilerplate lines removed: {summary.boilerplate_lines_removed}")
     if summary.error:
-        print(f"Error: {summary.error}")
+        print(f"\nError: {summary.error}")
     print("="*80)
 
