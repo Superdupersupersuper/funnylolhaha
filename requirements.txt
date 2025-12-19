@@ -1,11 +1,17 @@
-# API Server dependencies (minimal for deployment)
-flask==3.0.0
-flask-cors==4.0.0
-gunicorn==21.2.0
+# Mention Markets API Server Requirements
 
-# Optional: Only needed if running scraper on server (not recommended)
-# selenium and lxml are only needed for local scraping
-# beautifulsoup4==4.12.2
-# lxml==5.1.0
-# selenium==4.16.0
-# requests==2.31.0
+# Flask and extensions
+flask>=2.3.0
+flask-cors>=4.0.0
+flask-compress>=1.14
+
+# Database
+# sqlite3 is built into Python
+
+# Web scraping (for rollcall_sync.py)
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Optional but recommended
+python-dateutil>=2.8.2

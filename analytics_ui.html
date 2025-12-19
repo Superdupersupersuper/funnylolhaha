@@ -929,7 +929,8 @@
             }
 
             console.log('Generating HTML for transcripts...');
-            container.innerHTML = transcripts.map(t => {
+            try {
+                container.innerHTML = transcripts.map(t => {
                 const mentionCount = t.mention_count || 0;
                 const mentions = t.mentions || [];
                 const mentionLocations = t.mention_locations || [];
@@ -990,7 +991,7 @@
 
                     // Step 4: Make speaker names bold with colon (handle timestamps too)
                     // Match speaker lines like "Donald Trump (00:10:12)" or "Speaker Name"
-                    previewText = previewText.replace(/^([A-Z][a-zA-Z\s\.]+?)(\s*\([^)]*\))?<br>/gm, '<strong>$1$2:</strong><br>');
+                    previewText = previewText.replace(/([A-Z][a-zA-Z\s\.]+?)(\s*\([^)]*\))?<br>/g, '<strong>$1$2:</strong><br>');
 
                     // Step 5: Convert blue text placeholders to actual HTML (AFTER all other replacements)
                     previewText = previewText.replace(/###BLUESTART###/g, '<strong style="color: #3b82f6;">');
@@ -1035,6 +1036,35 @@
                     </div>
                 `;
             }).join('');
+            } catch (error) {
+                console.error('Error displaying transcripts:', error);
+                container.innerHTML = '<div class="empty-state"><h3>Error displaying transcripts</h3><p>Please check the console for details.</p></div>';
+            }
+        }
+
+        // Helper functions for speaker detection (used in search)
+        function isSpeakerLine(line) {
+            const trimmed = line.trim();
+            if (!trimmed) return false;
+            const normalized = trimmed
+                .replace(/\s*\([^)]*\)\s*$/g, '')
+                .replace(/\s*:\s*$/g, '')
+                .trim();
+            const capitalCount = (normalized.match(/[A-Z]/g) || []).length;
+            const startsWithLower = /^[a-z]/.test(normalized);
+            return normalized.length > 2 && 
+                   normalized.length < 50 && 
+                   capitalCount >= 2 &&
+                   !startsWithLower;
+        }
+
+        function isTrumpSpeaker(line) {
+            const normalized = line.trim()
+                .replace(/\s*\([^)]*\)\s*$/g, '')
+                .replace(/\s*:\s*$/g, '')
+                .trim()
+                .toLowerCase();
+            return normalized.includes('donald trump') || normalized === 'trump';
         }
 
         // Perform search
@@ -1095,32 +1125,6 @@
                     const preview = t.preview || '';
                     const lines = preview.split('\n');
 
-                    // Helper function to check if a line is a speaker line
-                    // Handles: "Donald Trump", "Donald Trump (00:10:12)", "Donald Trump:", etc.
-                    function isSpeakerLine(line) {
-                        const trimmed = line.trim();
-                        if (!trimmed) return false;
-                        
-                        // Normalize: remove timestamps like (00:10:12) and trailing colons
-                        const normalized = trimmed
-                            .replace(/\s*\([^)]*\)\s*$/g, '')  // Remove (timestamp)
-                            .replace(/\s*:\s*$/g, '')          // Remove trailing :
-                            .trim()
-                            .toLowerCase();
-                        
-                        // Check if it's a known speaker (starts with capital letter and has reasonable length)
-                        return normalized.length > 2 && normalized.length < 50 && /^[a-z]/.test(normalized);
-                    }
-
-                    function isTrumpSpeaker(line) {
-                        const normalized = line.trim()
-                            .replace(/\s*\([^)]*\)\s*$/g, '')
-                            .replace(/\s*:\s*$/g, '')
-                            .trim()
-                            .toLowerCase();
-                        return normalized.includes('donald trump') || normalized === 'trump';
-                    }
-
                     // Find sections where Donald Trump is speaking - capture ALL dialogue lines
                     let trumpSections = [];
                     let i = 0;
@@ -1156,27 +1160,6 @@
                     const mentions = [];
                     const mentionLocations = [];
                     let mentionCount = 0;
-
-                    // Helper functions (same as above)
-                    function isSpeakerLine(line) {
-                        const trimmed = line.trim();
-                        if (!trimmed) return false;
-                        const normalized = trimmed
-                            .replace(/\s*\([^)]*\)\s*$/g, '')
-                            .replace(/\s*:\s*$/g, '')
-                            .trim()
-                            .toLowerCase();
-                        return normalized.length > 2 && normalized.length < 50 && /^[a-z]/.test(normalized);
-                    }
-
-                    function isTrumpSpeaker(line) {
-                        const normalized = line.trim()
-                            .replace(/\s*\([^)]*\)\s*$/g, '')
-                            .replace(/\s*:\s*$/g, '')
-                            .trim()
-                            .toLowerCase();
-                        return normalized.includes('donald trump') || normalized === 'trump';
-                    }
 
                     // Find Trump's sections - capture ALL dialogue lines
                     let trumpSections = [];
@@ -1691,14 +1674,41 @@
         async function loadStaticData() {
             try {
                 console.log('📡 Loading transcripts from API...');
-                const response = await fetch(API_URL);
+                console.log('   URL:', API_URL);
+                console.log('   Time:', new Date().toISOString());
                 
-                if (!response.ok) {
-                    throw new Error(`API returned ${response.status}: ${response.statusText}`);
+                // Add timeout to prevent infinite hanging
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+                
+                try {
+                    const response = await fetch(API_URL, {
+                        signal: controller.signal,
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    clearTimeout(timeoutId);
+
+                    console.log('   Response status:', response.status);
+                    console.log('   Response headers:', Object.fromEntries(response.headers.entries()));
+
+                    if (!response.ok) {
+                        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+                    }
+
+                    const text = await response.text();
+                    console.log('   Response size:', text.length, 'bytes');
+                    
+                    transcriptsData = JSON.parse(text);
+                    console.log(`✅ Loaded ${transcriptsData.length} transcripts from API`);
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        throw new Error('API request timed out after 30 seconds. The server may be slow or unresponsive.');
+                    }
+                    throw fetchError;
                 }
-                
-                transcriptsData = await response.json();
-                console.log(`✅ Loaded ${transcriptsData.length} transcripts from API`);
                 
                 if (transcriptsData.length === 0) {
                     // Check health endpoint for more info
@@ -1719,14 +1729,14 @@
                             errorMsg += `<p>📝 Transcript count: ${health.transcripts?.count || 0}</p>`;
                         }
                         
-                        errorMsg += '<p><strong>To fix:</strong></p>';
-                        errorMsg += '<ol style="text-align: left; margin: 10px auto; max-width: 500px;">';
-                        errorMsg += '<li>Make sure the API server is running from the correct directory:<br/><code>cd /Users/alexandermiron/Downloads/mention-markets && python3 api_server.py</code></li>';
-                        errorMsg += '<li>Check the console output for the database path</li>';
-                        errorMsg += '<li>If database is empty, run the scraper to populate it</li>';
-                        errorMsg += '</ol>';
-                        errorMsg += `<p><a href="${API_BASE}/api/health" target="_blank">View full health check →</a></p>`;
-                        errorMsg += '</div>';
+                errorMsg += '<p><strong>To fix:</strong></p>';
+                errorMsg += '<ol style="text-align: left; margin: 10px auto; max-width: 600px;">';
+                errorMsg += '<li>Start the API server:<br/><code>./start_api.sh</code><br/>or<br/><code>python3 api_server.py</code></li>';
+                errorMsg += '<li>Check the console output shows: "✅ Database found"</li>';
+                errorMsg += '<li>If database is empty, click the "Sync Transcripts" button</li>';
+                errorMsg += '</ol>';
+                errorMsg += `<p><a href="${API_BASE}/api/health" target="_blank" style="color: #3b82f6; text-decoration: underline;">View API health check →</a></p>`;
+                errorMsg += '</div>';
                         
                         document.getElementById('transcriptsSection').innerHTML = errorMsg;
                     } catch (healthError) {
@@ -1745,8 +1755,8 @@
                 let errorMsg = '<div class="empty-state">';
                 errorMsg += '<h3>❌ Cannot Connect to API</h3>';
                 errorMsg += '<p><strong>Could not reach the API server.</strong></p>';
-                errorMsg += `<p>Error: ${error.message}</p>`;
-                errorMsg += '<p><strong>To fix:</strong></p>';
+                errorMsg += `<p style="color: #ef4444; font-family: monospace; font-size: 12px;">Error: ${error.message}</p>`;
+                errorMsg += '<p><strong>Troubleshooting:</strong></p>';
                 errorMsg += '<ol style="text-align: left; margin: 10px auto; max-width: 500px;">';
                 errorMsg += '<li>Start the API server:<br/><code>cd /Users/alexandermiron/Downloads/mention-markets && python3 api_server.py</code></li>';
                 errorMsg += '<li>Make sure it\'s running on port 5001</li>';

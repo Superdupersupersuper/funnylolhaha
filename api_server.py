@@ -5,11 +5,20 @@ Provides endpoints for querying data and triggering scraper updates
 """
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_compress import Compress
 import sqlite3
 import json
 import threading
 import os
 import logging
+import sys
+
+# Configure logging to stdout for debugging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
 
 # Import our incremental sync module
 try:
@@ -21,6 +30,14 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)  # Allow frontend to connect
+
+# Add compression to reduce response size (gzip)
+try:
+    compress = Compress()
+    compress.init_app(app)
+    logging.info("✅ Flask compression enabled")
+except ImportError:
+    logging.warning("⚠️  flask-compress not available - install with: pip install flask-compress")
 
 # Use absolute path to prevent working-directory issues
 # Allow override via environment variable
@@ -42,9 +59,36 @@ scraper_status = {
 
 def get_db():
     """Get database connection"""
+    if not os.path.exists(DB_PATH):
+        logging.error(f"❌ Database not found at: {DB_PATH}")
+        raise FileNotFoundError(f"Database not found: {DB_PATH}")
+    
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # Return rows as dictionaries
     return conn
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM transcripts")
+        count = cursor.fetchone()['count']
+        conn.close()
+        
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'transcripts_count': count,
+            'db_path': DB_PATH
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'db_path': DB_PATH
+        }), 500
 
 def run_scraper_async():
     """Run incremental sync in background"""
@@ -235,45 +279,124 @@ def get_stats():
         'yearDistribution': years
     })
 
+@app.route('/api/transcripts/metadata', methods=['GET'])
+def get_transcripts_metadata():
+    """Get transcript metadata WITHOUT full text - lightweight endpoint"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        logging.info("📋 Fetching transcript metadata (no full text)")
+
+        cursor.execute("""
+            SELECT
+                id,
+                title,
+                date,
+                speech_type,
+                location,
+                url,
+                word_count,
+                speakers_json
+            FROM transcripts
+            ORDER BY date DESC
+        """)
+
+        rows = cursor.fetchall()
+        logging.info(f"✅ Fetched {len(rows)} transcript metadata entries")
+        
+        transcripts = []
+        for row in rows:
+            transcripts.append({
+                'id': row['id'],
+                'title': row['title'],
+                'date': row['date'],
+                'speech_type': row['speech_type'],
+                'location': row['location'] or '',
+                'url': row['url'],
+                'word_count': row['word_count'] or 0,
+                'preview': '',  # Empty - use separate endpoint for full text
+                'speakers': json.loads(row['speakers_json']) if row['speakers_json'] else []
+            })
+
+        conn.close()
+        logging.info(f"📤 Returning {len(transcripts)} metadata entries")
+
+        response = jsonify(transcripts)
+        response.headers['Cache-Control'] = 'public, max-age=300'
+        return response
+        
+    except Exception as e:
+        logging.error(f"❌ Error in get_transcripts_metadata: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'transcripts': []}), 500
+
 @app.route('/api/transcripts', methods=['GET'])
 def get_transcripts():
-    """Get ALL transcripts with FULL dialogue text"""
-    conn = get_db()
-    cursor = conn.cursor()
+    """Get ALL transcripts with FULL dialogue text - OPTIMIZED"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if full_dialogue column exists, fallback to full_text
+        cursor.execute("PRAGMA table_info(transcripts)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        text_column = 'full_dialogue' if 'full_dialogue' in columns else 'full_text'
+        
+        logging.info(f"🔍 Fetching transcripts with {text_column} column...")
 
-    # Get ALL transcripts with FULL text
-    cursor.execute("""
-        SELECT
-            id,
-            title,
-            date,
-            speech_type,
-            location,
-            url,
-            word_count,
-            full_dialogue as preview,
-            speakers_json
-        FROM transcripts
-        ORDER BY date DESC
-    """)
+        # Get ALL transcripts with FULL text - single optimized query
+        cursor.execute(f"""
+            SELECT
+                id,
+                title,
+                date,
+                speech_type,
+                location,
+                url,
+                word_count,
+                {text_column} as preview,
+                speakers_json
+            FROM transcripts
+            ORDER BY date DESC
+        """)
 
-    transcripts = []
-    for row in cursor.fetchall():
-        transcripts.append({
-            'id': row['id'],
-            'title': row['title'],
-            'date': row['date'],
-            'speech_type': row['speech_type'],
-            'location': row['location'] or '',
-            'url': row['url'],
-            'word_count': row['word_count'] or 0,
-            'preview': row['preview'] or '',  # FULL TRANSCRIPT TEXT
-            'speakers': json.loads(row['speakers_json']) if row['speakers_json'] else []
-        })
+        rows = cursor.fetchall()
+        logging.info(f"✅ Fetched {len(rows)} transcripts from database")
+        
+        transcripts = []
+        for row in rows:
+            # Handle preview text - ensure it's a string
+            preview_text = row['preview'] or ''
+            if isinstance(preview_text, bytes):
+                preview_text = preview_text.decode('utf-8', errors='ignore')
+            
+            transcripts.append({
+                'id': row['id'],
+                'title': row['title'],
+                'date': row['date'],
+                'speech_type': row['speech_type'],
+                'location': row['location'] or '',
+                'url': row['url'],
+                'word_count': row['word_count'] or 0,
+                'preview': preview_text,  # FULL TRANSCRIPT TEXT
+                'speakers': json.loads(row['speakers_json']) if row['speakers_json'] else []
+            })
 
-    conn.close()
+        conn.close()
+        logging.info(f"📤 Returning {len(transcripts)} transcripts to frontend")
 
-    return jsonify(transcripts)
+        response = jsonify(transcripts)
+        response.headers['Cache-Control'] = 'public, max-age=300'  # Cache for 5 minutes
+        return response
+        
+    except Exception as e:
+        logging.error(f"❌ Error in get_transcripts: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'transcripts': []}), 500
 
 @app.route('/api/transcripts/<int:id>', methods=['GET'])
 def get_transcript(id):
@@ -401,16 +524,15 @@ def get_date_range():
     return jsonify(result)
 
 if __name__ == '__main__':
+    print("\n" + "="*80)
+    print("🚀 MENTION MARKET TOOL - API SERVER")
     print("="*80)
-    print("MENTION MARKET TOOL - API SERVER")
-    print("="*80)
-    print("\nStarting server on http://localhost:5001")
     
     # Validate database path
     print(f"\n📁 Database path: {DB_PATH}")
     if os.path.exists(DB_PATH):
         db_size_mb = os.path.getsize(DB_PATH) / (1024 * 1024)
-        print(f"✓ Database found ({db_size_mb:.1f} MB)")
+        print(f"✅ Database found ({db_size_mb:.1f} MB)")
         
         # Quick check of transcript count
         try:
@@ -428,13 +550,19 @@ if __name__ == '__main__':
         print(f"  API will return empty results until database is created.")
         print(f"  Run the scraper to populate the database.")
     
-    print("\nEndpoints:")
-    print("  GET  /api/health - Health check with DB info")
-    print("  GET  /api/stats - Database statistics")
-    print("  GET  /api/transcripts - List transcripts")
-    print("  GET  /api/transcripts/<id> - Get specific transcript")
-    print("  GET  /api/analysis/word-frequency - Word frequency analysis")
-    print("  POST /api/scraper/refresh - Trigger scraper refresh")
+    print("\n📍 Available Endpoints:")
+    print("  GET  /api/health                      - Health check with DB info")
+    print("  GET  /api/stats                       - Database statistics")
+    print("  GET  /api/transcripts                 - All transcripts WITH full text (large)")
+    print("  GET  /api/transcripts/metadata        - All transcripts WITHOUT full text (lightweight)")
+    print("  GET  /api/transcripts/<id>            - Get specific transcript")
+    print("  GET  /api/analysis/word-frequency     - Word frequency analysis")
+    print("  POST /api/scraper/refresh             - Trigger scraper refresh")
+    print("  GET  /api/scraper/status              - Get scraper status")
+    
+    print("\n🌐 Server starting on http://localhost:5001")
+    print("   Frontend should connect to: http://localhost:5001/api/transcripts")
+    print("\n" + "="*80 + "\n")
     print("  GET  /api/scraper/status - Check scraper status")
     print("\nPress Ctrl+C to stop")
     print("="*80 + "\n")
