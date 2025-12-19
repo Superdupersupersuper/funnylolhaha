@@ -358,35 +358,6 @@
             font-weight: 600;
         }
 
-        /* Hit spans for precise marker jumping */
-        .hit {
-            border-radius: 2px;
-            padding: 0 2px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-
-        .hit-trump {
-            color: #3b82f6;
-            background: rgba(59, 130, 246, 0.15);
-        }
-
-        .hit-other {
-            color: #b45309;
-            background: rgba(180, 83, 9, 0.15);
-        }
-
-        /* Flash highlight animation */
-        .hit-flash-trump {
-            outline: 2px solid rgba(59, 130, 246, 0.9);
-            background: rgba(59, 130, 246, 0.35);
-        }
-
-        .hit-flash-other {
-            outline: 2px solid rgba(180, 83, 9, 0.9);
-            background: rgba(180, 83, 9, 0.35);
-        }
-
         /* YOUTUBE-STYLE PROGRESS BAR - ONLY MARKERS */
         .progress-bar-container {
             position: relative;
@@ -412,7 +383,7 @@
         .progress-marker {
             position: absolute;
             top: 0;
-            width: 6px;
+            width: 3px;
             height: 100%;
             background: #3b82f6;
             cursor: pointer;
@@ -420,30 +391,11 @@
             border-radius: 2px;
         }
 
-        /* Enlarged hitbox for easier clicking */
-        .progress-marker::before {
-            content: '';
-            position: absolute;
-            left: -8px;
-            right: -8px;
-            top: -8px;
-            bottom: -8px;
-            cursor: pointer;
-        }
-
         .progress-marker:hover {
-            width: 8px;
+            width: 5px;
             height: 120%;
             top: -10%;
             background: #60a5fa;
-        }
-
-        .progress-marker.other {
-            background: #b45309;
-        }
-
-        .progress-marker.other:hover {
-            background: #d97706;
         }
 
         /* STATS BARS - PROPORTIONAL WITH COLOR CODING */
@@ -585,10 +537,6 @@
                     <input type="checkbox" id="showContext" checked>
                     <label for="showContext">Show Context</label>
                 </div>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="debugMode">
-                    <label for="debugMode" style="color: #fbbf24;">🔍 Debug Mode</label>
-                </div>
             </div>
         </div>
 
@@ -716,6 +664,7 @@
     </div>
 
     <script>
+        const API_BASE = '/api';
         let mentionsChart = null;
         let locationChart = null;
         let allTranscripts = [];
@@ -998,170 +947,87 @@
                 // Context is now handled by "Show Full Transcript" - no separate context box needed
                 let contentHTML = '';
 
-                // Create YouTube-style progress bar with blue (Trump) and brown (other) markers
-                // Now using Trump-only, word-based locations (0..1 normalized)
+                // Create YouTube-style progress bar - ONLY MARKERS (no blue fill)
                 let progressBarHTML = '';
-                const showMarkers = document.getElementById('showMatchLocations').checked;
-                const hasMarkers = (mentionLocations.length > 0) || ((t.other_mention_locations || []).length > 0);
-                
-                if (hasMarkers && showMarkers) {
-                    // Blue markers for Trump mentions (now word-index based)
-                    const blueMarkersHTML = mentionLocations.map((loc, idx) =>
-                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="Trump: ${(loc.location * 100).toFixed(1)}% (word ${loc.position_word || 0})" onclick="seekToMention(event, ${t.id}, ${loc.position_word || loc.char_pos || 0}, 'trump', ${idx})"></div>`
-                    ).join('');
-
-                    // Brown markers for other speaker mentions (still char-based for backward compat)
-                    const brownMarkersHTML = (t.other_mention_locations || []).map((loc, idx) =>
-                        `<div class="progress-marker other" style="left: ${loc.location * 100}%;" title="Other: ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(event, ${t.id}, ${loc.position}, 'other', ${idx})"></div>`
+                if (mentionLocations.length > 0 && document.getElementById('showMatchLocations').checked) {
+                    const markersHTML = mentionLocations.map(loc =>
+                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
                     ).join('');
 
                     progressBarHTML = `
                         <div class="progress-bar-container" onclick="seekInTranscript(event, ${t.id})">
-                            <div class="progress-bar-markers">${blueMarkersHTML}${brownMarkersHTML}</div>
+                            <div class="progress-bar-markers">${markersHTML}</div>
                         </div>
                     `;
                 }
 
-                // FULL TRANSCRIPT - Render with structured turns and proper highlighting with hit spans
-                let previewText = '';
-                const hasPreview = t.preview && t.preview.length > 0;
+                // FULL TRANSCRIPT - Show ENTIRE thing with search terms highlighted
+                let previewText = t.preview || '';
+                const hasPreview = previewText.length > 0;
 
                 if (hasPreview) {
-                    const { turns } = parseTranscriptTurns(t.preview);
-                    const searchTerms = isSearching && mentionCount > 0 
-                        ? document.getElementById('searchInput').value.toLowerCase().split(',').map(s => s.trim()).filter(s => s)
-                        : [];
+                    // Step 1: Escape HTML
+                    previewText = previewText
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;');
 
-                    // Build HTML from turns with position tracking
-                    let currentOffset = 0; // Track position in original preview string
-                    const originalLines = t.preview.split('\n');
-                    let lineIdx = 0;
+                    // Step 2: Make search terms BOLD and BLUE (BEFORE converting newlines)
+                    if (isSearching && mentions.length > 0) {
+                        const searchTerms = document.getElementById('searchInput').value.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
+                        searchTerms.forEach(term => {
+                            // Create case-insensitive regex for the FULL word
+                            const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const regex = new RegExp(`(${escapedTerm})`, 'gi');
 
-                    turns.forEach(turn => {
-                        const isTrump = turn.speaker === 'Donald Trump';
-                        
-                        // Add speaker label (never highlighted)
-                        previewText += `<strong>${turn.speaker.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}:</strong><br>`;
-                        
-                        // Skip speaker line in original
-                        if (lineIdx < originalLines.length) {
-                            currentOffset += originalLines[lineIdx].length + 1; // +1 for \n
-                            lineIdx++;
-                        }
-
-                        // Process dialogue lines
-                        turn.dialogueLines.forEach((line, dialogueLineIdx) => {
-                            // Escape HTML first
-                            let escapedLine = line
-                                .replace(/&/g, '&amp;')
-                                .replace(/</g, '&lt;')
-                                .replace(/>/g, '&gt;');
-
-                            // Apply highlighting with hit spans if searching
-                            if (searchTerms.length > 0) {
-                                const hitClass = isTrump ? 'hit-trump' : 'hit-other';
-                                const matchType = isTrump ? 'trump' : 'other';
-                                
-                                searchTerms.forEach(term => {
-                                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                    
-                                    // Find all matches in this line with positions
-                                    const lineLower = line.toLowerCase();
-                                    let pos = 0;
-                                    const replacements = [];
-                                    
-                                    while ((pos = lineLower.indexOf(term, pos)) !== -1) {
-                                        const absPos = currentOffset + pos;
-                                        replacements.push({
-                                            start: pos,
-                                            end: pos + term.length,
-                                            absPos: absPos
-                                        });
-                                        pos += term.length;
-                                    }
-
-                                    // Apply replacements in reverse order to maintain positions
-                                    replacements.reverse().forEach(repl => {
-                                        const before = escapedLine.substring(0, repl.start);
-                                        const match = escapedLine.substring(repl.start, repl.end);
-                                        const after = escapedLine.substring(repl.end);
-                                        escapedLine = before + 
-                                            `<span class="hit ${hitClass}" data-abspos="${repl.absPos}" data-type="${matchType}">${match}</span>` + 
-                                            after;
-                                    });
-                                });
-                            }
-
-                            previewText += escapedLine + '<br>';
-                            
-                            // Update offset for next line
-                            if (lineIdx < originalLines.length) {
-                                currentOffset += originalLines[lineIdx].length + 1;
-                                lineIdx++;
-                            }
+                            // Replace with placeholder that uses unique characters that won't be in the text
+                            previewText = previewText.replace(regex, '###BLUESTART###$1###BLUEEND###');
                         });
-                    });
-                }
+                    }
 
-                // Build debug info panel if debug mode is enabled
-                let debugHTML = '';
-                const debugMode = document.getElementById('debugMode') && document.getElementById('debugMode').checked;
-                if (debugMode) {
-                    const firstMentionLoc = mentionLocations.length > 0 ? mentionLocations[0].location : null;
-                    const debugStyle = mentionCount > 0 ? 'background: rgba(34, 197, 94, 0.1); border-left: 3px solid #22c55e;' : 'background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444;';
-                    
-                    debugHTML = `
-                        <div class="debug-panel" style="
-                            ${debugStyle}
-                            padding: 8px 12px;
-                            margin: 8px 0;
-                            font-size: 11px;
-                            font-family: 'Courier New', monospace;
-                            border-radius: 4px;
-                        ">
-                            <div style="color: #fbbf24; font-weight: 600; margin-bottom: 4px;">🔍 DEBUG INFO</div>
-                            <div style="color: #e5e7eb;">
-                                <div>📊 <strong>Computed mention_count:</strong> ${mentionCount}</div>
-                                <div>🎯 <strong>Rendered .hit-trump spans:</strong> <span id="debug-hit-count-${t.id}">calculating...</span></div>
-                                <div>📈 <strong>Dot plot Y-value:</strong> <span id="debug-chart-value-${t.id}">calculating...</span></div>
-                                ${firstMentionLoc !== null ? `<div>📍 <strong>First mention location:</strong> ${(firstMentionLoc * 100).toFixed(1)}%</div>` : ''}
-                                ${mentionCount > 0 && mentionLocations.length === 0 ? '<div style="color: #ef4444;">⚠️ MISMATCH: Has count but no locations!</div>' : ''}
-                            </div>
-                        </div>
-                    `;
+                    // Step 3: Convert newlines to <br>
+                    previewText = previewText.replace(/\n/g, '<br>');
+
+                    // Step 4: Make speaker names bold with colon (handle timestamps too)
+                    // Match speaker lines like "Donald Trump (00:10:12)" or "Speaker Name"
+                    previewText = previewText.replace(/^([A-Z][a-zA-Z\s\.]+?)(\s*\([^)]*\))?<br>/gm, '<strong>$1$2:</strong><br>');
+
+                    // Step 5: Convert blue text placeholders to actual HTML (AFTER all other replacements)
+                    previewText = previewText.replace(/###BLUESTART###/g, '<strong style="color: #3b82f6;">');
+                    previewText = previewText.replace(/###BLUEEND###/g, '</strong>');
+                } else {
+                    // Fallback: show message if no preview available
+                    previewText = '<em style="color: #9ca3af;">Transcript content not available</em>';
                 }
 
                 return `
-                    <div class="transcript-card" id="card-${t.id}" data-date="${t.date}" data-mention-count="${mentionCount}">
+                    <div class="transcript-card" id="card-${t.id}" data-date="${t.date}">
                         <div class="transcript-title">${t.title}</div>
                         <div class="transcript-date">${t.date} | ${t.speech_type}${t.location ? ' | ' + t.location : ''}</div>
                         ${totalsHTML}
-                        ${debugHTML}
-                        ${hasPreview ? `
-                            <div class="preview-toggle" onclick="togglePreview(${t.id})" style="
-                                cursor: pointer;
-                                color: #3b82f6;
-                                font-size: 13px;
-                                margin-top: 8px;
-                                user-select: none;
-                                font-weight: 600;
-                            ">
-                                <span id="preview-icon-${t.id}">▶</span> Show Full Transcript
-                            </div>
-                            <div id="preview-${t.id}" style="
-                                display: none;
-                                margin-top: 10px;
-                                padding: 15px;
-                                background: rgba(0, 0, 0, 0.3);
-                                border-radius: 6px;
-                                font-size: 13px;
-                                line-height: 1.7;
-                                color: #e5e7eb;
-                                max-height: 600px;
-                                overflow-y: auto;
-                                border: 1px solid #374151;
-                            ">${previewText}</div>
-                        ` : ''}
+                        <div class="preview-toggle" onclick="togglePreview(${t.id})" style="
+                            cursor: pointer;
+                            color: #3b82f6;
+                            font-size: 13px;
+                            margin-top: 8px;
+                            user-select: none;
+                            font-weight: 600;
+                        ">
+                            <span id="preview-icon-${t.id}">▶</span> Show Full Transcript
+                        </div>
+                        <div id="preview-${t.id}" style="
+                            display: none;
+                            margin-top: 10px;
+                            padding: 15px;
+                            background: rgba(0, 0, 0, 0.3);
+                            border-radius: 6px;
+                            font-size: 13px;
+                            line-height: 1.7;
+                            color: #e5e7eb;
+                            max-height: 600px;
+                            overflow-y: auto;
+                            border: 1px solid #374151;
+                        ">${previewText}</div>
                         ${contentHTML && document.getElementById('showContext').checked ? `
                             <div class="transcript-content" id="content-${t.id}">${contentHTML}</div>
                         ` : ''}
@@ -1169,52 +1035,6 @@
                     </div>
                 `;
             }).join('');
-
-            // After rendering, populate debug information if debug mode is enabled
-            const debugMode = document.getElementById('debugMode') && document.getElementById('debugMode').checked;
-            if (debugMode) {
-                // Use setTimeout to ensure DOM is updated
-                setTimeout(() => {
-                    transcripts.forEach(t => {
-                        // Count actual rendered .hit-trump spans
-                        const previewEl = document.getElementById(`preview-${t.id}`);
-                        if (previewEl) {
-                            const hitCount = previewEl.querySelectorAll('.hit-trump').length;
-                            const hitCountEl = document.getElementById(`debug-hit-count-${t.id}`);
-                            if (hitCountEl) {
-                                const expectedCount = t.mention_count || 0;
-                                const match = hitCount === expectedCount;
-                                hitCountEl.innerHTML = `${hitCount}${match ? ' ✓' : ` <span style="color: #ef4444;">⚠️ Expected ${expectedCount}</span>`}`;
-                            }
-                        }
-
-                        // Get dot plot value from chart data
-                        const chartValueEl = document.getElementById(`debug-chart-value-${t.id}`);
-                        if (chartValueEl && mentionsChart && mentionsChart.data.datasets[0].data) {
-                            const dataPoint = mentionsChart.data.datasets[0].data.find(d => d.transcriptId === t.id);
-                            if (dataPoint) {
-                                const chartValue = dataPoint.y;
-                                const expectedValue = t.mention_count || 0;
-                                const match = chartValue === expectedValue;
-                                chartValueEl.innerHTML = `${chartValue}${match ? ' ✓' : ` <span style="color: #ef4444;">⚠️ Expected ${expectedValue}</span>`}`;
-                                
-                                // Log mismatch to console for debugging
-                                if (!match) {
-                                    console.error(`🔴 MISMATCH for transcript ${t.id}:`, {
-                                        title: t.title,
-                                        date: t.date,
-                                        mention_count: t.mention_count,
-                                        chart_y_value: chartValue,
-                                        debug: t._match_debug
-                                    });
-                                }
-                            } else {
-                                chartValueEl.innerHTML = '<span style="color: #ef4444;">Not in chart!</span>';
-                            }
-                        }
-                    });
-                }, 100);
-            }
         }
 
         // Perform search
@@ -1261,7 +1081,7 @@
                 console.log('Categories:', selectedCategories);
                 console.log('Total transcripts to search:', transcriptsData.length);
 
-                // Client-side search using UNIFIED Trump-only match computation
+                // Client-side search in preview text - ONLY in Trump's dialogue
                 const results = transcriptsData.filter(t => {
                     // Filter by date and category
                     const tDate = new Date(t.date);
@@ -1271,65 +1091,166 @@
                     // Filter by minimum word count
                     if ((t.word_count || 0) < minWordCount) return false;
 
-                    // Use unified match computation to check for matches
+                    // ONLY search in Donald Trump's dialogue (not title, not other speakers)
                     const preview = t.preview || '';
-                    const matchData = computeTrumpMatches(preview, terms);
-                    
-                    return matchData.mention_count > 0;
-                }).map(t => {
-                    // Calculate mention_count and mention_locations using UNIFIED helper
-                    const preview = t.preview || '';
-                    const matchData = computeTrumpMatches(preview, terms);
-                    
-                    // Also compute other speaker mentions for brown markers (backward compat)
-                    const { turns, totalLength } = parseTranscriptTurns(preview);
-                    const otherMentionLocations = [];
-                    let otherMentionCount = 0;
+                    const lines = preview.split('\n');
 
-                    // Process non-Trump turns for brown markers
-                    turns.forEach(turn => {
-                        const dialogue = turn.dialogueLines.join('\n');
-                        const dialogueLower = dialogue.toLowerCase();
-                        const isTrump = turn.speaker === 'Donald Trump';
-
-                        if (!isTrump) {
-                            // Find all term matches in other speakers' dialogue
-                            terms.forEach(term => {
-                                let pos = 0;
-                                while ((pos = dialogueLower.indexOf(term, pos)) !== -1) {
-                                    const absolutePos = turn.dialogueStartOffset + pos;
-                                    const location = absolutePos / totalLength;
-                                    
-                                    otherMentionCount++;
-                                    otherMentionLocations.push({
-                                        location: location,
-                                        position: absolutePos
-                                    });
-
-                                    pos += term.length;
-                                }
-                            });
-                        }
-                    });
-
-                    // Build context snippets from Trump's dialogue
-                    const mentions = [];
-                    if (matchData.mention_count > 0) {
-                        mentions.push({
-                            context: matchData.trump_only_text.substring(0, 500),
-                            highlight_start: 0,
-                            highlight_end: 0
-                        });
+                    // Helper function to check if a line is a speaker line
+                    // Handles: "Donald Trump", "Donald Trump (00:10:12)", "Donald Trump:", etc.
+                    function isSpeakerLine(line) {
+                        const trimmed = line.trim();
+                        if (!trimmed) return false;
+                        
+                        // Normalize: remove timestamps like (00:10:12) and trailing colons
+                        const normalized = trimmed
+                            .replace(/\s*\([^)]*\)\s*$/g, '')  // Remove (timestamp)
+                            .replace(/\s*:\s*$/g, '')          // Remove trailing :
+                            .trim()
+                            .toLowerCase();
+                        
+                        // Check if it's a known speaker (starts with capital letter and has reasonable length)
+                        return normalized.length > 2 && normalized.length < 50 && /^[a-z]/.test(normalized);
                     }
+
+                    function isTrumpSpeaker(line) {
+                        const normalized = line.trim()
+                            .replace(/\s*\([^)]*\)\s*$/g, '')
+                            .replace(/\s*:\s*$/g, '')
+                            .trim()
+                            .toLowerCase();
+                        return normalized.includes('donald trump') || normalized === 'trump';
+                    }
+
+                    // Find sections where Donald Trump is speaking - capture ALL dialogue lines
+                    let trumpSections = [];
+                    let i = 0;
+                    while (i < lines.length) {
+                        if (isTrumpSpeaker(lines[i])) {
+                            // This is Trump's speaker line, collect all dialogue until next speaker
+                            let dialogue = [];
+                            i++; // Move past speaker line
+                            
+                            while (i < lines.length && !isSpeakerLine(lines[i])) {
+                                if (lines[i].trim()) { // Skip empty lines
+                                    dialogue.push(lines[i]);
+                                }
+                                i++;
+                            }
+                            
+                            if (dialogue.length > 0) {
+                                trumpSections.push(dialogue.join(' '));
+                            }
+                        } else {
+                            i++;
+                        }
+                    }
+
+                    // Check if search term appears in any of Trump's sections
+                    const trumpText = trumpSections.join(' ').toLowerCase();
+                    const found = terms.some(term => trumpText.includes(term));
+                    return found;
+                }).map(t => {
+                    // Calculate mention_count and mention_locations ONLY in Trump's dialogue
+                    const preview = t.preview || '';
+                    const lines = preview.split('\n');
+                    const mentions = [];
+                    const mentionLocations = [];
+                    let mentionCount = 0;
+
+                    // Helper functions (same as above)
+                    function isSpeakerLine(line) {
+                        const trimmed = line.trim();
+                        if (!trimmed) return false;
+                        const normalized = trimmed
+                            .replace(/\s*\([^)]*\)\s*$/g, '')
+                            .replace(/\s*:\s*$/g, '')
+                            .trim()
+                            .toLowerCase();
+                        return normalized.length > 2 && normalized.length < 50 && /^[a-z]/.test(normalized);
+                    }
+
+                    function isTrumpSpeaker(line) {
+                        const normalized = line.trim()
+                            .replace(/\s*\([^)]*\)\s*$/g, '')
+                            .replace(/\s*:\s*$/g, '')
+                            .trim()
+                            .toLowerCase();
+                        return normalized.includes('donald trump') || normalized === 'trump';
+                    }
+
+                    // Find Trump's sections - capture ALL dialogue lines
+                    let trumpSections = [];
+                    let trumpPositions = []; // Track where in the full text these sections start
+                    let currentPos = 0;
+                    let i = 0;
+
+                    while (i < lines.length) {
+                        const lineLength = lines[i].length + 1; // +1 for newline
+                        
+                        if (isTrumpSpeaker(lines[i])) {
+                            // This is Trump's speaker line, collect all dialogue until next speaker
+                            i++; // Move past speaker line
+                            currentPos += lineLength;
+                            
+                            let dialogue = [];
+                            let dialogueStart = currentPos;
+                            
+                            while (i < lines.length && !isSpeakerLine(lines[i])) {
+                                if (lines[i].trim()) { // Skip empty lines
+                                    dialogue.push(lines[i]);
+                                }
+                                currentPos += lines[i].length + 1;
+                                i++;
+                            }
+                            
+                            if (dialogue.length > 0) {
+                                trumpSections.push(dialogue.join(' '));
+                                trumpPositions.push(dialogueStart);
+                            }
+                        } else {
+                            currentPos += lineLength;
+                            i++;
+                        }
+                    }
+
+                    // Search ONLY in Trump's sections
+                    terms.forEach(term => {
+                        trumpSections.forEach((section, sectionIdx) => {
+                            let pos = 0;
+                            const sectionLower = section.toLowerCase();
+
+                            while ((pos = sectionLower.indexOf(term, pos)) !== -1) {
+                                mentionCount++;
+
+                                // Get FULL Trump section with speaker name
+                                // Include "Donald Trump" speaker line + the full dialogue section
+                                const speakerLine = "Donald Trump";
+                                const fullContext = speakerLine + "\n" + section;
+
+                                mentions.push({
+                                    context: fullContext,
+                                    highlight_start: 0,  // Will be handled by search term highlighting
+                                    highlight_end: 0
+                                });
+
+                                // Calculate location in full document
+                                const absolutePos = trumpPositions[sectionIdx] + pos;
+                                const location = absolutePos / preview.length;
+                                mentionLocations.push({
+                                    location: location,
+                                    position: absolutePos
+                                });
+
+                                pos += term.length;
+                            }
+                        });
+                    });
 
                     return {
                         ...t,
-                        mention_count: matchData.mention_count,
+                        mention_count: mentionCount,
                         mentions: mentions,
-                        mention_locations: matchData.mention_locations,
-                        other_mention_locations: otherMentionLocations,
-                        other_mention_count: otherMentionCount,
-                        _match_debug: matchData.debug  // Store debug info
+                        mention_locations: mentionLocations
                     };
                 });
 
@@ -1380,7 +1301,7 @@
             }
         }
 
-        // Update mentions DOT chart - REFACTORED to avoid date-bucketing bugs
+        // Update mentions DOT chart
         function updateMentionsChart(results) {
             // Get current date range from filters
             const startDate = new Date(document.getElementById('startDate').value);
@@ -1400,48 +1321,70 @@
             });
 
             console.log('All transcripts in range:', allTranscriptsInRange.length);
-            console.log('Search results with matches:', results.length);
+            console.log('Search results:', results.length);
 
-            // Create a lookup map for results by transcript ID for O(1) access
-            const resultsById = new Map();
-            results.forEach(r => {
-                resultsById.set(r.id, r);
+            // Group transcripts by date - HANDLE MULTIPLE TRANSCRIPTS PER DATE
+            const transcriptsByDate = new Map();
+            allTranscriptsInRange.forEach(t => {
+                if (!transcriptsByDate.has(t.date)) {
+                    transcriptsByDate.set(t.date, []);
+                }
+                transcriptsByDate.get(t.date).push(t);
             });
 
-            // Build data array by iterating over ALL transcripts in range
-            // This ensures no transcript is lost due to date-bucketing issues
-            const data = [];
-            allTranscriptsInRange.forEach(t => {
-                const resultData = resultsById.get(t.id);
-                const mentionCount = resultData ? (resultData.mention_count || 0) : 0;
-                
-                data.push({
-                    x: t.date,
-                    y: mentionCount,
-                    transcriptId: t.id,
-                    title: t.title,
-                    _debug_in_results: !!resultData,
-                    _debug_count_source: resultData ? 'from_results' : 'zero_default'
+            // Create a map of dates to mention data from search results
+            const mentionsByDate = new Map();
+            results.forEach(r => {
+                if (!mentionsByDate.has(r.date)) {
+                    mentionsByDate.set(r.date, []);
+                }
+                mentionsByDate.get(r.date).push({
+                    count: r.mention_count || 0,
+                    transcriptId: r.id
                 });
+            });
+
+            // Build data array with ALL dates
+            const data = [];
+            transcriptsByDate.forEach((transcripts, date) => {
+                const dateResults = mentionsByDate.get(date) || [];
+
+                if (dateResults.length === 0) {
+                    // No mentions on this date - show a single point at 0
+                    data.push({
+                        x: date,
+                        y: 0,
+                        transcriptId: transcripts[0].id,
+                        title: transcripts[0].title
+                    });
+                } else {
+                    // Add a point for EACH transcript with mentions on this date
+                    dateResults.forEach(result => {
+                        const transcript = results.find(r => r.id === result.transcriptId);
+                        data.push({
+                            x: date,
+                            y: result.count,
+                            transcriptId: result.transcriptId,
+                            title: transcript ? transcript.title : ''
+                        });
+                    });
+                }
             });
 
             // Sort by date
             data.sort((a, b) => new Date(a.x) - new Date(b.x));
 
             console.log('Chart data points:', data.length);
-            console.log('Points with matches:', data.filter(d => d.y > 0).length);
-            console.log('Points at zero:', data.filter(d => d.y === 0).length);
 
             mentionsChart.data.datasets[0].data = data;
             mentionsChart.update();
         }
 
-        // Update location chart - now using Trump-only, word-based locations from computeTrumpMatches
+        // Update location chart
         function updateLocationChart(results) {
             const allLocations = [];
             const firstMentionLocations = [];
 
-            // Extract locations (now Trump-only, word-based normalized to 0..1)
             results.forEach(r => {
                 if (r.mention_locations && r.mention_locations.length > 0) {
                     r.mention_locations.forEach(loc => allLocations.push(loc.location));
@@ -1460,7 +1403,6 @@
             allLocations.sort((a, b) => a - b);
             firstMentionLocations.sort((a, b) => a - b);
 
-            // Build cumulative distribution (0% to 100% through speech)
             const labels = [];
             const cumulativeData = [];
             const firstMentionData = [];
@@ -1702,69 +1644,16 @@
             }
         }
 
-        // Seek functions for progress bar - with precise positioning and flash highlight
-        function seekToMention(event, transcriptId, positionOrWordIndex, type, markerIndex) {
-            // Stop propagation to prevent bar click handler
-            if (event) {
-                event.stopPropagation();
-            }
-
-            const previewEl = document.getElementById(`preview-${transcriptId}`);
-            if (!previewEl) return;
-
-            // Auto-open preview if collapsed
-            if (previewEl.style.display === 'none') {
-                togglePreview(transcriptId);
-                // Wait a moment for the preview to expand
-                setTimeout(() => performSeekAndFlash(), 50);
-            } else {
-                performSeekAndFlash();
-            }
-
-            function performSeekAndFlash() {
-                // Find all hit spans of the correct type
-                const hitClass = type === 'trump' ? 'hit-trump' : 'hit-other';
-                const hits = Array.from(previewEl.querySelectorAll(`.hit.${hitClass}`));
-                
-                let closestHit = null;
-                
-                // If we have a marker index, use it directly (most reliable for Trump hits)
-                if (typeof markerIndex !== 'undefined' && markerIndex >= 0 && markerIndex < hits.length) {
-                    closestHit = hits[markerIndex];
-                } else {
-                    // Fallback: find closest by position (for backward compat with other speakers)
-                    let minDiff = Infinity;
-                    hits.forEach(hit => {
-                        const hitAbsPos = parseInt(hit.getAttribute('data-abspos'), 10);
-                        if (!isNaN(hitAbsPos)) {
-                            const diff = Math.abs(hitAbsPos - positionOrWordIndex);
-                            if (diff < minDiff) {
-                                minDiff = diff;
-                                closestHit = hit;
-                            }
-                        }
-                    });
+        // Seek functions for progress bar
+        function seekToMention(transcriptId, position) {
+            const preview = document.getElementById(`preview-${transcriptId}`);
+            if (preview) {
+                // First, make sure preview is visible
+                if (preview.style.display === 'none') {
+                    togglePreview(transcriptId);
                 }
-
-                if (!closestHit) {
-                    console.warn(`No hit found for marker ${markerIndex} of type ${type}`);
-                    return;
-                }
-
-                // Calculate scroll position to place hit in top ~1/3
-                const targetTop = closestHit.offsetTop;
-                const desiredTop = targetTop - previewEl.clientHeight * 0.33;
-                const maxScroll = previewEl.scrollHeight - previewEl.clientHeight;
-                previewEl.scrollTop = Math.max(0, Math.min(desiredTop, maxScroll));
-
-                // Add flash highlight
-                const flashClass = type === 'trump' ? 'hit-flash-trump' : 'hit-flash-other';
-                closestHit.classList.add(flashClass);
-
-                // Remove flash after 1500ms
-                setTimeout(() => {
-                    closestHit.classList.remove(flashClass);
-                }, 1500);
+                // Then scroll to position
+                preview.scrollTop = position / 10;
             }
         }
 
@@ -1792,48 +1681,20 @@
         // Removed auto-search on input - only search on button click or Enter key
 
         // Load transcript data from API (FULL transcripts from database)
-        // Use same-origin relative URLs (works in both production and local via Flask)
-        const API_TRANSCRIPTS_URL = '/api/transcripts';
-        const API_HEALTH_URL = '/api/health';
+        // Use production Render API by default, fallback to localhost for development
+        const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+            ? 'http://localhost:5001' 
+            : 'https://funnylolhaha.onrender.com';
+        const API_URL = `${API_BASE}/api/transcripts`;
 
         // Load transcript data from API
         async function loadStaticData() {
             try {
                 console.log('📡 Loading transcripts from API...');
-                const response = await fetch(API_TRANSCRIPTS_URL);
+                const response = await fetch(API_URL);
                 
                 if (!response.ok) {
-                    // Show HTTP error with details
-                    let errorMsg = '<div class="empty-state">';
-                    errorMsg += '<h3>❌ API Request Failed</h3>';
-                    errorMsg += '<p><strong>The API returned an error.</strong></p>';
-                    
-                    errorMsg += '<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 6px; padding: 15px; margin: 15px auto; max-width: 600px; text-align: left;">';
-                    errorMsg += '<p style="margin-bottom: 8px;"><strong>Endpoint:</strong> <code>' + API_TRANSCRIPTS_URL + '</code></p>';
-                    errorMsg += '<p style="margin-bottom: 8px;"><strong>Status:</strong> ' + response.status + ' ' + response.statusText + '</p>';
-                    errorMsg += '</div>';
-                    
-                    errorMsg += '<p><strong>What to try:</strong></p>';
-                    errorMsg += '<ul style="text-align: left; margin: 10px auto; max-width: 500px; line-height: 1.8;">';
-                    
-                    if (response.status === 404) {
-                        errorMsg += '<li>The API endpoint was not found. Check that the server is running the correct version.</li>';
-                    } else if (response.status >= 500) {
-                        errorMsg += '<li>The API server encountered an error. Check server logs or try again in a few moments.</li>';
-                        errorMsg += '<li>If on Render, the server may be starting up (cold start). Wait 30-60 seconds and refresh.</li>';
-                    } else if (response.status === 403 || response.status === 401) {
-                        errorMsg += '<li>Access denied. Check authentication settings.</li>';
-                    }
-                    
-                    errorMsg += '<li>Check the <a href="' + API_HEALTH_URL + '" target="_blank" style="color: #3b82f6;">/api/health</a> endpoint for more info</li>';
-                    errorMsg += '<li>Reload the page to try again</li>';
-                    errorMsg += '</ul>';
-                    
-                    errorMsg += '<button onclick="location.reload()" style="margin-top: 20px; padding: 12px 24px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">Reload Page</button>';
-                    errorMsg += '</div>';
-                    
-                    document.getElementById('transcriptsSection').innerHTML = errorMsg;
-                    return [];
+                    throw new Error(`API returned ${response.status}: ${response.statusText}`);
                 }
                 
                 transcriptsData = await response.json();
@@ -1842,7 +1703,7 @@
                 if (transcriptsData.length === 0) {
                     // Check health endpoint for more info
                     try {
-                        const healthResponse = await fetch(API_HEALTH_URL);
+                        const healthResponse = await fetch(`${API_BASE}/api/health`);
                         const health = await healthResponse.json();
                         console.error('⚠️ API returned 0 transcripts. Health check:', health);
                         
@@ -1860,11 +1721,11 @@
                         
                         errorMsg += '<p><strong>To fix:</strong></p>';
                         errorMsg += '<ol style="text-align: left; margin: 10px auto; max-width: 500px;">';
-                        errorMsg += '<li>Ensure the API server is running with the correct database</li>';
-                        errorMsg += '<li>Check the server console output for the database path</li>';
+                        errorMsg += '<li>Make sure the API server is running from the correct directory:<br/><code>cd /Users/alexandermiron/Downloads/mention-markets && python3 api_server.py</code></li>';
+                        errorMsg += '<li>Check the console output for the database path</li>';
                         errorMsg += '<li>If database is empty, run the scraper to populate it</li>';
                         errorMsg += '</ol>';
-                        errorMsg += `<p><a href="${API_HEALTH_URL}" target="_blank">View full health check →</a></p>`;
+                        errorMsg += `<p><a href="${API_BASE}/api/health" target="_blank">View full health check →</a></p>`;
                         errorMsg += '</div>';
                         
                         document.getElementById('transcriptsSection').innerHTML = errorMsg;
@@ -1880,27 +1741,18 @@
             } catch (error) {
                 console.error('❌ Error loading from API:', error);
                 
-                // Show detailed error message
+                // Show connection error
                 let errorMsg = '<div class="empty-state">';
-                errorMsg += '<h3>❌ Failed to Load Transcripts</h3>';
-                errorMsg += '<p><strong>Could not fetch data from the API.</strong></p>';
-                
-                // Show error details
-                errorMsg += '<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 6px; padding: 15px; margin: 15px auto; max-width: 600px; text-align: left;">';
-                errorMsg += '<p style="margin-bottom: 8px;"><strong>Endpoint:</strong> <code>' + API_TRANSCRIPTS_URL + '</code></p>';
-                errorMsg += '<p style="margin-bottom: 8px;"><strong>Error:</strong> ' + error.message + '</p>';
-                errorMsg += '</div>';
-                
-                // Provide troubleshooting steps
-                errorMsg += '<p><strong>Common causes:</strong></p>';
-                errorMsg += '<ul style="text-align: left; margin: 10px auto; max-width: 500px; line-height: 1.8;">';
-                errorMsg += '<li><strong>Render cold start:</strong> If the server has been inactive, wait 30-60 seconds and refresh</li>';
-                errorMsg += '<li><strong>Network issue:</strong> Check your internet connection</li>';
-                errorMsg += '<li><strong>Browser extension:</strong> Try disabling ad blockers</li>';
-                errorMsg += '<li><strong>API down:</strong> Check <a href="' + API_HEALTH_URL + '" target="_blank" style="color: #3b82f6;">/api/health</a> for status</li>';
-                errorMsg += '</ul>';
-                
-                errorMsg += '<button onclick="location.reload()" style="margin-top: 20px; padding: 12px 24px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">Reload Page</button>';
+                errorMsg += '<h3>❌ Cannot Connect to API</h3>';
+                errorMsg += '<p><strong>Could not reach the API server.</strong></p>';
+                errorMsg += `<p>Error: ${error.message}</p>`;
+                errorMsg += '<p><strong>To fix:</strong></p>';
+                errorMsg += '<ol style="text-align: left; margin: 10px auto; max-width: 500px;">';
+                errorMsg += '<li>Start the API server:<br/><code>cd /Users/alexandermiron/Downloads/mention-markets && python3 api_server.py</code></li>';
+                errorMsg += '<li>Make sure it\'s running on port 5001</li>';
+                errorMsg += '<li>Refresh this page</li>';
+                errorMsg += '</ol>';
+                errorMsg += `<p>Expected API at: <code>${API_URL}</code></p>`;
                 errorMsg += '</div>';
                 
                 document.getElementById('transcriptsSection').innerHTML = errorMsg;
@@ -1911,144 +1763,6 @@
 
         // Speaker list for parsing (186 speakers)
         const SPEAKERS = ["Donald Trump", "Keir Starmer", "Unidentified Speaker", "Emmanuel Macron", "Narendra Modi", "Shigeru Ishiba", "Benjamin Netanyahu", "Sean Duffy", "Pete Hegseth", "J.D. Vance", "Anne Fundner", "Mike Johnson", "Janet Mills", "Jim Pillen", "Richard Attias", "Rosanna Maietta", "Borge Brende", "Stephen Schwarzman", "Patrick Pouyanné", "Brian Moynihan", "Ana Botin", "Laura Ingraham", "Kamala Harris", "Tammy Nobles", "Jonathan Martinez", "Tom Cole", "Steve Eagar", "Elon Musk", "R. Lee Ermey", "Rachel Levine", "Matthew Modine", "Kylie Minogue", "Qveen Herby", "Marines", "Kid Rock", "Will Scharf", "Aide", "Paula White-Cain", "Alina Habba", "Pam Bondi", "Randy Fine", "Howard Lutnick", "Nicole Malliotakis", "Sergio Gor", "Charles Kushner", "James Blair", "David Perdue", "Leah Campos", "Michael Waltz", "John Arrigo", "Kevin Cabrera", "Tom Barrack", "Pete Hoekstra", "Ron Johnson", "Matt Whitaker", "George Glass", "Ken Howery", "Stacey Feinberg", "Nicole McGraw", "Brandon Judd", "Brian Burch", "Somers Farkas", "Joe Popolo", "Mike Huckabee", "Tilman Fertitta", "Warren Stephens", "Jimmy Patronis", "Alek Skarlatos", "Kimberly Guilfoyle", "Doug Burgum", "Brooke Rollins", "Kelly Loeffler", "Lee Zeldin", "Doug Collins", "Chris Wright", "Linda McMahon", "Robert F. Kennedy, Jr.", "Kristi Noem", "Marco Rubio", "Scott Bessent", "Euisun Chung", "Steve Scalise", "Jeff Landry", "David W. Allvin", "Dale R. White", "Mary Martin", "Chuck Robbins", "Gianni Infantino", "Kevin Hassett", "David Sacks", "Tom Emmer", "Cameron Winklevoss", "Tyler Winklevoss", "Sergey Nazarov", "Rodolphe Saadé", "Lindsey Halligan", "Maria Bartiromo", "C.C. Wei", "Scott Turner", "Ron DeSantis", "Tiger Woods", "Tim Scott", "Leo Terrell", "Phil Heath", "Neil Gorsuch", "Cheryl Hines", "Tulsi Gabbard", "Abraham Williams", "Steve Witkoff", "Marc Fogel", "Dave McCormick", "Mark Fogel", "Stephen Miller", "Clarence Thomas", "Nancy Mace", "Tim Burchett", "Ronny Jackson", "Payton McNabb", "Paul Maurice", "Sergei Bobrovsky", "Vinnie Viola", "Sam Reinhart", "Matthew Tkachuk", "Allyson Phillips", "Franklin Graham", "Melania Trump", "Karen Bass", "Brad Sherman", "Judy Chu", "Kathryn Barger", "Vince Fong", "Kevin Kiley", "Joel Pollak", "Jay Obernolte", "Young Kim", "George Whitesides", "Traci Park", "Tom McClintock", "Ed Ring", "Ric Grenell", "Michael Whatley", "Larry Ellison", "Masayoshi Son", "Sam Altman", "Amy Klobuchar", "John Thune", "Chuck Schumer", "Hakeem Jeffries", "Deb Fischer", "John Roberts", "Chris LaNeve", "Joe Biden", "Karoline Leavitt", "Sarah Huckabee Sanders", "Peter Navarro", "Russell Vought", "Charlie Kirk", "Lara Trump", "Eric Trump", "Mike Pompeo", "Sean Hannity", "Nikki Haley", "Greg Abbott", "Brian Kemp", "Tom Homan", "Marty Makary", "Adam Boehler", "Bruce LeVell", "Bryson DeChambeau", "Chip Roy", "David Pecker", "Emil Bove", "Hope Hicks", "Jake Tapper", "Joshua Steinglass", "Juan Merchan", "Matthew Colangelo", "Mike Lindell", "Patty Morin", "Sean O'Brien", "Saudi Protocol Officer", "Tamim bin Hamad Al Thani", "Todd Blanche", "Tom Hauser", "Mark Rutte"];
-
-        // Build speaker lookup set for efficient checking
-        const SPEAKER_SET = new Set(SPEAKERS.map(s => s.toLowerCase()));
-
-        // Parse transcript into speaker turns with offsets
-        // Returns: { turns: [{speaker, dialogueLines, dialogueStartOffset}], totalLength }
-        function parseTranscriptTurns(preview) {
-            const lines = preview.split('\n');
-            const turns = [];
-            let currentSpeaker = null;
-            let currentDialogueLines = [];
-            let currentDialogueStartOffset = 0;
-            let absoluteOffset = 0;
-
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                const lineLength = line.length + 1; // +1 for \n
-                const lineTrimmed = line.trim();
-
-                // Check if this line is a speaker name (exact match, case-insensitive)
-                const isSpeakerLine = SPEAKER_SET.has(lineTrimmed.toLowerCase());
-
-                if (isSpeakerLine) {
-                    // Save previous turn if exists
-                    if (currentSpeaker && currentDialogueLines.length > 0) {
-                        turns.push({
-                            speaker: currentSpeaker,
-                            dialogueLines: currentDialogueLines,
-                            dialogueStartOffset: currentDialogueStartOffset
-                        });
-                    }
-
-                    // Start new turn
-                    currentSpeaker = lineTrimmed;
-                    currentDialogueLines = [];
-                    // Next line will be dialogue, so offset is after this speaker line
-                    currentDialogueStartOffset = absoluteOffset + lineLength;
-                } else if (currentSpeaker) {
-                    // This is dialogue for the current speaker
-                    currentDialogueLines.push(line);
-                }
-
-                absoluteOffset += lineLength;
-            }
-
-            // Save final turn
-            if (currentSpeaker && currentDialogueLines.length > 0) {
-                turns.push({
-                    speaker: currentSpeaker,
-                    dialogueLines: currentDialogueLines,
-                    dialogueStartOffset: currentDialogueStartOffset
-                });
-            }
-
-            return { turns, totalLength: preview.length };
-        }
-
-        /**
-         * UNIFIED TRUMP-ONLY, WORD-BASED MATCH COMPUTATION
-         * This is the single source of truth for all match counts and positions.
-         * Used by: performSearch, updateMentionsChart, displayTranscripts, updateLocationChart
-         */
-        function computeTrumpMatches(preview, terms) {
-            if (!preview || !terms || terms.length === 0) {
-                return {
-                    mention_count: 0,
-                    mention_locations: [],
-                    trump_only_words: [],
-                    trump_only_text: '',
-                    debug: { terms, preview_length: preview ? preview.length : 0 }
-                };
-            }
-
-            // Parse transcript into turns
-            const { turns } = parseTranscriptTurns(preview);
-            
-            // Extract Trump-only dialogue and build word stream
-            const trumpTurns = turns.filter(turn => turn.speaker === 'Donald Trump');
-            const trumpOnlyText = trumpTurns.map(turn => turn.dialogueLines.join(' ')).join(' ');
-            
-            // Tokenize into words (split on whitespace)
-            const words = trumpOnlyText.split(/\s+/).filter(w => w.length > 0);
-            const totalWords = words.length;
-
-            if (totalWords === 0) {
-                return {
-                    mention_count: 0,
-                    mention_locations: [],
-                    trump_only_words: [],
-                    trump_only_text: '',
-                    debug: { terms, trump_turns: trumpTurns.length, total_words: 0 }
-                };
-            }
-
-            // Find all matches in Trump's dialogue
-            const mentionLocations = [];
-            let mentionCount = 0;
-            const trumpOnlyLower = trumpOnlyText.toLowerCase();
-
-            terms.forEach(term => {
-                const termLower = term.toLowerCase();
-                let pos = 0;
-                
-                while ((pos = trumpOnlyLower.indexOf(termLower, pos)) !== -1) {
-                    // Count words up to this position to get word index
-                    const textBeforeMatch = trumpOnlyText.substring(0, pos);
-                    const wordsBeforeMatch = textBeforeMatch.split(/\s+/).filter(w => w.length > 0);
-                    const wordIndex = wordsBeforeMatch.length;
-                    
-                    // Calculate normalized location (0..1) with clamping
-                    const location = Math.max(0, Math.min(1, wordIndex / Math.max(totalWords, 1)));
-                    
-                    mentionCount++;
-                    mentionLocations.push({
-                        location: location,
-                        position_word: wordIndex,
-                        total_words: totalWords,
-                        term: term,
-                        char_pos: pos  // Keep for backward compat during transition
-                    });
-                    
-                    pos += termLower.length;
-                }
-            });
-
-            return {
-                mention_count: mentionCount,
-                mention_locations: mentionLocations,
-                trump_only_words: words,
-                trump_only_text: trumpOnlyText,
-                debug: {
-                    terms: terms,
-                    trump_turns: trumpTurns.length,
-                    total_words: totalWords,
-                    matches_found: mentionCount
-                }
-            };
-        }
 
         // Parse speakers from text
         function parseSpeakers(text) {
@@ -2070,7 +1784,7 @@
 
             try {
                 // Trigger scraper via API
-                const response = await fetch('/api/scraper/refresh', {
+                const response = await fetch(`${API_BASE}/api/scraper/refresh`, {
                     method: 'POST'
                 });
 
@@ -2094,7 +1808,7 @@
                 btn.textContent = 'Running...';
                 const pollInterval = setInterval(async () => {
                     try {
-                        const statusResponse = await fetch('/api/scraper/status');
+                        const statusResponse = await fetch(`${API_BASE}/api/scraper/status`);
                         const status = await statusResponse.json();
 
                         console.log('Scraper status:', status);
