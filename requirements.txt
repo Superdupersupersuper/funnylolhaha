@@ -3,7 +3,7 @@
 # Flask and extensions
 flask>=2.3.0
 flask-cors>=4.0.0
-flask-compress>=1.14
+gunicorn>=21.0.0
 
 # Database
 # sqlite3 is built into Python
@@ -13,5 +13,5 @@ requests>=2.31.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
 
-# Optional but recommended
+# Optional (install if available)
 python-dateutil>=2.8.2
