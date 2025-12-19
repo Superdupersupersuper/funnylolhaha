@@ -55,6 +55,101 @@
             border-color: #3b82f6;
         }
 
+        /* Additional search terms (variants) */
+        .additional-terms {
+            margin-top: -4px;
+            margin-bottom: 12px;
+        }
+
+        .additional-terms-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+
+        .additional-terms-label {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        .additional-terms-clear {
+            background: transparent;
+            border: 1px solid #374151;
+            color: #9ca3af;
+            padding: 4px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .additional-terms-clear:hover {
+            border-color: #4b5563;
+            color: #e5e7eb;
+        }
+
+        .chips-input {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            width: 100%;
+            padding: 8px 10px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            cursor: text;
+        }
+
+        .chips-input:focus-within {
+            border-color: #3b82f6;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(59, 130, 246, 0.18);
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            color: #e5e7eb;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            line-height: 1;
+        }
+
+        .chip-remove {
+            background: transparent;
+            border: none;
+            color: #93c5fd;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0;
+        }
+
+        .chip-remove:hover {
+            color: #bfdbfe;
+        }
+
+        .chips-text-input {
+            flex: 1;
+            min-width: 220px;
+            border: none;
+            outline: none;
+            background: transparent;
+            color: #e5e7eb;
+            font-size: 13px;
+            padding: 4px 2px;
+        }
+
+        .chips-hint {
+            font-size: 11px;
+            color: #6b7280;
+            margin-top: 6px;
+        }
+
         .search-options {
             display: flex;
             gap: 20px;
@@ -491,6 +586,18 @@
                 ">🔍</button>
             </div>
 
+            <div class="additional-terms">
+                <div class="additional-terms-header">
+                    <span class="additional-terms-label">Also search for (optional variants):</span>
+                    <button class="additional-terms-clear" type="button" onclick="clearAdditionalSearchTerms()" title="Clear added variants">Clear</button>
+                </div>
+                <div class="chips-input" id="additionalTermsBox" onclick="focusAdditionalTermInput()">
+                    <div id="additionalTermsChips"></div>
+                    <input type="text" id="additionalTermInput" class="chips-text-input" placeholder="Add a variant and press Enter (e.g., auto pen, eighth war)" autocomplete="off">
+                </div>
+                <div class="chips-hint">Tip: add spacing/compound variants and special cases. These are OR’d with your main query.</div>
+            </div>
+
             <div class="search-options">
                 <div class="search-option">
                     <input type="checkbox" id="matchBeginning" checked>
@@ -669,6 +776,92 @@
         let locationChart = null;
         let allTranscripts = [];
         let transcriptsData = [];
+        let additionalSearchTerms = [];
+
+        function normalizeSearchTerm(term) {
+            return (term || '').trim().replace(/\s+/g, ' ');
+        }
+
+        function parseCommaSeparatedTerms(input) {
+            return (input || '')
+                .split(',')
+                .map(t => normalizeSearchTerm(t))
+                .filter(Boolean);
+        }
+
+        function getCombinedSearchTerms() {
+            const primary = parseCommaSeparatedTerms(document.getElementById('searchInput')?.value || '');
+            const extra = additionalSearchTerms.map(t => normalizeSearchTerm(t)).filter(Boolean);
+            const seen = new Set();
+            const combined = [];
+            [...primary, ...extra].forEach(t => {
+                const key = t.toLowerCase();
+                if (!key) return;
+                if (seen.has(key)) return;
+                seen.add(key);
+                combined.push(t);
+            });
+            return combined;
+        }
+
+        function renderAdditionalSearchTerms() {
+            const chips = document.getElementById('additionalTermsChips');
+            const clearBtn = document.querySelector('.additional-terms-clear');
+            if (!chips) return;
+
+            chips.innerHTML = additionalSearchTerms.map(term => {
+                const escaped = String(term)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+                const encoded = encodeURIComponent(term);
+                return `<span class="chip" title="Variant search term: ${escaped}">
+                    ${escaped}
+                    <button type="button" class="chip-remove" onclick="removeAdditionalSearchTerm('${encoded}')" aria-label="Remove ${escaped}" title="Remove">×</button>
+                </span>`;
+            }).join('');
+
+            if (clearBtn) clearBtn.style.visibility = additionalSearchTerms.length > 0 ? 'visible' : 'hidden';
+        }
+
+        function focusAdditionalTermInput() {
+            const input = document.getElementById('additionalTermInput');
+            if (input) input.focus();
+        }
+
+        function addAdditionalSearchTermsFromInput() {
+            const input = document.getElementById('additionalTermInput');
+            if (!input) return;
+            const raw = input.value || '';
+            const terms = parseCommaSeparatedTerms(raw);
+            if (terms.length === 0) return;
+
+            const existing = new Set(additionalSearchTerms.map(t => t.toLowerCase()));
+            terms.forEach(t => {
+                const key = t.toLowerCase();
+                if (!existing.has(key)) {
+                    additionalSearchTerms.push(t);
+                    existing.add(key);
+                }
+            });
+
+            input.value = '';
+            renderAdditionalSearchTerms();
+        }
+
+        function removeAdditionalSearchTerm(encodedTerm) {
+            const term = decodeURIComponent(encodedTerm);
+            const key = term.toLowerCase();
+            additionalSearchTerms = additionalSearchTerms.filter(t => t.toLowerCase() !== key);
+            renderAdditionalSearchTerms();
+        }
+
+        function clearAdditionalSearchTerms() {
+            additionalSearchTerms = [];
+            renderAdditionalSearchTerms();
+        }
 
         // Initialize charts
         function initCharts() {
@@ -921,7 +1114,7 @@
             console.log('displayTranscripts called with', transcripts.length, 'transcripts');
             const container = document.getElementById('transcriptsSection');
             console.log('Container element:', container);
-            const isSearching = document.getElementById('searchInput').value.trim().length > 0;
+            const isSearching = getCombinedSearchTerms().length > 0;
 
             if (transcripts.length === 0) {
                 container.innerHTML = '<div class="empty-state"><h3>No transcripts found</h3><p>Try adjusting your search or filters.</p></div>';
@@ -975,7 +1168,7 @@
 
                     // Step 2: Make search terms BOLD and BLUE (BEFORE converting newlines)
                     if (isSearching && mentions.length > 0) {
-                        const searchTerms = document.getElementById('searchInput').value.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
+                        const searchTerms = getCombinedSearchTerms().map(t => t.toLowerCase());
                         searchTerms.forEach(term => {
                             // Create case-insensitive regex for the FULL word
                             const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1071,12 +1264,13 @@
         async function performSearch() {
             const searchBtn = document.getElementById('searchBtn');
             const searchInput = document.getElementById('searchInput').value.trim();
+            const combinedTerms = getCombinedSearchTerms();
 
             // Visual feedback - show loading
             searchBtn.textContent = '⏳';
             searchBtn.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
 
-            if (!searchInput) {
+            if (combinedTerms.length === 0) {
                 // Apply current filters
                 applyFilters();
                 document.getElementById('statsSection').style.display = 'none';
@@ -1098,7 +1292,7 @@
             // Simulate async for smooth UX
             await new Promise(resolve => setTimeout(resolve, 100));
 
-            const terms = searchInput.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
+            const terms = combinedTerms.map(t => t.toLowerCase());
             const startDate = new Date(document.getElementById('startDate').value);
             const endDate = new Date(document.getElementById('endDate').value);
             const minWordCount = parseInt(document.getElementById('minWordCount').value) || 0;
@@ -1251,9 +1445,10 @@
 
                 // Show message if no results
                 if (results.length === 0) {
+                    const searchedFor = combinedTerms.join(', ');
                     document.getElementById('transcriptsSection').innerHTML = `
                         <div class="empty-state">
-                            <h3>No results found for "${searchInput}"</h3>
+                            <h3>No results found for "${searchedFor}"</h3>
                             <p>Try different keywords or adjust your filters</p>
                             <p style="font-size: 12px; color: #6b7280; margin-top: 10px;">
                                 Searched in ${transcriptsData.length} transcripts from ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]}
@@ -1622,7 +1817,7 @@
             }, 1000);
 
             // If there's a search query, also perform search
-            if (document.getElementById('searchInput').value.trim()) {
+            if (getCombinedSearchTerms().length > 0) {
                 performSearch();
             }
         }
@@ -1662,6 +1857,17 @@
             if (e.key === 'Enter') performSearch();
         });
         // Removed auto-search on input - only search on button click or Enter key
+        document.getElementById('additionalTermInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ',') {
+                e.preventDefault();
+                addAdditionalSearchTermsFromInput();
+                return;
+            }
+            if (e.key === 'Backspace' && (!e.target.value || e.target.value.length === 0) && additionalSearchTerms.length > 0) {
+                additionalSearchTerms.pop();
+                renderAdditionalSearchTerms();
+            }
+        });
 
         // Load transcript data from API (FULL transcripts from database)
         // Use production Render API by default, fallback to localhost for development
@@ -1864,6 +2070,7 @@
         // Initialize
         window.addEventListener('DOMContentLoaded', async () => {
             initCharts();
+            renderAdditionalSearchTerms();
 
             // ALWAYS load from API - NO CACHE
             console.log('🔄 Loading transcripts from API (cache disabled)...');
