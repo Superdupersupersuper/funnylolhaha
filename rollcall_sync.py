@@ -604,6 +604,11 @@ class RollCallIncrementalSync:
                 # Find all transcript links (use Playwright if available, else Selenium)
                 try:
                     if self.playwright_page:
+                        # Wait for page to load and elements to appear
+                        try:
+                            self.playwright_page.wait_for_selector("a[href*='/factbase/trump/transcript/'], a[href*='/transcript/']", timeout=10000)
+                        except:
+                            pass  # Continue even if timeout
                         # Playwright approach - try both URL patterns
                         elements1 = self.playwright_page.query_selector_all("a[href*='/factbase/trump/transcript/']")
                         elements2 = self.playwright_page.query_selector_all("a[href*='/transcript/']")
