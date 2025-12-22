@@ -781,7 +781,12 @@ class RollCallIncrementalSync:
             return urls_with_dates
         
         except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
             logger.error(f"Error during URL discovery: {e}")
+            logger.error(error_trace)
+            self._diagnostics.append(f"Exception during URL discovery: {str(e)}")
+            self._diagnostics.append(f"Traceback: {error_trace[:500]}")
             return []
     
     def _get_urls_to_scrape(self, discovered_urls: List[Tuple[str, datetime]]) -> List[Tuple[str, datetime]]:
