@@ -573,14 +573,21 @@ class RollCallIncrementalSync:
                     if self.playwright_page:
                         # Playwright approach
                         elements = self.playwright_page.query_selector_all("a[href*='/transcript/']")
+                        logger.info(f"Found {len(elements)} transcript link elements (Playwright)")
+                        sample_hrefs = []
                         for elem in elements:
                             href = elem.get_attribute('href')
                             if not href or '/transcript/' not in href:
                                 continue
                             
+                            if len(sample_hrefs) < 5:
+                                sample_hrefs.append(href)
+                            
                             # Extract date from URL
                             date_str = extract_date_from_url(href)
                             if not date_str:
+                                if len(sample_hrefs) <= 3:
+                                    logger.debug(f"Could not extract date from URL: {href}")
                                 continue
                             
                             try:
@@ -595,20 +602,34 @@ class RollCallIncrementalSync:
                                     url_date_tuple = (href, transcript_date)
                                     if url_date_tuple not in urls_with_dates:
                                         urls_with_dates.append(url_date_tuple)
+                                elif len(sample_hrefs) <= 3:
+                                    logger.debug(f"URL date {transcript_date.strftime('%Y-%m-%d')} outside range {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}: {href}")
                             
                             except Exception as parse_err:
+                                if len(sample_hrefs) <= 3:
+                                    logger.debug(f"Date parse error for {href}: {parse_err}")
                                 continue
+                        
+                        if scroll_attempts == 1 and len(sample_hrefs) > 0:
+                            logger.info(f"Sample URLs found: {sample_hrefs[:3]}")
                     else:
                         # Selenium approach
                         elements = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='/transcript/']")
+                        logger.info(f"Found {len(elements)} transcript link elements (Selenium)")
+                        sample_hrefs = []
                         for elem in elements:
                             href = elem.get_attribute('href')
                             if not href or '/transcript/' not in href:
                                 continue
                             
+                            if len(sample_hrefs) < 5:
+                                sample_hrefs.append(href)
+                            
                             # Extract date from URL
                             date_str = extract_date_from_url(href)
                             if not date_str:
+                                if len(sample_hrefs) <= 3:
+                                    logger.debug(f"Could not extract date from URL: {href}")
                                 continue
                             
                             try:
@@ -623,12 +644,21 @@ class RollCallIncrementalSync:
                                     url_date_tuple = (href, transcript_date)
                                     if url_date_tuple not in urls_with_dates:
                                         urls_with_dates.append(url_date_tuple)
+                                elif len(sample_hrefs) <= 3:
+                                    logger.debug(f"URL date {transcript_date.strftime('%Y-%m-%d')} outside range {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}: {href}")
                             
                             except Exception as parse_err:
+                                if len(sample_hrefs) <= 3:
+                                    logger.debug(f"Date parse error for {href}: {parse_err}")
                                 continue
+                        
+                        if scroll_attempts == 1 and len(sample_hrefs) > 0:
+                            logger.info(f"Sample URLs found: {sample_hrefs[:3]}")
                 
                 except Exception as e:
-                    logger.warning(f"Error finding elements: {e}")
+                    logger.error(f"Error finding elements: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
                 
                 # Check if we found new URLs
                 if len(urls_with_dates) == last_count:
