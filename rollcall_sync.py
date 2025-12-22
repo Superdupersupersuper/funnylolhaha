@@ -424,7 +424,7 @@ class RollCallIncrementalSync:
             # Strategy 2: Standard Chrome initialization (assumes ChromeDriver in PATH)
             if not driver_initialized:
                 try:
-            self.driver = webdriver.Chrome(options=options)
+                    self.driver = webdriver.Chrome(options=options)
                     driver_initialized = True
                     logger.info("Chrome driver initialized via standard method")
                 except Exception as std_err:
