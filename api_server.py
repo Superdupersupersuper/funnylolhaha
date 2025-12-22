@@ -515,9 +515,9 @@ def clean_december_transcripts_api():
             'message': str(e)
         }), 500
 
-@app.route('/api/scraper/refresh', methods=['POST'])
+@app.route('/api/scraper/refresh', methods=['POST', 'GET'])
 def refresh_scraper():
-    """Trigger scraper to get new transcripts"""
+    """Trigger scraper to get new transcripts (accepts both POST and GET for testing)"""
     global scraper_status
 
     if scraper_status['running']:
