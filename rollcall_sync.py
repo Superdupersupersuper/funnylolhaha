@@ -489,18 +489,30 @@ class RollCallIncrementalSync:
             # Load search page (use Playwright if available, else Selenium)
             if self.playwright_page:
                 self.playwright_page.goto(self.base_url, wait_until='networkidle', timeout=60000)
-                time.sleep(2)
+                time.sleep(5)  # Wait longer for JavaScript to load content
                 current_url = self.playwright_page.url
                 page_title = self.playwright_page.title()
-                logger.info(f"Playwright loaded page: {current_url}, title: {page_title}")
-                self._diagnostics.append(f"Page loaded: {current_url[:100]}")
+                page_content_length = len(self.playwright_page.content())
+                logger.info(f"Playwright loaded page: {current_url}, title: {page_title}, content length: {page_content_length}")
+                self._diagnostics.append(f"Page loaded: {current_url[:100]}, content: {page_content_length} chars")
+                
+                # Test if we can find any links at all
+                test_links = self.playwright_page.query_selector_all("a")
+                logger.info(f"Found {len(test_links)} total links on page")
+                self._diagnostics.append(f"Total links found: {len(test_links)}")
             else:
                 self.driver.get(self.base_url)
-                time.sleep(5)
+                time.sleep(10)  # Wait longer for JavaScript to load content
                 current_url = self.driver.current_url
                 page_title = self.driver.title
-                logger.info(f"Selenium loaded page: {current_url}, title: {page_title}")
-                self._diagnostics.append(f"Page loaded: {current_url[:100]}")
+                page_source_length = len(self.driver.page_source)
+                logger.info(f"Selenium loaded page: {current_url}, title: {page_title}, source length: {page_source_length}")
+                self._diagnostics.append(f"Page loaded: {current_url[:100]}, source: {page_source_length} chars")
+                
+                # Test if we can find any links at all
+                test_links = self.driver.find_elements(By.TAG_NAME, "a")
+                logger.info(f"Found {len(test_links)} total links on page")
+                self._diagnostics.append(f"Total links found: {len(test_links)}")
             
             # Select "Sort By: Newest" - try multiple strategies
             sort_selected = False
