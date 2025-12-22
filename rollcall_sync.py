@@ -488,11 +488,19 @@ class RollCallIncrementalSync:
         try:
             # Load search page (use Playwright if available, else Selenium)
             if self.playwright_page:
-                self.playwright_page.goto(self.base_url, wait_until='networkidle')
+                self.playwright_page.goto(self.base_url, wait_until='networkidle', timeout=60000)
                 time.sleep(2)
+                current_url = self.playwright_page.url
+                page_title = self.playwright_page.title()
+                logger.info(f"Playwright loaded page: {current_url}, title: {page_title}")
+                self._diagnostics.append(f"Page loaded: {current_url[:100]}")
             else:
                 self.driver.get(self.base_url)
-            time.sleep(5)
+                time.sleep(5)
+                current_url = self.driver.current_url
+                page_title = self.driver.title
+                logger.info(f"Selenium loaded page: {current_url}, title: {page_title}")
+                self._diagnostics.append(f"Page loaded: {current_url[:100]}")
             
             # Select "Sort By: Newest" - try multiple strategies
             sort_selected = False
