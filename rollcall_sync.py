@@ -424,7 +424,7 @@ class RollCallIncrementalSync:
             # Strategy 2: Standard Chrome initialization (assumes ChromeDriver in PATH)
             if not driver_initialized:
                 try:
-            self.driver = webdriver.Chrome(options=options)
+                    self.driver = webdriver.Chrome(options=options)
                     driver_initialized = True
                     logger.info("Chrome driver initialized via standard method")
                 except Exception as std_err:
@@ -489,30 +489,18 @@ class RollCallIncrementalSync:
             # Load search page (use Playwright if available, else Selenium)
             if self.playwright_page:
                 self.playwright_page.goto(self.base_url, wait_until='networkidle', timeout=60000)
-                time.sleep(5)  # Wait longer for JavaScript to load content
+                time.sleep(2)
                 current_url = self.playwright_page.url
                 page_title = self.playwright_page.title()
-                page_content_length = len(self.playwright_page.content())
-                logger.info(f"Playwright loaded page: {current_url}, title: {page_title}, content length: {page_content_length}")
-                self._diagnostics.append(f"Page loaded: {current_url[:100]}, content: {page_content_length} chars")
-                
-                # Test if we can find any links at all
-                test_links = self.playwright_page.query_selector_all("a")
-                logger.info(f"Found {len(test_links)} total links on page")
-                self._diagnostics.append(f"Total links found: {len(test_links)}")
+                logger.info(f"Playwright loaded page: {current_url}, title: {page_title}")
+                self._diagnostics.append(f"Page loaded: {current_url[:100]}")
             else:
-            self.driver.get(self.base_url)
-                time.sleep(10)  # Wait longer for JavaScript to load content
+                self.driver.get(self.base_url)
+                time.sleep(5)
                 current_url = self.driver.current_url
                 page_title = self.driver.title
-                page_source_length = len(self.driver.page_source)
-                logger.info(f"Selenium loaded page: {current_url}, title: {page_title}, source length: {page_source_length}")
-                self._diagnostics.append(f"Page loaded: {current_url[:100]}, source: {page_source_length} chars")
-                
-                # Test if we can find any links at all
-                test_links = self.driver.find_elements(By.TAG_NAME, "a")
-                logger.info(f"Found {len(test_links)} total links on page")
-                self._diagnostics.append(f"Total links found: {len(test_links)}")
+                logger.info(f"Selenium loaded page: {current_url}, title: {page_title}")
+                self._diagnostics.append(f"Page loaded: {current_url[:100]}")
             
             # Select "Sort By: Newest" - try multiple strategies
             sort_selected = False
@@ -543,14 +531,14 @@ class RollCallIncrementalSync:
             # Selenium approach for sort selection
             if not sort_selected:
                 # Strategy 1: Try standard select element by name
-            try:
-                from selenium.webdriver.support.ui import Select
-                sort_dropdown = Select(self.driver.find_element(By.NAME, 'sort'))
-                sort_dropdown.select_by_visible_text('Sort By: Newest')
+                try:
+                    from selenium.webdriver.support.ui import Select
+                    sort_dropdown = Select(self.driver.find_element(By.NAME, 'sort'))
+                    sort_dropdown.select_by_visible_text('Sort By: Newest')
                     selected_text = sort_dropdown.first_selected_option.text
                     sort_selected = True
                     logger.info(f"Sort selection strategy 1 succeeded: {selected_text}")
-            except Exception as e:
+                except Exception as e:
                     logger.warning(f"Sort strategy 1 (by name) failed: {e}")
                 
                 # Strategy 2: Try finding select/combobox by text content
@@ -639,10 +627,10 @@ class RollCallIncrementalSync:
                         if scroll_attempts == 1:
                             self._diagnostics.append(f"Playwright found {len(elements1)} with /factbase/trump/transcript/ and {len(elements2)} with /transcript/, {len(elements)} total")
                         sample_hrefs = []
-                    for elem in elements:
+                        for elem in elements:
                             # Playwright ElementHandle.get_attribute() method
                             try:
-                        href = elem.get_attribute('href')
+                                href = elem.get_attribute('href')
                             except Exception as attr_err:
                                 # Fallback: use evaluate to get href
                                 try:
@@ -651,31 +639,31 @@ class RollCallIncrementalSync:
                                     logger.debug(f"Could not get href: attr_err={attr_err}, eval_err={eval_err}")
                                     continue
                             
-                        if not href or '/transcript/' not in href:
-                            continue
-                        
+                            if not href or '/transcript/' not in href:
+                                continue
+                            
                             if len(sample_hrefs) < 5:
                                 sample_hrefs.append(href)
                             
-                        # Extract date from URL
-                        date_str = extract_date_from_url(href)
-                        if not date_str:
+                            # Extract date from URL
+                            date_str = extract_date_from_url(href)
+                            if not date_str:
                                 if len(sample_hrefs) <= 3:
                                     logger.debug(f"Could not extract date from URL: {href}")
-                            continue
-                        
-                        try:
-                            transcript_date = datetime.strptime(date_str, '%Y-%m-%d')
+                                continue
                             
+                            try:
+                                transcript_date = datetime.strptime(date_str, '%Y-%m-%d')
+                                
                                 # Track the oldest date we've seen
                                 if min_date_seen is None or transcript_date < min_date_seen:
                                     min_date_seen = transcript_date
                                 
-                            # Only collect transcripts in our sync window
-                            if start_date <= transcript_date <= end_date:
-                                url_date_tuple = (href, transcript_date)
-                                if url_date_tuple not in urls_with_dates:
-                                    urls_with_dates.append(url_date_tuple)
+                                # Only collect transcripts in our sync window
+                                if start_date <= transcript_date <= end_date:
+                                    url_date_tuple = (href, transcript_date)
+                                    if url_date_tuple not in urls_with_dates:
+                                        urls_with_dates.append(url_date_tuple)
                                 elif len(sample_hrefs) <= 3:
                                     logger.debug(f"URL date {transcript_date.strftime('%Y-%m-%d')} outside range {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}: {href}")
                             
@@ -734,11 +722,11 @@ class RollCallIncrementalSync:
                                         urls_with_dates.append(url_date_tuple)
                                 elif len(sample_hrefs) <= 3:
                                     logger.debug(f"URL date {transcript_date.strftime('%Y-%m-%d')} outside range {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}: {href}")
-                        
-                        except Exception as parse_err:
+                            
+                            except Exception as parse_err:
                                 if len(sample_hrefs) <= 3:
                                     logger.debug(f"Date parse error for {href}: {parse_err}")
-                            continue
+                                continue
                         
                         if scroll_attempts == 1 and len(sample_hrefs) > 0:
                             logger.info(f"Sample URLs found: {sample_hrefs[:3]}")
@@ -764,7 +752,7 @@ class RollCallIncrementalSync:
                         else:
                             logger.warning(f"No new URLs after 10 scrolls and no dates seen yet - page may not be loading correctly")
                             self._diagnostics.append("Stopped: no dates seen after 10 scrolls")
-                        break
+                            break
                 else:
                     no_new_count = 0
                     last_count = len(urls_with_dates)
@@ -782,8 +770,8 @@ class RollCallIncrementalSync:
                     self.playwright_page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     time.sleep(1.5)
                 else:
-                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(1.5)
+                    self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(1.5)
             
             logger.info(f"Discovery complete: {len(urls_with_dates)} URLs in range")
             return urls_with_dates
@@ -868,15 +856,15 @@ class RollCallIncrementalSync:
                 if not self.driver:
                     logger.error("No browser driver available for parsing")
                     return None
-            self.driver.get(url)
-            wait = WebDriverWait(self.driver, 20)
+                self.driver.get(url)
+                wait = WebDriverWait(self.driver, 20)
                 page_source = self.driver.page_source
                 # Extract title (Selenium)
-            try:
-                title_elem = wait.until(EC.presence_of_element_located((By.TAG_NAME, 'h1')))
-                title = title_elem.text.strip()
-            except:
-                title = url.split('/')[-1].replace('-', ' ').title()
+                try:
+                    title_elem = wait.until(EC.presence_of_element_located((By.TAG_NAME, 'h1')))
+                    title = title_elem.text.strip()
+                except:
+                    title = url.split('/')[-1].replace('-', ' ').title()
             
             # Determine speech type
             speech_type = 'Speech'
@@ -1067,23 +1055,16 @@ class RollCallIncrementalSync:
             summary.start_date = start_date.strftime('%Y-%m-%d')
             summary.end_date = end_date.strftime('%Y-%m-%d')
             
-            # Step 2: Initialize browser
+            # Step 2: Initialize Selenium
             self._report_progress("Initializing browser...")
             if not self._init_driver():
-                error_msg = "Failed to initialize browser"
+                error_msg = "Failed to initialize Chrome driver"
                 if self._last_error:
                     error_msg += f": {self._last_error}"
-                if self._diagnostics:
-                    error_msg += f" (Diagnostics: {'; '.join(self._diagnostics)})"
                 summary.error = error_msg
                 logger.error(f"Sync failed: {error_msg}")
                 self._report_progress(f"Error: {error_msg}")
                 return summary
-            
-            # Verify browser is actually initialized
-            browser_type = "Playwright" if self.playwright_page else ("Selenium" if self.driver else "None")
-            logger.info(f"Browser initialized: {browser_type}")
-            self._diagnostics.append(f"Browser type: {browser_type}")
             
             # Step 3: Discover URLs in range
             self._report_progress(f"Discovering transcripts from {summary.start_date} to {summary.end_date}...")
@@ -1095,15 +1076,10 @@ class RollCallIncrementalSync:
                 if self._last_error:
                     error_msg += f" (Browser error: {self._last_error})"
                 if self._diagnostics:
-                    # Include ALL diagnostics, not just the last 10
-                    error_msg += f" (Diagnostics: {'; '.join(self._diagnostics)})"
-                else:
-                    error_msg += " (No diagnostics available - page may not have loaded)"
+                    error_msg += f" (Diagnostics: {'; '.join(self._diagnostics[-5:])})"
                 self._report_progress(error_msg)
                 summary.error = error_msg
                 logger.warning(error_msg)
-                if self._diagnostics:
-                    logger.warning(f"Full diagnostics ({len(self._diagnostics)} items): {self._diagnostics}")
                 return summary
             
             # Step 4: Filter to URLs that need scraping
@@ -1208,14 +1184,14 @@ class RollCallIncrementalSync:
             
             try:
                 if hasattr(self, 'driver') and self.driver:
-                try:
-                    self.driver.quit()
+                    try:
+                        self.driver.quit()
                     except:
                         pass
             except AttributeError:
                 pass
-                except:
-                    pass
+            except:
+                pass
         
         return summary
 
