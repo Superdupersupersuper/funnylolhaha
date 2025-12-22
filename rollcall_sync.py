@@ -326,6 +326,7 @@ class RollCallIncrementalSync:
         self.base_url = 'https://rollcall.com/factbase/trump/search/'
         self.delay = 1.5  # Seconds between requests
         self._last_error = None  # Store last error for debugging
+        self._diagnostics = []  # Store diagnostic messages
         
     def _report_progress(self, message: str, **counts):
         """Report progress to callback if set"""
@@ -662,6 +663,8 @@ class RollCallIncrementalSync:
                             except:
                                 continue
                         logger.info(f"Found {len(elements)} transcript link elements (Selenium)")
+                        if scroll_attempts == 1:
+                            self._diagnostics.append(f"Selenium found {len(elements1)} with /factbase/trump/transcript/ and {len(elements2)} with /transcript/, {len(elements)} total after dedup")
                         sample_hrefs = []
                         for elem in elements:
                             href = elem.get_attribute('href')
@@ -1038,6 +1041,8 @@ class RollCallIncrementalSync:
                 error_msg = "No transcripts discovered in date range"
                 if self._last_error:
                     error_msg += f" (Browser error: {self._last_error})"
+                if self._diagnostics:
+                    error_msg += f" (Diagnostics: {'; '.join(self._diagnostics[-5:])})"
                 self._report_progress(error_msg)
                 summary.error = error_msg
                 logger.warning(error_msg)
