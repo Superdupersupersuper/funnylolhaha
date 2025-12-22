@@ -1040,6 +1040,10 @@ class RollCallIncrementalSync:
         Returns:
             SyncSummary with results
         """
+        # Reset diagnostics for this sync
+        self._diagnostics = []
+        self._diagnostics.append("run_incremental_sync started")
+        
         summary = SyncSummary()
         
         # Initialize normalization stats tracker
