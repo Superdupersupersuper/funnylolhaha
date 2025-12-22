@@ -540,7 +540,11 @@ def refresh_scraper():
 @app.route('/api/scraper/status', methods=['GET'])
 def scraper_status_endpoint():
     """Get scraper status"""
-    return jsonify(scraper_status)
+    # Include last error details if available
+    status = scraper_status.copy()
+    if 'last_run' in status and status['last_run'] and 'error' in status['last_run']:
+        status['last_error'] = status['last_run']['error']
+    return jsonify(status)
 
 @app.route('/api/speech-types', methods=['GET'])
 def get_speech_types():

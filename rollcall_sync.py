@@ -665,7 +665,7 @@ class RollCallIncrementalSync:
                         sample_hrefs = []
                         for elem in elements:
                             href = elem.get_attribute('href')
-                            if not href or '/transcript/' not in href:
+                            if not href or ('/transcript/' not in href and '/factbase/trump/transcript/' not in href):
                                 continue
                             
                             if len(sample_hrefs) < 5:
