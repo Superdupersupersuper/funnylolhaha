@@ -390,21 +390,75 @@ class RollCallIncrementalSync:
             self.driver.get(self.base_url)
             time.sleep(5)
             
-            # Select "Sort By: Newest"
+            # Select "Sort By: Newest" - try multiple strategies
+            sort_selected = False
+            selected_text = "Unknown"
+            
+            # Strategy 1: Try standard select element by name
             try:
                 from selenium.webdriver.support.ui import Select
                 sort_dropdown = Select(self.driver.find_element(By.NAME, 'sort'))
                 sort_dropdown.select_by_visible_text('Sort By: Newest')
-                logger.info("Selected 'Sort By: Newest'")
-                time.sleep(3)
+                selected_text = sort_dropdown.first_selected_option.text
+                sort_selected = True
+                logger.info(f"Sort selection strategy 1 succeeded: {selected_text}")
             except Exception as e:
-                logger.warning(f"Could not set sort order: {e}")
+                logger.warning(f"Sort strategy 1 (by name) failed: {e}")
+            
+            # Strategy 2: Try finding select/combobox by text content
+            if not sort_selected:
+                try:
+                    from selenium.webdriver.support.ui import Select
+                    # Look for select elements containing "Sort By"
+                    selects = self.driver.find_elements(By.TAG_NAME, 'select')
+                    for select_elem in selects:
+                        try:
+                            select = Select(select_elem)
+                            options = [opt.text for opt in select.options]
+                            if any('newest' in opt.lower() for opt in options):
+                                # Found the sort dropdown
+                                for opt in select.options:
+                                    if 'newest' in opt.text.lower():
+                                        select.select_by_visible_text(opt.text)
+                                        selected_text = select.first_selected_option.text
+                                        sort_selected = True
+                                        logger.info(f"Sort selection strategy 2 succeeded: {selected_text}")
+                                        break
+                                if sort_selected:
+                                    break
+                        except:
+                            continue
+                except Exception as e:
+                    logger.warning(f"Sort strategy 2 (by text search) failed: {e}")
+            
+            # Strategy 3: Try clicking on option elements directly
+            if not sort_selected:
+                try:
+                    # Find option elements containing "newest"
+                    options = self.driver.find_elements(By.TAG_NAME, 'option')
+                    for option in options:
+                        if 'newest' in option.text.lower():
+                            option.click()
+                            selected_text = option.text
+                            sort_selected = True
+                            logger.info(f"Sort selection strategy 3 succeeded: {selected_text}")
+                            break
+                except Exception as e:
+                    logger.warning(f"Sort strategy 3 (direct click) failed: {e}")
+            
+            # Report sort status
+            if sort_selected:
+                self._report_progress(f"Sort order set: {selected_text}")
+                time.sleep(3)  # Let page reload
+            else:
+                self._report_progress("Warning: Could not set sort order, proceeding anyway")
             
             urls_with_dates = []
             last_count = 0
             no_new_count = 0
             scroll_attempts = 0
             max_scroll_attempts = 200
+            min_date_seen = None  # Track the oldest date we've encountered
             
             self._report_progress(f"Scrolling to find transcripts from {start_date.strftime('%Y-%m-%d')} onwards...")
             
@@ -428,16 +482,15 @@ class RollCallIncrementalSync:
                         try:
                             transcript_date = datetime.strptime(date_str, '%Y-%m-%d')
                             
+                            # Track the oldest date we've seen
+                            if min_date_seen is None or transcript_date < min_date_seen:
+                                min_date_seen = transcript_date
+                            
                             # Only collect transcripts in our sync window
                             if start_date <= transcript_date <= end_date:
                                 url_date_tuple = (href, transcript_date)
                                 if url_date_tuple not in urls_with_dates:
                                     urls_with_dates.append(url_date_tuple)
-                            
-                            # Stop scrolling if we've gone past our start date
-                            elif transcript_date < start_date:
-                                logger.info(f"Reached transcripts older than start date, stopping scroll")
-                                return urls_with_dates
                         
                         except Exception as parse_err:
                             continue
@@ -448,8 +501,12 @@ class RollCallIncrementalSync:
                 # Check if we found new URLs
                 if len(urls_with_dates) == last_count:
                     no_new_count += 1
+                    # Stop if: (1) we've seen dates older than start_date AND (2) no new URLs for 10 scrolls
                     if no_new_count >= 10:
-                        logger.info(f"No new URLs in range after 10 scrolls, stopping")
+                        if min_date_seen and min_date_seen < start_date:
+                            logger.info(f"No new URLs after 10 scrolls and reached dates before {start_date.strftime('%Y-%m-%d')}, stopping")
+                        else:
+                            logger.info(f"No new URLs after 10 scrolls, stopping")
                         break
                 else:
                     no_new_count = 0
@@ -457,7 +514,11 @@ class RollCallIncrementalSync:
                 
                 # Progress update every 10 scrolls
                 if scroll_attempts % 10 == 0:
-                    self._report_progress(f"Scrolling... found {len(urls_with_dates)} URLs in range", discovered=len(urls_with_dates))
+                    min_date_str = min_date_seen.strftime('%Y-%m-%d') if min_date_seen else 'N/A'
+                    self._report_progress(
+                        f"Scrolling... found {len(urls_with_dates)} URLs (oldest: {min_date_str})", 
+                        discovered=len(urls_with_dates)
+                    )
                 
                 # Scroll down
                 self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -840,4 +901,7 @@ if __name__ == '__main__':
     if summary.error:
         print(f"\nError: {summary.error}")
     print("="*80)
+
+
+
 

@@ -355,14 +355,26 @@ def extract_date_from_url(url: str) -> Optional[str]:
     """
     Extract date from RollCall URL
     
+    Supports multiple formats:
+    - Month name with various separators: -december-19-2025, =december-19-2025, /december-19-2025
+    - ISO format with various separators: -2025-12-19, =2025-12-19, /2025-12-19
+    - Query string parameters: ?date=december-19-2025, &d=2025-12-19
+    
     Args:
         url: RollCall transcript URL
     
     Returns:
         Date string in YYYY-MM-DD format, or None if not found
     """
-    # Pattern 1: month-day-year (e.g., january-7-2025)
-    month_pattern = r'-(january|february|march|april|may|june|july|august|september|october|november|december)-(\d{1,2})-(\d{4})'
+    month_map = {
+        'january': 1, 'february': 2, 'march': 3, 'april': 4,
+        'may': 5, 'june': 6, 'july': 7, 'august': 8,
+        'september': 9, 'october': 10, 'november': 11, 'december': 12
+    }
+    
+    # Pattern 1: month-day-year with flexible separators (e.g., -january-7-2025, =december-19-2025)
+    # Match any non-alphanumeric separator before month name
+    month_pattern = r'[-_=/&?](january|february|march|april|may|june|july|august|september|october|november|december)[-_=/](\d{1,2})[-_=/](\d{4})'
     match = re.search(month_pattern, url, re.IGNORECASE)
     
     if match:
@@ -370,19 +382,33 @@ def extract_date_from_url(url: str) -> Optional[str]:
         day = int(match.group(2))
         year = int(match.group(3))
         
-        month_map = {
-            'january': 1, 'february': 2, 'march': 3, 'april': 4,
-            'may': 5, 'june': 6, 'july': 7, 'august': 8,
-            'september': 9, 'october': 10, 'november': 11, 'december': 12
-        }
+        month = month_map.get(month_name)
+        if month:
+            return f"{year:04d}-{month:02d}-{day:02d}"
+    
+    # Pattern 2: YYYY-MM-DD with flexible separators
+    date_pattern = r'[-_=/&?](\d{4})[-_=/](\d{2})[-_=/](\d{2})'
+    match = re.search(date_pattern, url)
+    
+    if match:
+        return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+    
+    # Pattern 3: Query string parameters like ?date=december-19-2025 or &date=2025-12-19
+    query_month_pattern = r'[?&](?:date|d)=(january|february|march|april|may|june|july|august|september|october|november|december)[-_](\d{1,2})[-_](\d{4})'
+    match = re.search(query_month_pattern, url, re.IGNORECASE)
+    
+    if match:
+        month_name = match.group(1).lower()
+        day = int(match.group(2))
+        year = int(match.group(3))
         
         month = month_map.get(month_name)
         if month:
             return f"{year:04d}-{month:02d}-{day:02d}"
     
-    # Pattern 2: YYYY-MM-DD
-    date_pattern = r'-(\d{4})-(\d{2})-(\d{2})'
-    match = re.search(date_pattern, url)
+    # Pattern 4: Query string ISO format like ?date=2025-12-19
+    query_iso_pattern = r'[?&](?:date|d)=(\d{4})[-_](\d{2})[-_](\d{2})'
+    match = re.search(query_iso_pattern, url)
     
     if match:
         return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
