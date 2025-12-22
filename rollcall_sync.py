@@ -359,9 +359,9 @@ class RollCallIncrementalSync:
         conn.close()
         
         if max_date_str:
-            # Start from 1 day before max date to be safe
+            # Start from the day after max date to get new transcripts
             max_date = datetime.strptime(max_date_str, '%Y-%m-%d')
-            start_date = max_date - timedelta(days=1)
+            start_date = max_date + timedelta(days=1)
         else:
             # No valid transcripts, start from Sept 2024
             start_date = datetime(2024, 9, 1)
