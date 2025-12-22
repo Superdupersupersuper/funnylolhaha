@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Sync</title>
+</head>
+<body>
+    <h1>Testing Sync</h1>
+    <button onclick="triggerSync()">Trigger Sync</button>
+    <div id="status"></div>
+    
+    <script>
+        async function triggerSync() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = 'Triggering sync...';
+            
+            try {
+                const response = await fetch('/api/scraper/refresh', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                statusDiv.textContent = 'Response: ' + JSON.stringify(data, null, 2);
+                
+                // Poll status
+                setTimeout(() => {
+                    checkStatus();
+                }, 2000);
+            } catch (error) {
+                statusDiv.textContent = 'Error: ' + error.message;
+            }
+        }
+        
+        async function checkStatus() {
+            const statusDiv = document.getElementById('status');
+            try {
+                const response = await fetch('/api/scraper/status');
+                const data = await response.json();
+                statusDiv.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                
+                if (data.running) {
+                    setTimeout(() => checkStatus(), 2000);
+                }
+            } catch (error) {
+                statusDiv.textContent = 'Status Error: ' + error.message;
+            }
+        }
+        
+        // Auto-trigger on load
+        window.addEventListener('load', () => {
+            setTimeout(triggerSync, 1000);
+        });
+    </script>
+</body>
+</html>
+
