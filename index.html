@@ -1816,12 +1816,58 @@
             ? 'http://localhost:5001' 
             : 'https://funnylolhaha.onrender.com';
         const API_URL = `${API_BASE}/api/transcripts`;
+        const API_METADATA_URL = `${API_BASE}/api/transcripts/metadata`;
 
-        // Load transcript data from API
+        // Load transcript data from API (use metadata endpoint first for speed)
         async function loadStaticData() {
             try {
                 console.log('📡 Loading transcripts from API...');
-                const response = await fetch(API_URL);
+                // Try metadata endpoint first (much faster, no full text)
+                let response;
+                try {
+                    response = await fetch(API_METADATA_URL, {
+                        signal: AbortSignal.timeout(10000) // 10 second timeout
+                    });
+                    if (response.ok) {
+                        const metadata = await response.json();
+                        console.log(`✅ Loaded ${metadata.length} transcript metadata entries`);
+                        // If we have metadata, fetch full data in background
+                        if (metadata.length > 0) {
+                            // Load full data asynchronously
+                            fetch(API_URL).then(fullResponse => {
+                                if (fullResponse.ok) {
+                                    return fullResponse.json();
+                                }
+                                return [];
+                            }).then(fullData => {
+                                if (fullData.length > 0) {
+                                    transcriptsData = fullData;
+                                    console.log(`✅ Loaded full transcript data: ${fullData.length} transcripts`);
+                                    applyFilters(); // Refresh display
+                                }
+                            }).catch(err => {
+                                console.warn('Background full data load failed:', err);
+                            });
+                        }
+                        // Return metadata for immediate display
+                        transcriptsData = metadata.map(m => ({
+                            ...m,
+                            preview: '' // Metadata doesn't include preview
+                        }));
+                        return transcriptsData;
+                    }
+                } catch (metadataErr) {
+                    console.warn('Metadata endpoint failed, trying full endpoint:', metadataErr);
+                }
+                
+                // Fallback to full endpoint with timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+                
+                response = await fetch(API_URL, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
                 
                 if (!response.ok) {
                     throw new Error(`API returned ${response.status}: ${response.statusText}`);

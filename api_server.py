@@ -69,11 +69,49 @@ scraper_status = {
     'discovered': 0
 }
 
+def init_database_if_needed():
+    """Initialize database schema if it doesn't exist"""
+    if os.path.exists(DB_PATH):
+        return  # Database already exists
+    
+    # Create directory if needed
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    
+    logging.info(f"📦 Initializing new database at: {DB_PATH}")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Create transcripts table with schema matching rollcall_sync.py
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS transcripts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            date DATE NOT NULL,
+            speech_type TEXT NOT NULL,
+            location TEXT,
+            url TEXT UNIQUE NOT NULL,
+            word_count INTEGER,
+            trump_word_count INTEGER,
+            speech_duration_seconds INTEGER,
+            full_dialogue TEXT,
+            speakers_json TEXT,
+            scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
+    # Create indexes
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_date ON transcripts(date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_url ON transcripts(url)")
+    
+    conn.commit()
+    conn.close()
+    logging.info("✅ Database initialized successfully")
+
 def get_db():
     """Get database connection"""
-    if not os.path.exists(DB_PATH):
-        logging.error(f"❌ Database not found at: {DB_PATH}")
-        raise FileNotFoundError(f"Database not found: {DB_PATH}")
+    # Initialize database if it doesn't exist
+    init_database_if_needed()
     
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row  # Return rows as dictionaries

@@ -1880,24 +1880,60 @@
         async function loadStaticData() {
             try {
                 console.log('📡 Loading transcripts from API...');
-                console.log('   URL:', API_URL);
-                console.log('   Time:', new Date().toISOString());
                 
-                // Add timeout to prevent infinite hanging
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-                
+                // Try metadata endpoint first (much faster, no full text)
+                const API_METADATA_URL = `${API_BASE}/api/transcripts/metadata`;
+                let response;
                 try {
-                    const response = await fetch(API_URL, {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                    response = await fetch(API_METADATA_URL, {
                         signal: controller.signal,
-                        headers: {
-                            'Accept': 'application/json'
-                        }
+                        headers: { 'Accept': 'application/json' }
                     });
                     clearTimeout(timeoutId);
-
-                    console.log('   Response status:', response.status);
-                    console.log('   Response headers:', Object.fromEntries(response.headers.entries()));
+                    
+                    if (response.ok) {
+                        const metadata = await response.json();
+                        console.log(`✅ Loaded ${metadata.length} transcript metadata entries`);
+                        // If we have metadata, fetch full data in background
+                        if (metadata.length > 0) {
+                            fetch(API_URL).then(fullResponse => {
+                                if (fullResponse.ok) {
+                                    return fullResponse.json();
+                                }
+                                return [];
+                            }).then(fullData => {
+                                if (fullData.length > 0) {
+                                    transcriptsData = fullData;
+                                    console.log(`✅ Loaded full transcript data: ${fullData.length} transcripts`);
+                                    applyFilters(); // Refresh display
+                                }
+                            }).catch(err => {
+                                console.warn('Background full data load failed:', err);
+                            });
+                        }
+                        // Return metadata for immediate display
+                        transcriptsData = metadata.map(m => ({
+                            ...m,
+                            preview: '' // Metadata doesn't include preview
+                        }));
+                        return transcriptsData;
+                    }
+                } catch (metadataErr) {
+                    console.warn('Metadata endpoint failed, trying full endpoint:', metadataErr);
+                }
+                
+                // Fallback to full endpoint with longer timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+                
+                try {
+                    response = await fetch(API_URL, {
+                        signal: controller.signal,
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    clearTimeout(timeoutId);
 
                     if (!response.ok) {
                         throw new Error(`API returned ${response.status}: ${response.statusText}`);
@@ -1911,7 +1947,7 @@
                 } catch (fetchError) {
                     clearTimeout(timeoutId);
                     if (fetchError.name === 'AbortError') {
-                        throw new Error('API request timed out after 30 seconds. The server may be slow or unresponsive.');
+                        throw new Error('API request timed out after 60 seconds. The server may be slow or unresponsive.');
                     }
                     throw fetchError;
                 }
@@ -2050,12 +2086,13 @@
                     }
                 }, 2000);
 
-                // Timeout after 5 minutes
+                // Timeout after 10 minutes (sync can take a while)
                 setTimeout(() => {
                     clearInterval(pollInterval);
                     btn.textContent = '⟳ Sync Transcripts';
                     btn.disabled = false;
-                }, 300000);
+                    console.warn('Sync timeout - check server logs for status');
+                }, 600000);
 
             } catch (error) {
                 console.error('Sync error:', error);
