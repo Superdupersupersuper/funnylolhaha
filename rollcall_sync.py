@@ -735,12 +735,19 @@ class RollCallIncrementalSync:
                 if len(urls_with_dates) == last_count:
                     no_new_count += 1
                     # Stop if: (1) we've seen dates older than start_date AND (2) no new URLs for 10 scrolls
+                    # BUT: Don't stop if we haven't seen any dates yet (page might not be loaded)
                     if no_new_count >= 10:
-                        if min_date_seen and min_date_seen < start_date:
-                            logger.info(f"No new URLs after 10 scrolls and reached dates before {start_date.strftime('%Y-%m-%d')}, stopping")
+                        if min_date_seen:
+                            if min_date_seen < start_date:
+                                logger.info(f"No new URLs after 10 scrolls and reached dates before {start_date.strftime('%Y-%m-%d')} (saw {min_date_seen.strftime('%Y-%m-%d')}), stopping")
+                                self._diagnostics.append(f"Stopped: saw date {min_date_seen.strftime('%Y-%m-%d')} before start {start_date.strftime('%Y-%m-%d')}")
+                            else:
+                                logger.info(f"No new URLs after 10 scrolls but dates are still >= {start_date.strftime('%Y-%m-%d')} (saw {min_date_seen.strftime('%Y-%m-%d')}), continuing...")
+                                no_new_count = 0  # Reset counter, keep scrolling
                         else:
-                            logger.info(f"No new URLs after 10 scrolls, stopping")
-                        break
+                            logger.warning(f"No new URLs after 10 scrolls and no dates seen yet - page may not be loading correctly")
+                            self._diagnostics.append("Stopped: no dates seen after 10 scrolls")
+                            break
                 else:
                     no_new_count = 0
                     last_count = len(urls_with_dates)
