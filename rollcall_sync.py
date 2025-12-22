@@ -1067,16 +1067,23 @@ class RollCallIncrementalSync:
             summary.start_date = start_date.strftime('%Y-%m-%d')
             summary.end_date = end_date.strftime('%Y-%m-%d')
             
-            # Step 2: Initialize Selenium
+            # Step 2: Initialize browser
             self._report_progress("Initializing browser...")
             if not self._init_driver():
-                error_msg = "Failed to initialize Chrome driver"
+                error_msg = "Failed to initialize browser"
                 if self._last_error:
                     error_msg += f": {self._last_error}"
+                if self._diagnostics:
+                    error_msg += f" (Diagnostics: {'; '.join(self._diagnostics)})"
                 summary.error = error_msg
                 logger.error(f"Sync failed: {error_msg}")
                 self._report_progress(f"Error: {error_msg}")
                 return summary
+            
+            # Verify browser is actually initialized
+            browser_type = "Playwright" if self.playwright_page else ("Selenium" if self.driver else "None")
+            logger.info(f"Browser initialized: {browser_type}")
+            self._diagnostics.append(f"Browser type: {browser_type}")
             
             # Step 3: Discover URLs in range
             self._report_progress(f"Discovering transcripts from {summary.start_date} to {summary.end_date}...")
