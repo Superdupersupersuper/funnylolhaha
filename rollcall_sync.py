@@ -478,9 +478,13 @@ class RollCallIncrementalSync:
         Returns:
             List of (url, date) tuples
         """
+        # Add diagnostic at start
+        self._diagnostics.append(f"_discover_urls_in_range called for {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+        
         # Initialize driver if needed (Playwright or Selenium)
         if not self.driver and not self.playwright_page:
             if not self._init_driver():
+                self._diagnostics.append(f"Browser initialization failed: {self._last_error}")
                 return []
         
         self._report_progress("Loading RollCall search page...")
