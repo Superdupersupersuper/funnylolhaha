@@ -1088,10 +1088,14 @@ class RollCallIncrementalSync:
                 if self._last_error:
                     error_msg += f" (Browser error: {self._last_error})"
                 if self._diagnostics:
-                    error_msg += f" (Diagnostics: {'; '.join(self._diagnostics[-5:])})"
+                    error_msg += f" (Diagnostics: {'; '.join(self._diagnostics[-10:])})"
+                else:
+                    error_msg += " (No diagnostics available - page may not have loaded)"
                 self._report_progress(error_msg)
                 summary.error = error_msg
                 logger.warning(error_msg)
+                if self._diagnostics:
+                    logger.warning(f"Full diagnostics: {self._diagnostics}")
                 return summary
             
             # Step 4: Filter to URLs that need scraping
