@@ -46,3 +46,5 @@ else
     echo "Check manually: https://funnylolhaha.onrender.com/analytics_ui.html"
     exit 2
 fi
+
+

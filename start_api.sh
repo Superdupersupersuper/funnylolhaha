@@ -36,3 +36,5 @@ echo "   Press Ctrl+C to stop"
 echo ""
 
 python3 api_server.py
+
+

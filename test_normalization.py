@@ -153,3 +153,5 @@ if __name__ == '__main__':
     print("\nIf all validations show ✅ PASS, the normalization is working correctly.")
     print("Deploy to production and re-sync December 2025 transcripts.")
     print("="*80 + "\n")
+
+

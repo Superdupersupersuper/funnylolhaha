@@ -39,3 +39,5 @@ echo ""
 echo "✅ All tests passed!"
 echo "   API is ready at: http://localhost:5001"
 echo "   Open analytics_ui.html in your browser to use the app"
+
+

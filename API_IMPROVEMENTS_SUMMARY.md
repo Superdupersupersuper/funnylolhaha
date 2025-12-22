@@ -193,3 +193,5 @@ If still having issues:
 3. Check browser console for detailed error messages
 4. Verify database exists: `ls -lh data/transcripts.db`
 5. Try accessing health check: http://localhost:5001/api/health
+
+

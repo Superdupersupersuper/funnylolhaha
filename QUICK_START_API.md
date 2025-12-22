@@ -75,3 +75,5 @@ pip install -r requirements.txt
 1. **Use compression**: Flask-compress is now enabled (reduces response size by ~70%)
 2. **Cache responses**: API sets cache headers (5 minute cache)
 3. **Lightweight endpoint**: Use `/api/transcripts/metadata` if you don't need full text immediately
+
+

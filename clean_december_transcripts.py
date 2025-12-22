@@ -264,3 +264,5 @@ if __name__ == '__main__':
             sys.exit(0)
     
     clean_december_transcripts(db_path, dry_run=dry_run)
+
+
