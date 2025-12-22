@@ -2,15 +2,12 @@ services:
   # API Server
   - type: web
     name: mention-markets-api
-    runtime: python
+    runtime: docker
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn -c gunicorn_config.py api_server:app
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.9
       - key: MENTION_MARKETS_DB_PATH
-        value: /opt/render/project/src/data/transcripts.db
+        value: /app/data/transcripts.db
     healthCheckPath: /api/health
     
   # Static Site (Frontend)
