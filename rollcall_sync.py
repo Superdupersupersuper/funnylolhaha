@@ -1039,22 +1039,39 @@ class RollCallIncrementalSync:
             summary.error = str(e)
         
         finally:
-            # Cleanup
-            if hasattr(self, 'playwright_browser') and self.playwright_browser:
-                try:
-                    self.playwright_browser.close()
-                except:
-                    pass
-            if hasattr(self, 'playwright_context') and self.playwright_context:
-                try:
-                    self.playwright_context.stop()
-                except:
-                    pass
-            if self.driver:
-                try:
-                    self.driver.quit()
-                except:
-                    pass
+            # Cleanup - use try-except for each to handle any AttributeError
+            try:
+                if hasattr(self, 'playwright_browser') and self.playwright_browser:
+                    try:
+                        self.playwright_browser.close()
+                    except:
+                        pass
+            except AttributeError:
+                pass
+            except:
+                pass
+            
+            try:
+                if hasattr(self, 'playwright_context') and self.playwright_context:
+                    try:
+                        self.playwright_context.stop()
+                    except:
+                        pass
+            except AttributeError:
+                pass
+            except:
+                pass
+            
+            try:
+                if hasattr(self, 'driver') and self.driver:
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+            except AttributeError:
+                pass
+            except:
+                pass
         
         return summary
 
