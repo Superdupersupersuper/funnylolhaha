@@ -497,57 +497,81 @@ class RollCallIncrementalSync:
             sort_selected = False
             selected_text = "Unknown"
             
-            # Strategy 1: Try standard select element by name
-            try:
-                from selenium.webdriver.support.ui import Select
-                sort_dropdown = Select(self.driver.find_element(By.NAME, 'sort'))
-                sort_dropdown.select_by_visible_text('Sort By: Newest')
-                selected_text = sort_dropdown.first_selected_option.text
-                sort_selected = True
-                logger.info(f"Sort selection strategy 1 succeeded: {selected_text}")
-            except Exception as e:
-                logger.warning(f"Sort strategy 1 (by name) failed: {e}")
+            if self.playwright_page:
+                # Playwright approach for sort selection
+                try:
+                    # Try to find and select the sort dropdown
+                    select_elem = self.playwright_page.query_selector('select[name="sort"]')
+                    if select_elem:
+                        # Get all options
+                        options = select_elem.query_selector_all('option')
+                        for opt in options:
+                            opt_text = opt.inner_text()
+                            if 'newest' in opt_text.lower():
+                                # Select this option
+                                value = opt.get_attribute('value')
+                                if value:
+                                    select_elem.select_option(value=value)
+                                    selected_text = opt_text
+                                    sort_selected = True
+                                    logger.info(f"Playwright sort selection succeeded: {selected_text}")
+                                    break
+                except Exception as e:
+                    logger.warning(f"Playwright sort selection failed: {e}")
             
-            # Strategy 2: Try finding select/combobox by text content
+            # Selenium approach for sort selection
             if not sort_selected:
+                # Strategy 1: Try standard select element by name
                 try:
                     from selenium.webdriver.support.ui import Select
-                    # Look for select elements containing "Sort By"
-                    selects = self.driver.find_elements(By.TAG_NAME, 'select')
-                    for select_elem in selects:
-                        try:
-                            select = Select(select_elem)
-                            options = [opt.text for opt in select.options]
-                            if any('newest' in opt.lower() for opt in options):
-                                # Found the sort dropdown
-                                for opt in select.options:
-                                    if 'newest' in opt.text.lower():
-                                        select.select_by_visible_text(opt.text)
-                                        selected_text = select.first_selected_option.text
-                                        sort_selected = True
-                                        logger.info(f"Sort selection strategy 2 succeeded: {selected_text}")
+                    sort_dropdown = Select(self.driver.find_element(By.NAME, 'sort'))
+                    sort_dropdown.select_by_visible_text('Sort By: Newest')
+                    selected_text = sort_dropdown.first_selected_option.text
+                    sort_selected = True
+                    logger.info(f"Sort selection strategy 1 succeeded: {selected_text}")
+                except Exception as e:
+                    logger.warning(f"Sort strategy 1 (by name) failed: {e}")
+                
+                # Strategy 2: Try finding select/combobox by text content
+                if not sort_selected:
+                    try:
+                        from selenium.webdriver.support.ui import Select
+                        # Look for select elements containing "Sort By"
+                        selects = self.driver.find_elements(By.TAG_NAME, 'select')
+                        for select_elem in selects:
+                            try:
+                                select = Select(select_elem)
+                                options = [opt.text for opt in select.options]
+                                if any('newest' in opt.lower() for opt in options):
+                                    # Found the sort dropdown
+                                    for opt in select.options:
+                                        if 'newest' in opt.text.lower():
+                                            select.select_by_visible_text(opt.text)
+                                            selected_text = select.first_selected_option.text
+                                            sort_selected = True
+                                            logger.info(f"Sort selection strategy 2 succeeded: {selected_text}")
+                                            break
+                                    if sort_selected:
                                         break
-                                if sort_selected:
-                                    break
-                        except:
-                            continue
-                except Exception as e:
-                    logger.warning(f"Sort strategy 2 (by text search) failed: {e}")
-            
-            # Strategy 3: Try clicking on option elements directly
-            if not sort_selected:
-                try:
-                    # Find option elements containing "newest"
-                    options = self.driver.find_elements(By.TAG_NAME, 'option')
-                    for option in options:
-                        if 'newest' in option.text.lower():
-                            option.click()
-                            selected_text = option.text
-                            sort_selected = True
-                            logger.info(f"Sort selection strategy 3 succeeded: {selected_text}")
-                            break
-                except Exception as e:
-                    logger.warning(f"Sort strategy 3 (direct click) failed: {e}")
+                            except:
+                                continue
+                    except Exception as e:
+                        logger.warning(f"Sort strategy 2 (by text search) failed: {e}")
+                
+                # Strategy 3: Try clicking on option elements directly
+                if not sort_selected:
+                    try:
+                        # Find option elements containing "newest"
+                        options = self.driver.find_elements(By.TAG_NAME, 'option')
+                        for option in options:
+                            if 'newest' in option.text.lower():
+                                option.click()
+                                selected_text = option.text
+                                sort_selected = True
+                                logger.info(f"Sort selection strategy 3 succeeded: {selected_text}")
+                                break
+                    except Exception as e:
+                        logger.warning(f"Sort strategy 3 (direct click) failed: {e}")
             
             # Report sort status
             if sort_selected:
