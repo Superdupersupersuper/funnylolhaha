@@ -647,8 +647,20 @@ class RollCallIncrementalSync:
                         if scroll_attempts == 1 and len(sample_hrefs) > 0:
                             logger.info(f"Sample URLs found: {sample_hrefs[:3]}")
                     else:
-                        # Selenium approach
-                        elements = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='/transcript/']")
+                        # Selenium approach - try both URL patterns
+                        elements1 = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='/factbase/trump/transcript/']")
+                        elements2 = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='/transcript/']")
+                        # Combine and deduplicate
+                        seen_hrefs = set()
+                        elements = []
+                        for elem in elements1 + elements2:
+                            try:
+                                href = elem.get_attribute('href')
+                                if href and href not in seen_hrefs:
+                                    seen_hrefs.add(href)
+                                    elements.append(elem)
+                            except:
+                                continue
                         logger.info(f"Found {len(elements)} transcript link elements (Selenium)")
                         sample_hrefs = []
                         for elem in elements:
