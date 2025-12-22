@@ -20,10 +20,17 @@ try:
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
     from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
+    try:
+        from webdriver_manager.chrome import ChromeDriverManager
+        HAS_WEBDRIVER_MANAGER = True
+    except ImportError:
+        HAS_WEBDRIVER_MANAGER = False
     HAS_SELENIUM = True
 except ImportError:
     HAS_SELENIUM = False
+    HAS_WEBDRIVER_MANAGER = False
     logging.warning("Selenium not available - sync will not work")
 
 # Import shared scraper utilities
@@ -362,14 +369,65 @@ class RollCallIncrementalSync:
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--disable-gpu')
             options.add_argument('--window-size=1920,1080')
-            options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36')
+            options.add_argument('--disable-blink-features=AutomationControlled')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-setuid-sandbox')
+            options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
             
-            self.driver = webdriver.Chrome(options=options)
+            # Try multiple strategies to initialize Chrome driver
+            driver_initialized = False
+            
+            # Strategy 1: Use webdriver-manager (auto-downloads ChromeDriver)
+            if HAS_WEBDRIVER_MANAGER:
+                try:
+                    from webdriver_manager.chrome import ChromeDriverManager
+                    service = Service(ChromeDriverManager().install())
+                    self.driver = webdriver.Chrome(service=service, options=options)
+                    driver_initialized = True
+                    logger.info("Chrome driver initialized via webdriver-manager")
+                except Exception as wdm_err:
+                    logger.warning(f"webdriver-manager failed: {wdm_err}")
+            
+            # Strategy 2: Standard Chrome initialization (assumes ChromeDriver in PATH)
+            if not driver_initialized:
+                try:
+                    self.driver = webdriver.Chrome(options=options)
+                    driver_initialized = True
+                    logger.info("Chrome driver initialized via standard method")
+                except Exception as std_err:
+                    logger.warning(f"Standard Chrome init failed: {std_err}")
+            
+            # Strategy 3: Try with explicit Chrome binary path (for Render/cloud)
+            if not driver_initialized:
+                chrome_paths = [
+                    '/usr/bin/google-chrome',
+                    '/usr/bin/google-chrome-stable',
+                    '/usr/bin/chromium-browser',
+                    '/usr/bin/chromium',
+                ]
+                for chrome_path in chrome_paths:
+                    try:
+                        import os
+                        if os.path.exists(chrome_path):
+                            options.binary_location = chrome_path
+                            self.driver = webdriver.Chrome(options=options)
+                            driver_initialized = True
+                            logger.info(f"Chrome driver initialized with binary at {chrome_path}")
+                            break
+                    except Exception as path_err:
+                        logger.debug(f"Chrome path {chrome_path} failed: {path_err}")
+                        continue
+            
+            if not driver_initialized:
+                raise Exception("All Chrome driver initialization strategies failed")
+            
             self.driver.set_page_load_timeout(30)
-            logger.info("Chrome driver initialized")
+            logger.info("Chrome driver initialized successfully")
             return True
         except Exception as e:
             logger.error(f"Failed to initialize Chrome driver: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
     
     def _discover_urls_in_range(self, start_date: datetime, end_date: datetime) -> List[Tuple[str, datetime]]:

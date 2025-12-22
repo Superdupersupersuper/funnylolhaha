@@ -12,6 +12,8 @@ gunicorn>=21.0.0
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
+selenium>=4.15.0
+webdriver-manager>=4.0.0
 
 # Optional (install if available)
 python-dateutil>=2.8.2
