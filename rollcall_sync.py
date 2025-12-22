@@ -596,9 +596,23 @@ class RollCallIncrementalSync:
                 # Find all transcript links (use Playwright if available, else Selenium)
                 try:
                     if self.playwright_page:
-                        # Playwright approach
-                        elements = self.playwright_page.query_selector_all("a[href*='/transcript/']")
-                        logger.info(f"Found {len(elements)} transcript link elements (Playwright)")
+                        # Playwright approach - try both URL patterns
+                        elements1 = self.playwright_page.query_selector_all("a[href*='/factbase/trump/transcript/']")
+                        elements2 = self.playwright_page.query_selector_all("a[href*='/transcript/']")
+                        # Combine and deduplicate by href
+                        seen_hrefs = set()
+                        elements = []
+                        for elem in elements1 + elements2:
+                            try:
+                                href = elem.get_attribute('href') or elem.evaluate('el => el.href')
+                                if href and href not in seen_hrefs:
+                                    seen_hrefs.add(href)
+                                    elements.append(elem)
+                            except:
+                                continue
+                        logger.info(f"Found {len(elements)} transcript link elements (Playwright: {len(elements1)} + {len(elements2)})")
+                        if scroll_attempts == 1:
+                            self._diagnostics.append(f"Playwright found {len(elements1)} with /factbase/trump/transcript/ and {len(elements2)} with /transcript/, {len(elements)} total")
                         sample_hrefs = []
                         for elem in elements:
                             # Playwright ElementHandle.get_attribute() method
