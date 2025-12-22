@@ -600,17 +600,17 @@ class RollCallIncrementalSync:
                         logger.info(f"Found {len(elements)} transcript link elements (Playwright)")
                         sample_hrefs = []
                         for elem in elements:
-                            # Playwright uses get_attribute differently - try both methods
-                            href = elem.get_attribute('href') if hasattr(elem, 'get_attribute') else None
-                            if not href:
-                                # Try alternative method for Playwright
+                            # Playwright ElementHandle.get_attribute() method
+                            try:
+                                href = elem.get_attribute('href')
+                            except Exception as attr_err:
+                                # Fallback: use evaluate to get href
                                 try:
                                     href = elem.evaluate('el => el.href')
-                                except:
-                                    try:
-                                        href = elem.get_attribute('href')
-                                    except:
-                                        continue
+                                except Exception as eval_err:
+                                    logger.debug(f"Could not get href: attr_err={attr_err}, eval_err={eval_err}")
+                                    continue
+                            
                             if not href or '/transcript/' not in href:
                                 continue
                             
