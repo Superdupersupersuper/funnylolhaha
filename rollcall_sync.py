@@ -320,6 +320,9 @@ class RollCallIncrementalSync:
         self.db_path = db_path
         self.progress_callback = progress_callback
         self.driver = None
+        self.playwright_browser = None
+        self.playwright_context = None
+        self.playwright_page = None
         self.base_url = 'https://rollcall.com/factbase/trump/search/'
         self.delay = 1.5  # Seconds between requests
         self._last_error = None  # Store last error for debugging
@@ -1037,7 +1040,7 @@ class RollCallIncrementalSync:
         
         finally:
             # Cleanup
-            if self.playwright_browser:
+            if hasattr(self, 'playwright_browser') and self.playwright_browser:
                 try:
                     self.playwright_browser.close()
                 except:
