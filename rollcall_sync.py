@@ -959,7 +959,12 @@ class RollCallIncrementalSync:
             summary.total_discovered = len(discovered_urls)
             
             if not discovered_urls:
-                self._report_progress("No transcripts found in date range")
+                error_msg = "No transcripts discovered in date range"
+                if self._last_error:
+                    error_msg += f" (Browser error: {self._last_error})"
+                self._report_progress(error_msg)
+                summary.error = error_msg
+                logger.warning(error_msg)
                 return summary
             
             # Step 4: Filter to URLs that need scraping
