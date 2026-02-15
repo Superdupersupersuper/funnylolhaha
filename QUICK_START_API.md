@@ -77,3 +77,4 @@ pip install -r requirements.txt
 3. **Lightweight endpoint**: Use `/api/transcripts/metadata` if you don't need full text immediately
 
 
+
