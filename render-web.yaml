@@ -1,0 +1,35 @@
+# Render Blueprint for MentionMarkets Next.js App
+# To use: rename this to render.yaml or manually create services in Render dashboard
+
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: mention-markets-db
+    env: docker
+    plan: starter  # Free tier - upgrade to starter ($7/mo) for production
+    region: ohio
+    databaseName: mention_markets
+    databaseUser: mention_markets_user
+    ipAllowList: []  # Allow all connections (Render handles security)
+
+  # Next.js Web App
+  - type: web
+    name: mention-markets-web
+    env: node
+    region: ohio
+    plan: starter  # Free tier available
+    buildCommand: cd web && npm install && npx prisma generate && npm run build
+    startCommand: cd web && npx prisma migrate deploy && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mention-markets-db
+          property: connectionString
+      - key: ADMIN_PASSWORD
+        generateValue: true  # Or set manually in Render dashboard
+      - key: ADMIN_SESSION_SECRET
+        generateValue: true
+    rootDir: web
+
