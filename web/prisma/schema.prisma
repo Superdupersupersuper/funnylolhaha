@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Transcript {
+  id                        String   @id @default(uuid())
+  title                     String
+  event_date                DateTime
+  speech_type               String   // e.g. "Remarks", "Press Conference", "Interview", "Sports Commentary"
+  primary_speaker           String   // e.g. "Donald Trump", "Zohran Mamdani"
+  speakers_present          String[] // e.g. ["Zohran Mamdani", "Kayla Santos Rosso"]
+  has_q_and_a               Boolean  @default(false)
+  total_speech_length_seconds Int?   // manual or calculated from segments
+  key_themes                String[] // manual tags e.g. ["Coney Island", "BID", "Small Business"]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  segments SpeakingSegment[]
+
+  @@index([event_date])
+  @@index([primary_speaker])
+  @@index([speech_type])
+  @@index([has_q_and_a])
+}
+
+model SpeakingSegment {
+  id            String  @id @default(uuid())
+  transcriptId  String
+  speaker       String
+  start_seconds Float   // e.g. 130.5 for 2:10.5
+  end_seconds   Float?  // null if unknown
+  text          String  // the spoken content in this turn
+
+  transcript Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+
+  @@index([transcriptId])
+  @@index([transcriptId, start_seconds])
+  @@index([speaker])
+}
+
