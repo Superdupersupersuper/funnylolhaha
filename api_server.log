@@ -1,4 +1,49 @@
-Traceback (most recent call last):
-  File "/Users/alexandermiron/Downloads/mention-markets/api_server.py", line 11, in <module>
-    from full_scraper import FullScraper
-ModuleNotFoundError: No module named 'full_scraper'
+2026-02-16 22:41:39,767 - WARNING - flask-compress not available - responses will not be compressed
+
+================================================================================
+🚀 MENTION MARKET TOOL - API SERVER
+================================================================================
+
+📁 Database path: /Users/alexandermiron/Downloads/mention-markets/data/transcripts.db
+✅ Database found (46.7 MB)
+✓ Database contains 1109 transcripts
+
+📍 Available Endpoints:
+  GET  /api/health                      - Health check with DB info
+  GET  /api/stats                       - Database statistics
+  GET  /api/transcripts                 - All transcripts WITH full text (large)
+  GET  /api/transcripts/metadata        - All transcripts WITHOUT full text (lightweight)
+  GET  /api/transcripts/<id>            - Get specific transcript
+  GET  /api/analysis/word-frequency     - Word frequency analysis
+  POST /api/scraper/refresh             - Trigger scraper refresh
+  GET  /api/scraper/status              - Get scraper status
+
+🌐 Server starting on http://localhost:5001
+   Frontend should connect to: http://localhost:5001/api/transcripts
+
+================================================================================
+
+  GET  /api/scraper/status - Check scraper status
+
+Press Ctrl+C to stop
+================================================================================
+
+ * Serving Flask app 'api_server'
+ * Debug mode: on
+2026-02-16 22:41:40,384 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://192.168.1.36:5001
+2026-02-16 22:41:40,384 - INFO - [33mPress CTRL+C to quit[0m
+2026-02-16 22:41:44,315 - INFO - 📤 Returning 1109 transcripts
+2026-02-16 22:41:44,612 - INFO - 127.0.0.1 - - [16/Feb/2026 22:41:44] "GET /api/transcripts HTTP/1.1" 200 -
+2026-02-16 22:41:52,575 - INFO - 127.0.0.1 - - [16/Feb/2026 22:41:52] "GET /analytics_ui.html HTTP/1.1" 200 -
+2026-02-16 22:41:52,825 - INFO - 📤 Returning 1109 metadata entries
+2026-02-16 22:41:52,830 - INFO - 127.0.0.1 - - [16/Feb/2026 22:41:52] "GET /api/transcripts/metadata HTTP/1.1" 200 -
+2026-02-16 22:41:53,198 - INFO - 📤 Returning 1109 transcripts
+2026-02-16 22:41:53,621 - INFO - 127.0.0.1 - - [16/Feb/2026 22:41:53] "GET /api/transcripts HTTP/1.1" 200 -
+2026-02-16 22:47:22,983 - INFO - 127.0.0.1 - - [16/Feb/2026 22:47:22] "GET /analytics_ui.html HTTP/1.1" 200 -
+2026-02-16 22:47:23,048 - INFO - ⚠️ Database is empty - attempting to restore from backup...
+2026-02-16 22:47:23,048 - INFO - ℹ️ No backup file found - starting with empty database
+2026-02-16 22:47:23,050 - INFO - 📤 Returning 0 metadata entries
+2026-02-16 22:47:23,052 - INFO - 127.0.0.1 - - [16/Feb/2026 22:47:23] "GET /api/transcripts/metadata HTTP/1.1" 200 -
