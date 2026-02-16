@@ -13,6 +13,14 @@ import logging
 import sys
 import re
 
+# Import backup utility
+try:
+    import backup_database
+    HAS_BACKUP = True
+except ImportError:
+    HAS_BACKUP = False
+    logging.warning("backup_database module not available - backups will be skipped")
+
 # Version info for deployment tracking
 API_VERSION = "2.0.1"
 DEPLOY_TIMESTAMP = "2025-12-19T01:30:00Z"
@@ -868,6 +876,11 @@ def update_transcript(transcript_id):
 def delete_transcript(transcript_id):
     """Delete a transcript"""
     try:
+        # Create backup before deletion
+        if HAS_BACKUP:
+            logging.info(f"📦 Creating backup before deleting transcript {transcript_id}")
+            backup_database.create_backup(reason=f'pre_delete_{transcript_id}')
+        
         conn = get_db()
         cursor = conn.cursor()
         
@@ -885,6 +898,43 @@ def delete_transcript(transcript_id):
         
     except Exception as e:
         logging.error(f"Delete transcript error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/backup', methods=['POST'])
+def create_manual_backup():
+    """Create a manual backup of the database"""
+    try:
+        if not HAS_BACKUP:
+            return jsonify({'error': 'Backup module not available'}), 503
+        
+        reason = request.json.get('reason', 'manual') if request.json else 'manual'
+        backup_path = backup_database.create_backup(reason=reason)
+        
+        if backup_path:
+            return jsonify({
+                'success': True,
+                'backup_path': backup_path,
+                'message': 'Backup created successfully'
+            })
+        else:
+            return jsonify({'error': 'Backup failed'}), 500
+            
+    except Exception as e:
+        logging.error(f"Manual backup error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/backups', methods=['GET'])
+def list_backups():
+    """List all available backups"""
+    try:
+        if not HAS_BACKUP:
+            return jsonify({'error': 'Backup module not available'}), 503
+        
+        backups = backup_database.list_backups()
+        return jsonify({'backups': backups})
+        
+    except Exception as e:
+        logging.error(f"List backups error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 def format_seconds(seconds):

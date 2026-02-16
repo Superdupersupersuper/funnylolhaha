@@ -940,10 +940,10 @@
 
         // Primary speaker matching rules
         const PRIMARY_SPEAKER_MATCHERS = {
-            mamdani: text => { const t = text.toLowerCase(); return t.includes('zohran mamdani') || t.includes('mamdani'); },
-            trump:   text => { const t = text.toLowerCase(); return t.includes('donald trump') || t === 'trump'; },
-            jd:      text => { const t = text.toLowerCase(); return t.includes('jd vance') || t.includes('j.d. vance') || t === 'vance'; },
-            hochul:  text => { const t = text.toLowerCase(); return t.includes('kathy hochul') || t.includes('hochul'); }
+            mamdani: text => { const t = text.toLowerCase(); return t.includes('mamdani'); },
+            trump:   text => { const t = text.toLowerCase(); return t.includes('trump'); },
+            jd:      text => { const t = text.toLowerCase(); return t.includes('vance') || t.includes('jd'); },
+            hochul:  text => { const t = text.toLowerCase(); return t.includes('hochul'); }
         };
 
         // Check if a transcript belongs to a primary speaker tab

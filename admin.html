@@ -308,10 +308,10 @@ More text..."></textarea>
                 <label>Primary Speaker</label>
                 <select id="primarySpeaker">
                     <option value="">Select speaker...</option>
-                    <option value="Zohran Mamdani">Zohran Mamdani</option>
-                    <option value="Kathy Hochul">Kathy Hochul</option>
-                    <option value="Donald Trump">Donald Trump</option>
+                    <option value="Mamdani">Mamdani</option>
+                    <option value="Trump">Trump</option>
                     <option value="JD Vance">JD Vance</option>
+                    <option value="Hochul">Hochul</option>
                     <option value="__custom__">+ Add Custom Speaker</option>
                 </select>
                 <input type="text" id="customSpeaker" placeholder="Enter custom speaker name..." style="display: none; margin-top: 8px;">
@@ -443,11 +443,11 @@ More text..."></textarea>
                     const speakerSelect = document.getElementById('primarySpeaker');
                     const lowerTitle = titleFromFile.toLowerCase();
                     if (lowerTitle.includes('mamdani')) {
-                        speakerSelect.value = 'Zohran Mamdani';
+                        speakerSelect.value = 'Mamdani';
                     } else if (lowerTitle.includes('hochul')) {
-                        speakerSelect.value = 'Kathy Hochul';
+                        speakerSelect.value = 'Hochul';
                     } else if (lowerTitle.includes('trump')) {
-                        speakerSelect.value = 'Donald Trump';
+                        speakerSelect.value = 'Trump';
                     } else if (lowerTitle.includes('vance')) {
                         speakerSelect.value = 'JD Vance';
                     }
@@ -527,11 +527,11 @@ More text..."></textarea>
                     const speakers = t.speakers || [];
                     const title = t.title || '';
                     
-                    if (title.toLowerCase().includes('mamdani') || speakers.includes('Zohran Mamdani')) {
+                    if (title.toLowerCase().includes('mamdani') || speakers.some(s => s.toLowerCase().includes('mamdani')) || (t.primary_speaker && t.primary_speaker.toLowerCase().includes('mamdani'))) {
                         speaker = 'Mamdani';
-                    } else if (title.toLowerCase().includes('trump') || speakers.some(s => s.toLowerCase().includes('trump'))) {
+                    } else if (title.toLowerCase().includes('trump') || speakers.some(s => s.toLowerCase().includes('trump')) || (t.primary_speaker && t.primary_speaker.toLowerCase().includes('trump'))) {
                         speaker = 'Trump';
-                    } else if (title.toLowerCase().includes('hochul') || speakers.some(s => s.toLowerCase().includes('hochul'))) {
+                    } else if (title.toLowerCase().includes('hochul') || speakers.some(s => s.toLowerCase().includes('hochul')) || (t.primary_speaker && t.primary_speaker.toLowerCase().includes('hochul'))) {
                         speaker = 'Hochul';
                     }
                     
