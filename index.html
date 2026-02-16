@@ -1203,32 +1203,65 @@
                     previewText = previewText.replace(/\bSpeaker\s+\d+\b/gi, 'Unknown Speaker');
 
                     if (isSearching && (mentions.length > 0 || otherMentionLocations.length > 0)) {
-                        const rawLines = previewText.split('\n');
-                        const searchTerms = getCombinedSearchTerms().map(t => t.toLowerCase());
-                        let currentIsPrimary = false;
-                        const processed = rawLines.map(line => {
-                            const speakerHeaderMatch = line.match(/^([A-Z][a-zA-Z\s.\-,']+?)(\s*\([^)]*\))?\s*$/);
-                            if (speakerHeaderMatch) {
-                                const speakerName = speakerHeaderMatch[1].trim();
-                                currentIsPrimary = speakerMatchesPrimary(speakerName, primarySpeaker);
-                            }
-                            let escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                            searchTerms.forEach(term => {
-                                const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                const regex = new RegExp(`(${escapedTerm})`, 'gi');
-                                const color = currentIsPrimary ? '#3b82f6' : '#f97316';
-                                escaped = escaped.replace(regex, `<strong style="color: ${color};">$1</strong>`);
+                        // Use structured dialogue if available
+                        if (t.dialogue && Array.isArray(t.dialogue)) {
+                            const searchTerms = getCombinedSearchTerms().map(t => t.toLowerCase());
+                            const highlighted = t.dialogue.map(seg => {
+                                const speaker = seg.speaker || '';
+                                const text = seg.text || '';
+                                const timestamp = seg.timestamp || '';
+                                const isPrimary = speakerMatchesPrimary(speaker, primarySpeaker);
+                                
+                                let escapedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                searchTerms.forEach(term => {
+                                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                                    const color = isPrimary ? '#3b82f6' : '#f97316';
+                                    escapedText = escapedText.replace(regex, `<strong style="color: ${color};">$1</strong>`);
+                                });
+                                
+                                const speakerLine = timestamp ? `${speaker} (${timestamp})` : speaker;
+                                return `<strong>${speakerLine}:</strong><br>${escapedText}`;
+                            }).join('<br><br>');
+                            previewText = highlighted;
+                        } else {
+                            // Fallback: parse line by line
+                            const rawLines = previewText.split('\n');
+                            const searchTerms = getCombinedSearchTerms().map(t => t.toLowerCase());
+                            let currentIsPrimary = false;
+                            
+                            const processed = rawLines.map(line => {
+                                const trimmed = line.trim();
+                                const speakerMatch = trimmed.match(/^([A-Z][a-zA-Z\s.\-,']+?)(\s*\([^)]*\))?\s*:?\s*$/);
+                                if (speakerMatch && trimmed.length < 80) {
+                                    const speakerName = speakerMatch[1].trim();
+                                    currentIsPrimary = speakerMatchesPrimary(speakerName, primarySpeaker);
+                                }
+                                
+                                let escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                searchTerms.forEach(term => {
+                                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                                    const color = currentIsPrimary ? '#3b82f6' : '#f97316';
+                                    escaped = escaped.replace(regex, `<strong style="color: ${color};">$1</strong>`);
+                                });
+                                return escaped;
                             });
-                            return escaped;
-                        });
-                        previewText = processed.join('<br>');
+                            previewText = processed.join('<br>');
+                        }
                     } else {
                         previewText = previewText
-                            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
                             .replace(/\n/g, '<br>');
                     }
 
-                    previewText = previewText.replace(/([A-Z][a-zA-Z\s\.]+?)(\s*\([^)]*\))?<br>/g, '<strong>$1$2:</strong><br>');
+                    if (!isSearching || !(t.dialogue && Array.isArray(t.dialogue))) {
+                        previewText = previewText.replace(/([A-Z][a-zA-Z\s\.]+?)(\s*\([^)]*\))?<br>/g, '<strong>$1$2:</strong><br>');
+                    }
+                } else {
+                    previewText = '<em style="color: #9ca3af;">Transcript content not available</em>';
                 }
 
                 return `

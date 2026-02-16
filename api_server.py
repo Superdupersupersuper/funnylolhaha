@@ -358,20 +358,43 @@ def parse_dialogue_to_segments(full_dialogue_text):
     if not full_dialogue_text:
         return []
     
+    import re
     segments = []
     # Split by double newline to get individual segments
-    lines = full_dialogue_text.strip().split('\n\n')
+    blocks = full_dialogue_text.strip().split('\n\n')
     
-    for line in lines:
-        line = line.strip()
-        if not line:
+    for block in blocks:
+        block = block.strip()
+        if not block:
             continue
         
-        # Match pattern: "Speaker Name (timestamp): text"
-        # e.g., "Zohran Mamdani (0:22): Wow, I love your work."
-        import re
-        match = re.match(r'^(.+?)\s*\(([0-9:]+)\):\s*(.+)$', line, re.DOTALL)
+        # Try format 1: "Speaker Name\ntimestamp text"
+        # e.g., "Donald Trump 00\n00:00-00:00:02 (2 sec) NO STRESSLENS Good morning."
+        lines = block.split('\n', 1)
+        if len(lines) == 2:
+            speaker_line = lines[0].strip()
+            content_line = lines[1].strip()
+            
+            # Extract speaker (remove trailing numbers like "00")
+            speaker_match = re.match(r'^(.+?)\s+\d+$', speaker_line)
+            speaker = speaker_match.group(1).strip() if speaker_match else speaker_line
+            
+            # Extract timestamp and text
+            # Format: "00:00-00:00:02 (2 sec) NO STRESSLENS Good morning."
+            timestamp_match = re.match(r'^([\d:]+(?:-[\d:]+)?)\s*(?:\([^)]*\))?\s*(?:NO STRESSLENS)?\s*(.+)$', content_line, re.DOTALL)
+            if timestamp_match:
+                timestamp = timestamp_match.group(1).strip()
+                text = timestamp_match.group(2).strip()
+                
+                segments.append({
+                    'speaker': speaker,
+                    'timestamp': timestamp,
+                    'text': text
+                })
+                continue
         
+        # Try format 2: "Speaker Name (timestamp): text" (single line)
+        match = re.match(r'^(.+?)\s*\(([0-9:]+)\):\s*(.+)$', block, re.DOTALL)
         if match:
             speaker = match.group(1).strip()
             timestamp = match.group(2).strip()
