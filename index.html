@@ -567,7 +567,17 @@
     <div class="container">
         <!-- SEARCH SECTION -->
         <div class="search-section">
-            <div class="search-title">MentionMarkets.com</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <div class="search-title" style="margin-bottom: 0;">MentionMarkets.com</div>
+                <a href="https://mention-markets-web.onrender.com/admin/login" 
+                   style="padding: 8px 20px; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; 
+                          border: none; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none;
+                          cursor: pointer; box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4); transition: all 0.2s ease;"
+                   onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(59, 130, 246, 0.6)'"
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(59, 130, 246, 0.4)'">
+                    🔐 Admin
+                </a>
+            </div>
             <div style="position: relative;">
                 <input type="text" class="search-input" id="searchInput" placeholder="Search terms (e.g., trump derangement syndrome)" style="padding-right: 45px;">
                 <button id="searchBtn" onclick="performSearch()" style="
