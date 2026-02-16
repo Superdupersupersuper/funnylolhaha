@@ -306,7 +306,15 @@ More text..."></textarea>
 
             <div class="form-group">
                 <label>Primary Speaker</label>
-                <input type="text" id="primarySpeaker" placeholder="e.g., Zohran Mamdani">
+                <select id="primarySpeaker">
+                    <option value="">Select speaker...</option>
+                    <option value="Zohran Mamdani">Zohran Mamdani</option>
+                    <option value="Kathy Hochul">Kathy Hochul</option>
+                    <option value="Donald Trump">Donald Trump</option>
+                    <option value="JD Vance">JD Vance</option>
+                    <option value="__custom__">+ Add Custom Speaker</option>
+                </select>
+                <input type="text" id="customSpeaker" placeholder="Enter custom speaker name..." style="display: none; margin-top: 8px;">
             </div>
 
             <div class="form-group checkbox-group">
@@ -430,6 +438,19 @@ More text..."></textarea>
                         .replace(/\s+/g, ' ')  // Normalize multiple spaces
                         .trim();
                     titleField.value = titleFromFile;
+                    
+                    // Auto-detect primary speaker from filename
+                    const speakerSelect = document.getElementById('primarySpeaker');
+                    const lowerTitle = titleFromFile.toLowerCase();
+                    if (lowerTitle.includes('mamdani')) {
+                        speakerSelect.value = 'Zohran Mamdani';
+                    } else if (lowerTitle.includes('hochul')) {
+                        speakerSelect.value = 'Kathy Hochul';
+                    } else if (lowerTitle.includes('trump')) {
+                        speakerSelect.value = 'Donald Trump';
+                    } else if (lowerTitle.includes('vance')) {
+                        speakerSelect.value = 'JD Vance';
+                    }
                 }
 
                 showAlert(`📄 File loaded: ${file.name}`, 'success');
@@ -446,6 +467,24 @@ More text..."></textarea>
             document.getElementById('fileInfo').style.display = 'none';
             showAlert('Transcript cleared', 'warning');
         }
+
+        // Handle primary speaker dropdown
+        document.addEventListener('DOMContentLoaded', function() {
+            const speakerSelect = document.getElementById('primarySpeaker');
+            const customSpeakerInput = document.getElementById('customSpeaker');
+            
+            if (speakerSelect) {
+                speakerSelect.addEventListener('change', function() {
+                    if (this.value === '__custom__') {
+                        customSpeakerInput.style.display = 'block';
+                        customSpeakerInput.focus();
+                    } else {
+                        customSpeakerInput.style.display = 'none';
+                        customSpeakerInput.value = '';
+                    }
+                });
+            }
+        });
 
         function showTab(tab) {
             const uploadSection = document.getElementById('uploadSection');
@@ -768,7 +807,13 @@ More text..."></textarea>
             const title = document.getElementById('title').value.trim();
             const eventDate = document.getElementById('eventDate').value;
             const speechType = document.getElementById('speechType').value;
-            const primarySpeaker = document.getElementById('primarySpeaker').value.trim();
+            
+            // Get primary speaker (from dropdown or custom input)
+            let primarySpeaker = document.getElementById('primarySpeaker').value;
+            if (primarySpeaker === '__custom__') {
+                primarySpeaker = document.getElementById('customSpeaker').value.trim();
+            }
+            
             const hasQA = document.getElementById('hasQA').checked;
 
             if (!title || !eventDate || !speechType || !primarySpeaker) {
