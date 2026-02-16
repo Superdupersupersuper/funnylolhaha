@@ -18,6 +18,12 @@ model Transcript {
   total_speech_length_seconds Int?   // manual or calculated from segments
   key_themes                String[] // manual tags e.g. ["Coney Island", "BID", "Small Business"]
 
+  // Q&A Analytics (auto-detected)
+  question_count            Int?     // total number of questions detected
+  avg_response_length_words Int?     // average response length in words
+  avg_response_length_seconds Float? // average response duration in seconds
+  qa_data                   Json?    // detailed Q&A pairs: [{question, response, metrics}]
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 

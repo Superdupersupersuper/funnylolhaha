@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { parseOtterTranscript, type ParseResult, type ParsedSegment } from "@/lib/parsers/otter";
+import { parseOtterTranscript, type ParseResult, type ParsedSegment, type QAAnalytics } from "@/lib/parsers/otter";
 import { TagInput } from "./TagInput";
 import { SegmentPreview } from "./SegmentPreview";
 
@@ -63,6 +63,7 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
   const [segments, setSegments] = useState<ParsedSegment[]>(
     initialData?.segments ?? []
   );
+  const [qaAnalytics, setQaAnalytics] = useState<QAAnalytics | null>(null);
 
   // UI state
   const [saving, setSaving] = useState(false);
@@ -72,9 +73,14 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
   // Parse the raw text
   const handleParse = useCallback(() => {
     if (!rawText.trim()) return;
-    const result = parseOtterTranscript(rawText);
+    const result = parseOtterTranscript(rawText, { detectQA: hasQAndA });
     setParseResult(result);
     setSegments(result.segments);
+    
+    // Store Q&A analytics if detected
+    if (result.qaAnalytics) {
+      setQaAnalytics(result.qaAnalytics);
+    }
 
     // Auto-fill fields from parse result
     if (result.calculated.suggestedPrimarySpeaker && !primarySpeaker) {
@@ -86,7 +92,7 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
     if (result.calculated.totalSeconds && !totalLength) {
       setTotalLength(Math.round(result.calculated.totalSeconds));
     }
-  }, [rawText, primarySpeaker, speakersPresent.length, totalLength]);
+  }, [rawText, hasQAndA, primarySpeaker, speakersPresent.length, totalLength]);
 
   // Handle file upload
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -135,6 +141,11 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
         end_seconds: s.end_seconds,
         text: s.text,
       })),
+      // Q&A analytics (if detected)
+      question_count: qaAnalytics?.questionCount || null,
+      avg_response_length_words: qaAnalytics?.avgResponseWords || null,
+      avg_response_length_seconds: qaAnalytics?.avgResponseSeconds || null,
+      qa_data: qaAnalytics ? qaAnalytics.pairs : null,
     };
 
     setSaving(true);
@@ -357,17 +368,84 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
           </div>
 
           {/* Has Q&A */}
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="has-qa"
-              checked={hasQAndA}
-              onChange={(e) => setHasQAndA(e.target.checked)}
-              className="rounded border-input"
-            />
-            <label htmlFor="has-qa" className="text-sm">
-              Has Q&A section
-            </label>
+          <div className="sm:col-span-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="has-qa"
+                checked={hasQAndA}
+                onChange={(e) => setHasQAndA(e.target.checked)}
+                className="rounded border-input"
+              />
+              <label htmlFor="has-qa" className="text-sm">
+                Has Q&A section
+              </label>
+            </div>
+            
+            {/* Q&A Analytics Display */}
+            {hasQAndA && qaAnalytics && qaAnalytics.questionCount > 0 && (
+              <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-blue-900">
+                  📊 Q&A Analytics Detected
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-3 text-sm">
+                  <div>
+                    <div className="text-blue-600 font-medium">Questions Asked</div>
+                    <div className="text-2xl font-bold text-blue-900">
+                      {qaAnalytics.questionCount}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-blue-600 font-medium">Avg Response Length</div>
+                    <div className="text-2xl font-bold text-blue-900">
+                      {qaAnalytics.avgResponseWords} words
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-blue-600 font-medium">Avg Response Time</div>
+                    <div className="text-2xl font-bold text-blue-900">
+                      {qaAnalytics.avgResponseSeconds !== null
+                        ? `${qaAnalytics.avgResponseSeconds}s`
+                        : "N/A"}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Question List */}
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-sm font-medium text-blue-700 hover:text-blue-800">
+                    View all {qaAnalytics.questionCount} questions →
+                  </summary>
+                  <div className="mt-3 space-y-3 max-h-64 overflow-y-auto">
+                    {qaAnalytics.pairs.map((pair, idx) => (
+                      <div key={idx} className="rounded border border-blue-200 bg-white p-3 text-xs">
+                        <div className="font-medium text-blue-900">
+                          Q{idx + 1}: {pair.questionSpeaker}
+                        </div>
+                        <div className="mt-1 text-gray-700 italic">"{pair.questionText}"</div>
+                        <div className="mt-2 text-gray-500">
+                          Response: {pair.responseWordCount} words
+                          {pair.responseDurationSeconds !== null && 
+                            ` • ${pair.responseDurationSeconds.toFixed(1)}s`}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            )}
+            
+            {hasQAndA && qaAnalytics && qaAnalytics.questionCount === 0 && (
+              <div className="mt-4 rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+                ⚠️ No questions detected. The Q&A detection looks for short segments with question words/marks from non-primary speakers.
+              </div>
+            )}
+            
+            {hasQAndA && !qaAnalytics && parseResult && (
+              <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
+                💡 Click "Parse Transcript" again to detect Q&A patterns
+              </div>
+            )}
           </div>
         </div>
       </div>

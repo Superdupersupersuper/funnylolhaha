@@ -57,6 +57,10 @@ export async function POST(req: NextRequest) {
       total_speech_length_seconds,
       key_themes,
       segments,
+      question_count,
+      avg_response_length_words,
+      avg_response_length_seconds,
+      qa_data,
     } = body;
 
     // Validate required fields
@@ -86,6 +90,10 @@ export async function POST(req: NextRequest) {
           has_q_and_a: has_q_and_a || false,
           total_speech_length_seconds: total_speech_length_seconds || null,
           key_themes: key_themes || [],
+          question_count: question_count || null,
+          avg_response_length_words: avg_response_length_words || null,
+          avg_response_length_seconds: avg_response_length_seconds || null,
+          qa_data: qa_data || null,
         },
       });
 

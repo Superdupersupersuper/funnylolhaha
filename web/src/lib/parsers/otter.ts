@@ -26,6 +26,25 @@ export interface SpeakerStats {
   avgTurnSeconds: number;
 }
 
+export interface QAPair {
+  questionSpeaker: string;
+  questionText: string;
+  questionStart: number;
+  questionWordCount: number;
+  responseSpeaker: string;
+  responseText: string;
+  responseStart: number;
+  responseWordCount: number;
+  responseDurationSeconds: number | null;
+}
+
+export interface QAAnalytics {
+  questionCount: number;
+  avgResponseWords: number;
+  avgResponseSeconds: number | null;
+  pairs: QAPair[];
+}
+
 export interface ParseResult {
   segments: ParsedSegment[];
   calculated: {
@@ -35,6 +54,7 @@ export interface ParseResult {
     speakersDetected: string[];
     segmentCount: number;
   };
+  qaAnalytics?: QAAnalytics;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -345,18 +365,130 @@ function buildStats(segments: ParsedSegment[]) {
   return stats;
 }
 
+// ─── Q&A Detection ──────────────────────────────────────────────────────────
+
+/** Detect if a segment is likely a question based on multiple heuristics. */
+function isLikelyQuestion(segment: ParsedSegment, primarySpeaker: string | null): boolean {
+  const text = segment.text.toLowerCase();
+  const wordCount = segment.text.split(/\s+/).length;
+  
+  // Not the primary speaker (reporters/audience asking questions)
+  const isDifferentSpeaker = primarySpeaker && segment.speaker !== primarySpeaker;
+  
+  // Skip if this is the primary speaker's long monologue
+  if (segment.speaker === primarySpeaker || wordCount > 100) {
+    return false;
+  }
+  
+  // Question indicators
+  const hasQuestionMark = segment.text.includes("?");
+  const hasQuestionWords = /\b(what|how|why|when|where|who|which|whose|whom|can|could|would|will|should)\b/i.test(text);
+  const hasQuestionPhrases = /\b(question|wondering|curious|asking|want to (know|ask)|quick question)\b/i.test(text);
+  
+  // Strong question indicators (at start of sentence)
+  const startsWithQuestionWord = /^(what|how|why|when|where|who|which|is|are|can|could|would|will|should|do|does|did)\b/i.test(text.trim());
+  
+  // Greetings/thank you phrases (not questions)
+  const isGreeting = /\b(thank you|good (morning|afternoon|evening)|hello|hi\b|thanks)/i.test(text);
+  
+  // Short segments are more likely to be questions (typical Q&A pattern)
+  const isShort = wordCount <= 50;
+  
+  // Scoring system
+  let score = 0;
+  if (isDifferentSpeaker) score += 2;
+  if (hasQuestionMark) score += 4;
+  if (hasQuestionWords) score += 2;
+  if (startsWithQuestionWord) score += 3;
+  if (hasQuestionPhrases) score += 3;
+  if (isShort) score += 1;
+  if (isGreeting) score -= 3; // Penalize greetings
+  
+  // Threshold: need at least 5 points to be considered a question
+  return score >= 5;
+}
+
+/** Analyze Q&A patterns in the transcript segments. */
+function analyzeQA(segments: ParsedSegment[], primarySpeaker: string | null): QAAnalytics {
+  const pairs: QAPair[] = [];
+  
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    
+    // Check if this segment is a question
+    if (!isLikelyQuestion(segment, primarySpeaker)) continue;
+    
+    // Find the response (next segment from primary speaker)
+    let responseSegment: ParsedSegment | null = null;
+    for (let j = i + 1; j < segments.length; j++) {
+      if (primarySpeaker && segments[j].speaker === primarySpeaker) {
+        responseSegment = segments[j];
+        break;
+      }
+      // If we don't have a primary speaker, take the next segment
+      if (!primarySpeaker && j === i + 1) {
+        responseSegment = segments[j];
+        break;
+      }
+    }
+    
+    if (!responseSegment) continue;
+    
+    // Calculate metrics
+    const questionWords = segment.text.split(/\s+/).length;
+    const responseWords = responseSegment.text.split(/\s+/).length;
+    const responseDuration = 
+      responseSegment.end_seconds !== null && responseSegment.start_seconds !== null
+        ? responseSegment.end_seconds - responseSegment.start_seconds
+        : null;
+    
+    pairs.push({
+      questionSpeaker: segment.speaker,
+      questionText: segment.text,
+      questionStart: segment.start_seconds,
+      questionWordCount: questionWords,
+      responseSpeaker: responseSegment.speaker,
+      responseText: responseSegment.text,
+      responseStart: responseSegment.start_seconds,
+      responseWordCount: responseWords,
+      responseDurationSeconds: responseDuration,
+    });
+  }
+  
+  // Calculate averages
+  const avgResponseWords = pairs.length > 0
+    ? Math.round(pairs.reduce((sum, p) => sum + p.responseWordCount, 0) / pairs.length)
+    : 0;
+  
+  const responsesWithDuration = pairs.filter(p => p.responseDurationSeconds !== null);
+  const avgResponseSeconds = responsesWithDuration.length > 0
+    ? Math.round(
+        (responsesWithDuration.reduce((sum, p) => sum + (p.responseDurationSeconds || 0), 0) / responsesWithDuration.length) * 10
+      ) / 10
+    : null;
+  
+  return {
+    questionCount: pairs.length,
+    avgResponseWords,
+    avgResponseSeconds,
+    pairs,
+  };
+}
+
 // ─── Main entry ─────────────────────────────────────────────────────────────
 
 export interface ParseOptions {
   /** Merge consecutive same-speaker segments when gap <= this many seconds. Set 0 to disable. */
   mergeGapSeconds?: number;
+  /** Analyze Q&A patterns (requires has_q_and_a to be true). */
+  detectQA?: boolean;
 }
 
 export function parseOtterTranscript(
   rawText: string,
   options: ParseOptions = {}
 ): ParseResult {
-  const { mergeGapSeconds = 3 } = options;
+  const { mergeGapSeconds = 3, detectQA = false } = options;
 
   const format = detectFormat(rawText);
 
@@ -411,6 +543,12 @@ export function parseOtterTranscript(
     }
   }
 
+  // Q&A analysis if requested
+  let qaAnalytics: QAAnalytics | undefined;
+  if (detectQA) {
+    qaAnalytics = analyzeQA(segments, suggestedPrimarySpeaker);
+  }
+
   return {
     segments,
     calculated: {
@@ -420,6 +558,7 @@ export function parseOtterTranscript(
       speakersDetected: speakers,
       segmentCount: segments.length,
     },
+    qaAnalytics,
   };
 }
 
