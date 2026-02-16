@@ -1371,7 +1371,7 @@
             }
 
             try {
-                container.innerHTML = transcripts.map(t => {
+                const cardsHtml = transcripts.map(t => {
                 const mentionCount = t.mention_count || 0;
                 const mentions = t.mentions || [];
                 const mentionLocations = t.mention_locations || [];
@@ -1495,6 +1495,9 @@
                     </div>
                 `;
             }).join('');
+                console.warn('Cards HTML generated, length:', cardsHtml.length, 'first 200 chars:', cardsHtml.substring(0, 200));
+                container.innerHTML = cardsHtml;
+                console.warn('Container innerHTML set, children:', container.children.length);
             } catch (error) {
                 console.error('Error displaying transcripts:', error);
                 container.innerHTML = '<div class="empty-state"><h3>Error displaying transcripts</h3><p>Please check the console for details.</p></div>';
