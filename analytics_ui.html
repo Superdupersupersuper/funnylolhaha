@@ -1669,8 +1669,9 @@
                                 const fullContext = sec.speaker + '\n' + sec.text;
                                 mentions.push({ context: fullContext, highlight_start: 0, highlight_end: 0 });
 
-                                const absolutePos = positions[sIdx] + pos;
-                                const location = preview.length > 0 ? absolutePos / preview.length : 0;
+                                // Calculate location based on section index within all sections
+                                const location = sections.length > 0 ? sIdx / sections.length : 0;
+                                const absolutePos = sIdx * 1000 + pos; // Approximate position
                                 mentionLocations.push({ location, position: absolutePos });
 
                                 pos += term.length;
