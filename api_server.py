@@ -72,42 +72,92 @@ scraper_status = {
 
 def init_database_if_needed():
     """Initialize database schema if it doesn't exist"""
-    if os.path.exists(DB_PATH):
-        return  # Database already exists
+    db_existed = os.path.exists(DB_PATH)
     
-    # Create directory if needed
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    
-    logging.info(f"📦 Initializing new database at: {DB_PATH}")
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Create transcripts table with schema matching rollcall_sync.py
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS transcripts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            date DATE NOT NULL,
-            speech_type TEXT NOT NULL,
-            location TEXT,
-            url TEXT UNIQUE NOT NULL,
-            word_count INTEGER,
-            trump_word_count INTEGER,
-            speech_duration_seconds INTEGER,
-            full_dialogue TEXT,
-            speakers_json TEXT,
-            scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
-    # Create indexes
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_date ON transcripts(date)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_url ON transcripts(url)")
-    
-    conn.commit()
-    conn.close()
-    logging.info("✅ Database initialized successfully")
+    if not db_existed:
+        # Create directory if needed
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        
+        logging.info(f"📦 Initializing new database at: {DB_PATH}")
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Create transcripts table with schema matching rollcall_sync.py
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transcripts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                date DATE NOT NULL,
+                speech_type TEXT NOT NULL,
+                location TEXT,
+                url TEXT UNIQUE NOT NULL,
+                word_count INTEGER,
+                trump_word_count INTEGER,
+                speech_duration_seconds INTEGER,
+                full_dialogue TEXT,
+                speakers_json TEXT,
+                primary_speaker TEXT DEFAULT '',
+                scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_date ON transcripts(date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_url ON transcripts(url)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_primary_speaker ON transcripts(primary_speaker)")
+        
+        conn.commit()
+        conn.close()
+        logging.info("✅ Database initialized successfully")
+    else:
+        # Migrate: add primary_speaker column if missing
+        _migrate_add_primary_speaker()
+
+
+def _migrate_add_primary_speaker():
+    """Add primary_speaker column to existing databases that lack it."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(transcripts)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'primary_speaker' not in columns:
+            logging.info("📦 Migrating: adding primary_speaker column...")
+            cursor.execute("ALTER TABLE transcripts ADD COLUMN primary_speaker TEXT DEFAULT ''")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_primary_speaker ON transcripts(primary_speaker)")
+            conn.commit()
+            logging.info("✅ primary_speaker column added")
+        
+        conn.close()
+    except Exception as e:
+        logging.error(f"Migration error: {e}")
+
+
+def normalize_speakers(speakers):
+    """Normalize speaker names: collapse 'Speaker 1', 'Speaker 2', etc. into 'Unknown Speaker'."""
+    normalized = []
+    seen = set()
+    for s in speakers:
+        if re.match(r'^Speaker\s+\d+$', s, re.IGNORECASE):
+            label = 'Unknown Speaker'
+        else:
+            label = s
+        if label not in seen:
+            normalized.append(label)
+            seen.add(label)
+    return normalized
+
+
+def clean_title(title):
+    """Remove 'otter ai' / 'otter.ai' / 'Transcribed by...' artifacts from titles."""
+    if not title:
+        return title
+    title = re.sub(r'\s*[-–—]\s*Transcribed by\s+(?:https?://)?otter\.?ai\s*$', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\s*Transcribed by\s+(?:https?://)?otter\.?ai\s*$', '', title, flags=re.IGNORECASE)
+    title = re.sub(r'\s*otter\.?ai\s*$', '', title, flags=re.IGNORECASE)
+    return title.strip()
 
 def get_db():
     """Get database connection"""
@@ -337,7 +387,8 @@ def get_transcripts_metadata():
                 location,
                 url,
                 word_count,
-                speakers_json
+                speakers_json,
+                primary_speaker
             FROM transcripts
             ORDER BY date DESC
         """)
@@ -347,16 +398,18 @@ def get_transcripts_metadata():
         
         transcripts = []
         for row in rows:
+            speakers_raw = json.loads(row['speakers_json']) if row['speakers_json'] else []
             transcripts.append({
                 'id': row['id'],
-                'title': row['title'],
+                'title': clean_title(row['title']),
                 'date': row['date'],
                 'speech_type': row['speech_type'],
                 'location': row['location'] or '',
                 'url': row['url'],
                 'word_count': row['word_count'] or 0,
                 'preview': '',  # Empty - use separate endpoint for full text
-                'speakers': json.loads(row['speakers_json']) if row['speakers_json'] else []
+                'speakers': normalize_speakers(speakers_raw),
+                'primary_speaker': row['primary_speaker'] or ''
             })
 
         conn.close()
@@ -398,7 +451,8 @@ def get_transcripts():
                 url,
                 word_count,
                 {text_column} as preview,
-                speakers_json
+                speakers_json,
+                primary_speaker
             FROM transcripts
             ORDER BY date DESC
         """)
@@ -413,16 +467,18 @@ def get_transcripts():
             if isinstance(preview_text, bytes):
                 preview_text = preview_text.decode('utf-8', errors='ignore')
             
+            speakers_raw = json.loads(row['speakers_json']) if row['speakers_json'] else []
             transcripts.append({
                 'id': row['id'],
-                'title': row['title'],
+                'title': clean_title(row['title']),
                 'date': row['date'],
                 'speech_type': row['speech_type'],
                 'location': row['location'] or '',
                 'url': row['url'],
                 'word_count': row['word_count'] or 0,
                 'preview': preview_text,  # FULL TRANSCRIPT TEXT
-                'speakers': json.loads(row['speakers_json']) if row['speakers_json'] else []
+                'speakers': normalize_speakers(speakers_raw),
+                'primary_speaker': row['primary_speaker'] or ''
             })
 
         conn.close()
@@ -653,10 +709,11 @@ def create_transcript():
         cursor.execute("""
             INSERT INTO transcripts (
                 title, date, speech_type, location, url, word_count,
-                trump_word_count, speech_duration_seconds, full_dialogue, speakers_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                trump_word_count, speech_duration_seconds, full_dialogue, speakers_json,
+                primary_speaker
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            title,
+            clean_title(title),
             event_date,
             speech_type,
             '',  # location
@@ -665,7 +722,8 @@ def create_transcript():
             0,  # trump_word_count (calculate if needed)
             data.get('total_seconds', 0),
             full_dialogue,
-            json.dumps(speakers)
+            json.dumps(normalize_speakers(speakers)),
+            primary_speaker
         ))
         
         transcript_id = cursor.lastrowid
@@ -687,7 +745,7 @@ def get_transcripts_by_speaker():
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT id, title, date, speech_type, word_count, speakers_json
+            SELECT id, title, date, speech_type, word_count, speakers_json, primary_speaker
             FROM transcripts
             ORDER BY date DESC
         """)
@@ -696,14 +754,15 @@ def get_transcripts_by_speaker():
         transcripts = []
         
         for row in rows:
-            speakers = json.loads(row['speakers_json']) if row['speakers_json'] else []
+            speakers_raw = json.loads(row['speakers_json']) if row['speakers_json'] else []
             transcripts.append({
                 'id': row['id'],
-                'title': row['title'],
+                'title': clean_title(row['title']),
                 'date': row['date'],
                 'speech_type': row['speech_type'],
                 'word_count': row['word_count'] or 0,
-                'speakers': speakers
+                'speakers': normalize_speakers(speakers_raw),
+                'primary_speaker': row['primary_speaker'] or ''
             })
         
         conn.close()
