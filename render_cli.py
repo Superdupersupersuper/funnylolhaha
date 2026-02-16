@@ -4,20 +4,25 @@ Render CLI Helper - Check deployment status and logs
 Usage: python3 render_cli.py [command]
 
 Commands:
-  status    - Show all services and their status
-  logs      - Show recent deployment logs
-  deploy    - Trigger a new deployment
-  health    - Check if services are healthy
+  status              - Show all services and their status
+  logs                - Show recent deployment logs
+  deploy              - Trigger a new deployment
+  health              - Check if services are healthy
+  configure_web_prisma - Set env vars + build/start commands for Prisma DB init
 """
 
+import os
 import requests
 import sys
 import json
 from datetime import datetime
 
-# Your Render API key
-API_KEY = "rnd_XToSneCSEQP0QdaeAYQTtlZWCNzy"
+# Your Render API key (env var takes precedence)
+API_KEY = os.environ.get("RENDER_API_KEY", "rnd_XToSneCSEQP0QdaeAYQTtlZWCNzy")
 BASE_URL = "https://api.render.com/v1"
+
+WEB_SERVICE_ID = "srv-d694bsjuibrs739aiib0"
+DB_ID = "dpg-d693piogjchc73dflltg-a"
 
 def get_headers():
     return {
@@ -180,6 +185,93 @@ def trigger_deploy(service_id=None):
     except requests.exceptions.RequestException as e:
         print(f"❌ Error: {e}")
 
+def configure_web_prisma():
+    """Configure the web service for Prisma DB initialization.
+
+    - Fetches the internal DATABASE_URL from the Render Postgres instance.
+    - Sets DATABASE_URL, NODE_ENV, ADMIN_PASSWORD, ADMIN_SESSION_SECRET on the
+      web service (upsert).
+    - Patches the build command to ``npm install --include=dev`` so that
+      devDependencies (prisma, typescript, tailwindcss …) are available even
+      when NODE_ENV=production.
+    - Ensures the start command runs ``npx prisma db push`` before ``npm start``.
+    - Triggers a redeploy so the changes take effect immediately.
+    """
+    headers = {**get_headers(), "Content-Type": "application/json"}
+
+    # --- 1) Fetch internal DB connection string ---
+    print("\n🔗 Fetching Postgres connection info …")
+    r = requests.get(f"{BASE_URL}/postgres/{DB_ID}/connection-info", headers=headers)
+    r.raise_for_status()
+    internal_url = r.json()["internalConnectionString"]
+    print(f"   Internal URL: {internal_url[:50]}…")
+
+    # --- 2) Read current service config ---
+    print("\n📦 Reading current service config …")
+    r = requests.get(f"{BASE_URL}/services/{WEB_SERVICE_ID}", headers=headers)
+    r.raise_for_status()
+    svc = r.json()
+    details = svc.get("serviceDetails", {}).get("envSpecificDetails", {})
+    print(f"   rootDir:      {svc.get('rootDir')}")
+    print(f"   buildCommand: {details.get('buildCommand')}")
+    print(f"   startCommand: {details.get('startCommand')}")
+
+    # --- 3) Upsert environment variables ---
+    print("\n🔑 Setting environment variables …")
+    env_vars = [
+        {"key": "DATABASE_URL", "value": internal_url},
+        {"key": "NODE_ENV", "value": "production"},
+        {"key": "ADMIN_PASSWORD", "value": "changeme-admin-2024"},
+        {"key": "ADMIN_SESSION_SECRET",
+         "value": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4"},
+    ]
+    for ev in env_vars:
+        r2 = requests.put(
+            f"{BASE_URL}/services/{WEB_SERVICE_ID}/env-vars/{ev['key']}",
+            headers=headers,
+            data=json.dumps({"value": ev["value"]}),
+        )
+        tag = "✅" if r2.ok else f"❌ {r2.status_code}"
+        print(f"   {tag} {ev['key']}")
+
+    # --- 4) Patch build + start commands ---
+    desired_build = "npm install --include=dev && npx prisma generate && npm run build"
+    desired_start = "npx prisma db push --accept-data-loss --skip-generate && npm start"
+
+    if details.get("buildCommand") != desired_build or details.get("startCommand") != desired_start:
+        print("\n⚙️  Patching build/start commands …")
+        r3 = requests.patch(
+            f"{BASE_URL}/services/{WEB_SERVICE_ID}",
+            headers=headers,
+            data=json.dumps({
+                "serviceDetails": {
+                    "envSpecificDetails": {
+                        "buildCommand": desired_build,
+                        "startCommand": desired_start,
+                    }
+                }
+            }),
+        )
+        r3.raise_for_status()
+        new_details = r3.json().get("serviceDetails", {}).get("envSpecificDetails", {})
+        print(f"   buildCommand: {new_details.get('buildCommand')}")
+        print(f"   startCommand: {new_details.get('startCommand')}")
+    else:
+        print("\n⚙️  Build/start commands already correct — skipping patch.")
+
+    # --- 5) Trigger redeploy ---
+    print("\n🚀 Triggering redeploy …")
+    r4 = requests.post(
+        f"{BASE_URL}/services/{WEB_SERVICE_ID}/deploys",
+        headers=headers,
+    )
+    r4.raise_for_status()
+    dep = r4.json().get("deploy", r4.json())
+    print(f"   Deploy ID: {dep.get('id')}")
+    print(f"   Status:    {dep.get('status')}")
+    print("\n💡 Run 'python3 render_cli.py logs' to watch progress")
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -201,6 +293,8 @@ def main():
         if services:
             print(f"\n✅ Render API is reachable")
             print(f"   Services found: {len(services)}")
+    elif command == "configure_web_prisma":
+        configure_web_prisma()
     else:
         print(f"❌ Unknown command: {command}")
         print(__doc__)
