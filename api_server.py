@@ -11,6 +11,7 @@ import threading
 import os
 import logging
 import sys
+import re
 
 # Version info for deployment tracking
 API_VERSION = "2.0.1"
@@ -204,6 +205,16 @@ def serve_frontend():
             'message': 'analytics_ui.html is missing. This is the API server.',
             'api_endpoints': ['/api/health', '/api/stats', '/api/transcripts']
         }), 404
+
+@app.route('/admin', methods=['GET'])
+def serve_admin():
+    """Serve the admin UI"""
+    try:
+        html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'admin.html')
+        with open(html_path, 'r', encoding='utf-8') as f:
+            return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
+    except FileNotFoundError:
+        return jsonify({'error': 'Admin UI not found'}), 404
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -581,6 +592,254 @@ def get_date_range():
     conn.close()
 
     return jsonify(result)
+
+@app.route('/api/admin/parse', methods=['POST'])
+def parse_transcript():
+    """Parse Otter.ai transcript and return structured data with Q&A detection"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        detect_qa = data.get('detectQA', False)
+        
+        if not text:
+            return jsonify({'error': 'No text provided'}), 400
+        
+        # Parse the transcript using the same logic as the Next.js parser
+        result = parse_otter_transcript(text, detect_qa)
+        return jsonify(result)
+    except Exception as e:
+        logging.error(f"Parse error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/transcripts', methods=['POST'])
+def create_transcript():
+    """Create a new transcript in the database"""
+    try:
+        data = request.json
+        
+        # Required fields
+        title = data.get('title')
+        event_date = data.get('event_date')
+        speech_type = data.get('speech_type')
+        primary_speaker = data.get('primary_speaker')
+        segments = data.get('segments', [])
+        
+        if not all([title, event_date, speech_type, primary_speaker]):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        if not segments:
+            return jsonify({'error': 'No segments provided'}), 400
+        
+        # Build full dialogue from segments
+        full_dialogue = '\n\n'.join([
+            f"{seg['speaker']} ({format_seconds(seg['start_seconds'])}): {seg['text']}"
+            for seg in segments
+        ])
+        
+        # Calculate word count
+        word_count = sum(len(seg['text'].split()) for seg in segments)
+        
+        # Get speakers list
+        speakers = list(set(seg['speaker'] for seg in segments))
+        
+        # Q&A data
+        has_qa = data.get('has_q_and_a', False)
+        qa_analytics = data.get('qa_analytics')
+        
+        # Insert into database
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO transcripts (
+                title, date, speech_type, location, url, word_count,
+                trump_word_count, speech_duration_seconds, full_dialogue, speakers_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            title,
+            event_date,
+            speech_type,
+            '',  # location
+            f'admin-upload-{event_date}-{title[:30].replace(" ", "-")}',  # unique URL
+            word_count,
+            0,  # trump_word_count (calculate if needed)
+            data.get('total_seconds', 0),
+            full_dialogue,
+            json.dumps(speakers)
+        ))
+        
+        transcript_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        logging.info(f"✅ Created transcript ID {transcript_id}: {title}")
+        return jsonify({'id': transcript_id, 'success': True}), 201
+        
+    except Exception as e:
+        logging.error(f"Create transcript error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+def format_seconds(seconds):
+    """Format seconds as M:SS or H:MM:SS"""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+def parse_otter_transcript(text, detect_qa=False):
+    """Parse Otter.ai transcript format"""
+    import re
+    
+    lines = text.split('\n')
+    segments = []
+    
+    # Otter format: "Speaker Name  M:SS  " followed by text
+    header_re = re.compile(r'^(.+?)\s{2,}(\d{1,2}:\d{2}(?::\d{2})?)\s*$')
+    
+    current_speaker = None
+    current_start = None
+    text_lines = []
+    
+    def flush_segment():
+        if current_speaker and current_start is not None and text_lines:
+            segment_text = ' '.join(text_lines).strip()
+            if segment_text and not segment_text.startswith('Transcribed by'):
+                segments.append({
+                    'speaker': current_speaker,
+                    'start_seconds': current_start,
+                    'text': segment_text
+                })
+        text_lines.clear()
+    
+    for line in lines:
+        trimmed = line.strip()
+        if not trimmed or trimmed.startswith('Transcribed by'):
+            continue
+        
+        match = header_re.match(line)
+        if match:
+            flush_segment()
+            current_speaker = match.group(1).strip()
+            time_str = match.group(2)
+            # Convert time to seconds
+            parts = list(map(int, time_str.split(':')))
+            if len(parts) == 3:
+                current_start = parts[0] * 3600 + parts[1] * 60 + parts[2]
+            else:
+                current_start = parts[0] * 60 + parts[1]
+        elif trimmed:
+            text_lines.append(trimmed)
+    
+    flush_segment()
+    
+    # Calculate stats
+    speaker_stats = {}
+    for seg in segments:
+        if seg['speaker'] not in speaker_stats:
+            speaker_stats[seg['speaker']] = {'words': 0, 'turns': 0}
+        speaker_stats[seg['speaker']]['words'] += len(seg['text'].split())
+        speaker_stats[seg['speaker']]['turns'] += 1
+    
+    # Suggest primary speaker
+    primary = max(speaker_stats.items(), key=lambda x: x[1]['words'])[0] if speaker_stats else None
+    
+    # Q&A detection
+    qa_analytics = None
+    if detect_qa and primary:
+        qa_analytics = detect_qa_patterns(segments, primary)
+    
+    return {
+        'segments': segments,
+        'segmentCount': len(segments),
+        'totalSeconds': segments[-1]['start_seconds'] if segments else 0,
+        'speakersDetected': list(speaker_stats.keys()),
+        'suggestedPrimarySpeaker': primary,
+        'qaAnalytics': qa_analytics
+    }
+
+def detect_qa_patterns(segments, primary_speaker):
+    """Detect Q&A patterns in segments"""
+    pairs = []
+    
+    for i, seg in enumerate(segments):
+        # Check if this is a question
+        text_lower = seg['text'].lower()
+        word_count = len(seg['text'].split())
+        
+        # Skip primary speaker's long segments
+        if seg['speaker'] == primary_speaker or word_count > 100:
+            continue
+        
+        # Question indicators
+        has_question_mark = '?' in seg['text']
+        has_question_words = bool(re.search(r'\b(what|how|why|when|where|who|which|is|are|can|could|would|will|should)\b', text_lower))
+        has_question_phrase = bool(re.search(r'\b(question|wondering|curious|asking|quick question)\b', text_lower))
+        starts_with_question = bool(re.match(r'^(what|how|why|when|where|who|which|is|are|can|could|would|will|should)\b', text_lower))
+        is_short = word_count <= 50
+        is_greeting = bool(re.search(r'\b(thank you|good (morning|afternoon|evening)|hello|hi\b)', text_lower))
+        
+        # Score
+        score = 0
+        if seg['speaker'] != primary_speaker: score += 2
+        if has_question_mark: score += 4
+        if has_question_words: score += 2
+        if starts_with_question: score += 3
+        if has_question_phrase: score += 3
+        if is_short: score += 1
+        if is_greeting: score -= 3
+        
+        if score < 5:
+            continue
+        
+        # Find response (next segment from primary speaker)
+        response_seg = None
+        for j in range(i + 1, len(segments)):
+            if segments[j]['speaker'] == primary_speaker:
+                response_seg = segments[j]
+                break
+        
+        if not response_seg:
+            continue
+        
+        # Calculate response duration
+        response_duration = None
+        if i + 1 < len(segments):
+            next_seg = segments[i + 1]
+            if 'start_seconds' in next_seg and 'start_seconds' in response_seg:
+                # Find the segment after the response
+                for k in range(j + 1, len(segments)):
+                    response_duration = segments[k]['start_seconds'] - response_seg['start_seconds']
+                    break
+        
+        pairs.append({
+            'questionSpeaker': seg['speaker'],
+            'questionText': seg['text'],
+            'questionStart': seg['start_seconds'],
+            'questionWordCount': word_count,
+            'responseSpeaker': response_seg['speaker'],
+            'responseText': response_seg['text'],
+            'responseStart': response_seg['start_seconds'],
+            'responseWordCount': len(response_seg['text'].split()),
+            'responseDurationSeconds': response_duration
+        })
+    
+    # Calculate averages
+    if not pairs:
+        return {'questionCount': 0, 'avgResponseWords': 0, 'avgResponseSeconds': None, 'pairs': []}
+    
+    avg_words = round(sum(p['responseWordCount'] for p in pairs) / len(pairs))
+    
+    durations = [p['responseDurationSeconds'] for p in pairs if p['responseDurationSeconds'] is not None]
+    avg_seconds = round(sum(durations) / len(durations), 1) if durations else None
+    
+    return {
+        'questionCount': len(pairs),
+        'avgResponseWords': avg_words,
+        'avgResponseSeconds': avg_seconds,
+        'pairs': pairs
+    }
 
 if __name__ == '__main__':
     print("\n" + "="*80)
