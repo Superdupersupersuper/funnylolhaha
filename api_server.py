@@ -531,7 +531,9 @@ def get_transcripts_metadata():
         logging.info(f"📤 Returning {len(transcripts)} metadata entries")
 
         response = jsonify(transcripts)
-        response.headers['Cache-Control'] = 'public, max-age=300'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
         return response
         
     except Exception as e:
@@ -604,7 +606,9 @@ def get_transcripts():
         logging.info(f"📤 Returning {len(transcripts)} transcripts to frontend")
 
         response = jsonify(transcripts)
-        response.headers['Cache-Control'] = 'public, max-age=300'  # Cache for 5 minutes
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
         return response
         
     except Exception as e:
