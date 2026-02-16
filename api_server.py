@@ -1104,6 +1104,24 @@ def import_transcripts_json():
         logging.error(f"Import error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/admin/download-backup', methods=['GET'])
+def download_backup():
+    """Download the latest JSON backup file"""
+    try:
+        latest_backup = 'data/json_backups/transcripts_latest.json'
+        if os.path.exists(latest_backup):
+            return send_file(
+                latest_backup,
+                mimetype='application/json',
+                as_attachment=True,
+                download_name='transcripts_backup.json'
+            )
+        else:
+            return jsonify({'error': 'No backup file found'}), 404
+    except Exception as e:
+        logging.error(f"Download backup error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/admin/fix-transcripts', methods=['POST'])
 def fix_existing_transcripts_api():
     """Clean titles and normalize speaker names in existing transcripts"""
