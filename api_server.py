@@ -679,6 +679,155 @@ def create_transcript():
         logging.error(f"Create transcript error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/admin/transcripts/by-speaker', methods=['GET'])
+def get_transcripts_by_speaker():
+    """Get all transcripts for database viewer"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, title, date, speech_type, word_count, speakers_json
+            FROM transcripts
+            ORDER BY date DESC
+        """)
+        
+        rows = cursor.fetchall()
+        transcripts = []
+        
+        for row in rows:
+            speakers = json.loads(row['speakers_json']) if row['speakers_json'] else []
+            transcripts.append({
+                'id': row['id'],
+                'title': row['title'],
+                'date': row['date'],
+                'speech_type': row['speech_type'],
+                'word_count': row['word_count'] or 0,
+                'speakers': speakers
+            })
+        
+        conn.close()
+        return jsonify({'transcripts': transcripts})
+        
+    except Exception as e:
+        logging.error(f"Get transcripts error: {e}", exc_info=True)
+        return jsonify({'error': str(e), 'transcripts': []}), 500
+
+@app.route('/api/admin/transcripts/<int:transcript_id>', methods=['GET'])
+def get_transcript_for_edit(transcript_id):
+    """Get a single transcript for editing"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, title, date, speech_type, location, url, word_count,
+                   speech_duration_seconds, full_dialogue, speakers_json
+            FROM transcripts
+            WHERE id = ?
+        """, (transcript_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return jsonify({'error': 'Transcript not found'}), 404
+        
+        # Check if full_dialogue exists, fallback to full_text
+        text_content = row['full_dialogue']
+        if not text_content:
+            # Try full_text column if it exists
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT full_text FROM transcripts WHERE id = ?", (transcript_id,))
+            alt_row = cursor.fetchone()
+            conn.close()
+            if alt_row and 'full_text' in alt_row.keys():
+                text_content = alt_row['full_text']
+        
+        speakers = json.loads(row['speakers_json']) if row['speakers_json'] else []
+        
+        return jsonify({
+            'id': row['id'],
+            'title': row['title'],
+            'date': row['date'],
+            'speech_type': row['speech_type'],
+            'location': row['location'] or '',
+            'url': row['url'],
+            'word_count': row['word_count'] or 0,
+            'speech_duration_seconds': row['speech_duration_seconds'] or 0,
+            'full_dialogue': text_content or '',
+            'full_text': text_content or '',
+            'speakers': speakers
+        })
+        
+    except Exception as e:
+        logging.error(f"Get transcript error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/transcripts/<int:transcript_id>', methods=['PUT'])
+def update_transcript(transcript_id):
+    """Update a transcript"""
+    try:
+        data = request.json
+        
+        title = data.get('title')
+        date = data.get('date')
+        speech_type = data.get('speech_type')
+        full_dialogue = data.get('full_dialogue', '')
+        
+        if not all([title, date, speech_type]):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        # Recalculate word count
+        word_count = len(full_dialogue.split()) if full_dialogue else 0
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE transcripts
+            SET title = ?, date = ?, speech_type = ?, full_dialogue = ?, word_count = ?
+            WHERE id = ?
+        """, (title, date, speech_type, full_dialogue, word_count, transcript_id))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'error': 'Transcript not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        logging.info(f"✅ Updated transcript ID {transcript_id}")
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logging.error(f"Update transcript error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/transcripts/<int:transcript_id>', methods=['DELETE'])
+def delete_transcript(transcript_id):
+    """Delete a transcript"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM transcripts WHERE id = ?", (transcript_id,))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'error': 'Transcript not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        logging.info(f"🗑️ Deleted transcript ID {transcript_id}")
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logging.error(f"Delete transcript error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 def format_seconds(seconds):
     """Format seconds as M:SS or H:MM:SS"""
     h = int(seconds // 3600)

@@ -237,8 +237,18 @@
             <a href="/" class="back-link">← Back to Search</a>
         </div>
 
+        <div style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 2px solid #374151; padding-bottom: 0;">
+            <button onclick="showTab('upload')" id="uploadTab" style="padding: 12px 24px; background: transparent; border: none; border-bottom: 3px solid #3b82f6; color: #3b82f6; font-weight: 600; cursor: pointer;">
+                📝 Upload Transcript
+            </button>
+            <button onclick="showTab('database')" id="databaseTab" style="padding: 12px 24px; background: transparent; border: none; border-bottom: 3px solid transparent; color: #9ca3af; font-weight: 600; cursor: pointer;">
+                📊 View Database
+            </button>
+        </div>
+
         <div id="alertContainer"></div>
 
+        <div id="uploadSection">
         <div class="card">
             <h2>Upload Transcript</h2>
             
@@ -301,10 +311,295 @@ More text..."></textarea>
                 <div id="previewContent"></div>
             </div>
         </div>
+        </div>
+
+        <div id="databaseSection" style="display: none;">
+            <div class="card">
+                <h2>Database Overview</h2>
+                <div id="speakerBoxes" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-top: 16px;">
+                    <!-- Speaker boxes will be loaded here -->
+                </div>
+            </div>
+
+            <div id="transcriptsList" style="display: none;">
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h2 id="speakerName">Transcripts</h2>
+                        <button onclick="showSpeakerBoxes()" class="button-secondary">← Back to Speakers</button>
+                    </div>
+                    <div id="transcriptsContent"></div>
+                </div>
+            </div>
+
+            <div id="editTranscript" style="display: none;">
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h2>Edit Transcript</h2>
+                        <button onclick="cancelEdit()" class="button-secondary">✕ Cancel</button>
+                    </div>
+                    
+                    <input type="hidden" id="editTranscriptId">
+                    
+                    <div class="form-group">
+                        <label>Title</label>
+                        <input type="text" id="editTitle">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Event Date</label>
+                        <input type="date" id="editDate">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Speech Type</label>
+                        <select id="editSpeechType">
+                            <option value="Remarks">Remarks</option>
+                            <option value="Press Conference">Press Conference</option>
+                            <option value="Interview">Interview</option>
+                            <option value="Rally">Rally</option>
+                            <option value="Press Briefing">Press Briefing</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Transcript Text</label>
+                        <textarea id="editFullText" rows="15" style="font-family: monospace; font-size: 12px;"></textarea>
+                    </div>
+
+                    <div style="display: flex; gap: 12px;">
+                        <button onclick="saveEdit()">💾 Save Changes</button>
+                        <button onclick="deleteTranscript()" style="background: #dc2626;" onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">🗑️ Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
         let parsedData = null;
+        let currentSpeaker = null;
+        let allTranscripts = [];
+
+        function showTab(tab) {
+            const uploadSection = document.getElementById('uploadSection');
+            const databaseSection = document.getElementById('databaseSection');
+            const uploadTab = document.getElementById('uploadTab');
+            const databaseTab = document.getElementById('databaseTab');
+
+            if (tab === 'upload') {
+                uploadSection.style.display = 'block';
+                databaseSection.style.display = 'none';
+                uploadTab.style.borderBottomColor = '#3b82f6';
+                uploadTab.style.color = '#3b82f6';
+                databaseTab.style.borderBottomColor = 'transparent';
+                databaseTab.style.color = '#9ca3af';
+            } else {
+                uploadSection.style.display = 'none';
+                databaseSection.style.display = 'block';
+                uploadTab.style.borderBottomColor = 'transparent';
+                uploadTab.style.color = '#9ca3af';
+                databaseTab.style.borderBottomColor = '#3b82f6';
+                databaseTab.style.color = '#3b82f6';
+                loadSpeakerBoxes();
+            }
+        }
+
+        async function loadSpeakerBoxes() {
+            try {
+                const response = await fetch('/api/admin/transcripts/by-speaker');
+                if (!response.ok) throw new Error('Failed to load transcripts');
+                
+                const data = await response.json();
+                allTranscripts = data.transcripts || [];
+                
+                const speakerBoxes = document.getElementById('speakerBoxes');
+                const speakerCounts = {};
+                
+                // Group by primary speaker (extract from speakers_json or title)
+                allTranscripts.forEach(t => {
+                    let speaker = 'Other';
+                    const speakers = t.speakers || [];
+                    const title = t.title || '';
+                    
+                    if (title.toLowerCase().includes('mamdani') || speakers.includes('Zohran Mamdani')) {
+                        speaker = 'Mamdani';
+                    } else if (title.toLowerCase().includes('trump') || speakers.some(s => s.toLowerCase().includes('trump'))) {
+                        speaker = 'Trump';
+                    } else if (title.toLowerCase().includes('hochul') || speakers.some(s => s.toLowerCase().includes('hochul'))) {
+                        speaker = 'Hochul';
+                    }
+                    
+                    t.primarySpeaker = speaker;
+                    speakerCounts[speaker] = (speakerCounts[speaker] || 0) + 1;
+                });
+                
+                // Create speaker boxes
+                const speakerColors = {
+                    'Mamdani': '#3b82f6',
+                    'Trump': '#ef4444',
+                    'Hochul': '#8b5cf6',
+                    'Other': '#6b7280'
+                };
+                
+                let html = '';
+                ['Mamdani', 'Trump', 'Hochul', 'Other'].forEach(speaker => {
+                    const count = speakerCounts[speaker] || 0;
+                    const color = speakerColors[speaker];
+                    html += `
+                        <div onclick="showSpeakerTranscripts('${speaker}')" 
+                             style="background: linear-gradient(135deg, ${color}22 0%, ${color}11 100%); 
+                                    border: 2px solid ${color}; padding: 24px; border-radius: 8px; 
+                                    cursor: pointer; transition: all 0.2s; text-align: center;"
+                             onmouseover="this.style.transform='translateY(-4px)'; this.style.boxShadow='0 8px 16px rgba(0,0,0,0.3)'"
+                             onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                            <div style="font-size: 48px; font-weight: 700; color: ${color}; margin-bottom: 8px;">${count}</div>
+                            <div style="font-size: 18px; font-weight: 600; color: #e5e7eb;">${speaker}</div>
+                            <div style="font-size: 13px; color: #9ca3af; margin-top: 4px;">transcript${count !== 1 ? 's' : ''}</div>
+                        </div>
+                    `;
+                });
+                
+                speakerBoxes.innerHTML = html;
+                
+                // Show speaker boxes, hide transcript list and edit form
+                speakerBoxes.parentElement.style.display = 'block';
+                document.getElementById('transcriptsList').style.display = 'none';
+                document.getElementById('editTranscript').style.display = 'none';
+                
+            } catch (error) {
+                showAlert('Error loading database: ' + error.message, 'error');
+            }
+        }
+
+        function showSpeakerBoxes() {
+            document.getElementById('speakerBoxes').parentElement.style.display = 'block';
+            document.getElementById('transcriptsList').style.display = 'none';
+            document.getElementById('editTranscript').style.display = 'none';
+        }
+
+        function showSpeakerTranscripts(speaker) {
+            currentSpeaker = speaker;
+            const filtered = allTranscripts.filter(t => t.primarySpeaker === speaker);
+            
+            document.getElementById('speakerName').textContent = `${speaker} (${filtered.length} transcripts)`;
+            
+            let html = '';
+            if (filtered.length === 0) {
+                html = '<p style="color: #9ca3af;">No transcripts found for this speaker.</p>';
+            } else {
+                filtered.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+                filtered.forEach(t => {
+                    html += `
+                        <div onclick="editTranscriptById(${t.id})" 
+                             style="background: #1a2332; border: 1px solid #374151; border-radius: 6px; 
+                                    padding: 16px; margin-bottom: 12px; cursor: pointer; transition: all 0.2s;"
+                             onmouseover="this.style.borderColor='#3b82f6'; this.style.background='#1e293b'"
+                             onmouseout="this.style.borderColor='#374151'; this.style.background='#1a2332'">
+                            <div style="font-weight: 600; color: #e5e7eb; margin-bottom: 6px;">${t.title || 'Untitled'}</div>
+                            <div style="font-size: 12px; color: #9ca3af;">
+                                📅 ${t.date || 'No date'} • 
+                                📝 ${t.speech_type || 'Unknown'} • 
+                                💬 ${t.word_count || 0} words
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            document.getElementById('transcriptsContent').innerHTML = html;
+            document.getElementById('speakerBoxes').parentElement.style.display = 'none';
+            document.getElementById('transcriptsList').style.display = 'block';
+            document.getElementById('editTranscript').style.display = 'none';
+        }
+
+        async function editTranscriptById(id) {
+            try {
+                const response = await fetch(`/api/admin/transcripts/${id}`);
+                if (!response.ok) throw new Error('Failed to load transcript');
+                
+                const transcript = await response.json();
+                
+                document.getElementById('editTranscriptId').value = transcript.id;
+                document.getElementById('editTitle').value = transcript.title || '';
+                document.getElementById('editDate').value = transcript.date || '';
+                document.getElementById('editSpeechType').value = transcript.speech_type || 'Other';
+                document.getElementById('editFullText').value = transcript.full_dialogue || transcript.full_text || '';
+                
+                document.getElementById('transcriptsList').style.display = 'none';
+                document.getElementById('editTranscript').style.display = 'block';
+                
+            } catch (error) {
+                showAlert('Error loading transcript: ' + error.message, 'error');
+            }
+        }
+
+        function cancelEdit() {
+            document.getElementById('editTranscript').style.display = 'none';
+            showSpeakerTranscripts(currentSpeaker);
+        }
+
+        async function saveEdit() {
+            const id = document.getElementById('editTranscriptId').value;
+            const title = document.getElementById('editTitle').value.trim();
+            const date = document.getElementById('editDate').value;
+            const speechType = document.getElementById('editSpeechType').value;
+            const fullText = document.getElementById('editFullText').value.trim();
+            
+            if (!title || !date || !speechType) {
+                showAlert('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/admin/transcripts/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title,
+                        date,
+                        speech_type: speechType,
+                        full_dialogue: fullText
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Failed to save changes');
+                
+                showAlert('✅ Transcript updated successfully!', 'success');
+                
+                // Reload and go back
+                await loadSpeakerBoxes();
+                setTimeout(() => showSpeakerTranscripts(currentSpeaker), 500);
+                
+            } catch (error) {
+                showAlert('Error saving: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteTranscript() {
+            if (!confirm('Are you sure you want to delete this transcript? This cannot be undone.')) {
+                return;
+            }
+            
+            const id = document.getElementById('editTranscriptId').value;
+            
+            try {
+                const response = await fetch(`/api/admin/transcripts/${id}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) throw new Error('Failed to delete transcript');
+                
+                showAlert('✅ Transcript deleted successfully!', 'success');
+                
+                // Reload and go back
+                await loadSpeakerBoxes();
+                setTimeout(() => showSpeakerTranscripts(currentSpeaker), 500);
+                
+            } catch (error) {
+                showAlert('Error deleting: ' + error.message, 'error');
+            }
+        }
 
         function showAlert(message, type = 'success') {
             const container = document.getElementById('alertContainer');
