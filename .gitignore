@@ -17,6 +17,10 @@ data/transcripts.db
 data/transcripts_*.db
 data/*_backup_*.db
 
+# BUT: Allow JSON backups to be committed (critical for data persistence on free tier)
+!data/json_backups/*.json
+!data/json_backups/README.md
+
 # Logs
 *.log
 scraper.log

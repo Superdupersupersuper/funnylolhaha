@@ -13,13 +13,20 @@ import logging
 import sys
 import re
 
-# Import backup utility
+# Import backup utilities
 try:
     import backup_database
     HAS_BACKUP = True
 except ImportError:
     HAS_BACKUP = False
     logging.warning("backup_database module not available - backups will be skipped")
+
+try:
+    import export_backup
+    HAS_EXPORT = True
+except ImportError:
+    HAS_EXPORT = False
+    logging.warning("export_backup module not available - JSON exports will be skipped")
 
 # Version info for deployment tracking
 API_VERSION = "2.0.1"
@@ -118,9 +125,15 @@ def init_database_if_needed():
         conn.commit()
         conn.close()
         logging.info("✅ Database initialized successfully")
+        
+        # Auto-restore from latest backup if available
+        _auto_restore_from_backup()
     else:
         # Migrate: add primary_speaker column if missing
         _migrate_add_primary_speaker()
+        
+        # Check if database is empty and restore if needed
+        _check_and_restore_if_empty()
 
 
 def _migrate_add_primary_speaker():
@@ -141,6 +154,44 @@ def _migrate_add_primary_speaker():
         conn.close()
     except Exception as e:
         logging.error(f"Migration error: {e}")
+
+def _auto_restore_from_backup():
+    """Auto-restore transcripts from latest JSON backup if available"""
+    if not HAS_EXPORT:
+        return
+    
+    try:
+        latest_backup = 'data/json_backups/transcripts_latest.json'
+        if os.path.exists(latest_backup):
+            logging.info(f"📦 Found backup file: {latest_backup}")
+            logging.info("🔄 Auto-restoring transcripts from backup...")
+            
+            if export_backup.import_from_backup(latest_backup):
+                logging.info("✅ Transcripts restored from backup")
+            else:
+                logging.warning("⚠️ Failed to restore from backup")
+        else:
+            logging.info("ℹ️ No backup file found - starting with empty database")
+    except Exception as e:
+        logging.error(f"Auto-restore error: {e}")
+
+def _check_and_restore_if_empty():
+    """Check if database is empty and restore from backup if needed"""
+    if not HAS_EXPORT:
+        return
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM transcripts")
+        count = cursor.fetchone()[0]
+        conn.close()
+        
+        if count == 0:
+            logging.info("⚠️ Database is empty - attempting to restore from backup...")
+            _auto_restore_from_backup()
+    except Exception as e:
+        logging.error(f"Check and restore error: {e}")
 
 
 def normalize_speakers(speakers):
@@ -166,6 +217,15 @@ def clean_title(title):
     title = re.sub(r'\s*Transcribed by\s+(?:https?://)?otter\.?ai\s*$', '', title, flags=re.IGNORECASE)
     title = re.sub(r'\s*otter\.?ai\s*$', '', title, flags=re.IGNORECASE)
     return title.strip()
+
+def auto_export_backup():
+    """Automatically export transcripts to JSON after any database change"""
+    if HAS_EXPORT:
+        try:
+            export_backup.export_all_transcripts()
+            logging.info("✅ Auto-exported transcripts to JSON backup")
+        except Exception as e:
+            logging.error(f"❌ Auto-export failed: {e}")
 
 def get_db():
     """Get database connection"""
@@ -739,6 +799,10 @@ def create_transcript():
         conn.close()
         
         logging.info(f"✅ Created transcript ID {transcript_id}: {title}")
+        
+        # Auto-export backup
+        auto_export_backup()
+        
         return jsonify({'id': transcript_id, 'success': True}), 201
         
     except Exception as e:
@@ -866,6 +930,10 @@ def update_transcript(transcript_id):
         conn.close()
         
         logging.info(f"✅ Updated transcript ID {transcript_id}")
+        
+        # Auto-export backup
+        auto_export_backup()
+        
         return jsonify({'success': True})
         
     except Exception as e:
@@ -894,6 +962,10 @@ def delete_transcript(transcript_id):
         conn.close()
         
         logging.info(f"🗑️ Deleted transcript ID {transcript_id}")
+        
+        # Auto-export backup
+        auto_export_backup()
+        
         return jsonify({'success': True})
         
     except Exception as e:
@@ -935,6 +1007,50 @@ def list_backups():
         
     except Exception as e:
         logging.error(f"List backups error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/export', methods=['POST'])
+def export_transcripts_json():
+    """Export all transcripts to JSON backup"""
+    try:
+        if not HAS_EXPORT:
+            return jsonify({'error': 'Export module not available'}), 503
+        
+        filepath = export_backup.export_all_transcripts()
+        
+        if filepath:
+            return jsonify({
+                'success': True,
+                'filepath': filepath,
+                'message': 'Transcripts exported successfully'
+            })
+        else:
+            return jsonify({'error': 'Export failed'}), 500
+            
+    except Exception as e:
+        logging.error(f"Export error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/import', methods=['POST'])
+def import_transcripts_json():
+    """Import transcripts from JSON backup"""
+    try:
+        if not HAS_EXPORT:
+            return jsonify({'error': 'Import module not available'}), 503
+        
+        data = request.json or {}
+        filepath = data.get('filepath', 'data/json_backups/transcripts_latest.json')
+        
+        if export_backup.import_from_backup(filepath):
+            return jsonify({
+                'success': True,
+                'message': 'Transcripts imported successfully'
+            })
+        else:
+            return jsonify({'error': 'Import failed'}), 500
+            
+    except Exception as e:
+        logging.error(f"Import error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/admin/fix-transcripts', methods=['POST'])
