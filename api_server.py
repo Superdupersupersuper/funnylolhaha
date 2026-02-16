@@ -1561,9 +1561,18 @@ def store_status():
     """Debug endpoint showing current store configuration and cache state."""
     info = {
         'store': TRANSCRIPT_STORE,
+        'env_TRANSCRIPT_STORE': os.environ.get('TRANSCRIPT_STORE', '<not set>'),
+        'env_GITHUB_REPO': os.environ.get('GITHUB_REPO', '<not set>'),
+        'env_GITHUB_TOKEN_set': bool(os.environ.get('GITHUB_TOKEN')),
         'github_store_available': HAS_GITHUB_STORE,
         'using_github': _use_github(),
     }
+    if HAS_GITHUB_STORE:
+        try:
+            store = get_github_store()
+            info['github_store_enabled'] = store.enabled
+        except Exception as e:
+            info['github_store_error'] = str(e)
     if _use_github():
         with _cache_lock:
             info['cache'] = {
