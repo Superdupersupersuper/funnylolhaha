@@ -937,6 +937,78 @@ def list_backups():
         logging.error(f"List backups error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/admin/fix-transcripts', methods=['POST'])
+def fix_existing_transcripts_api():
+    """Clean titles and normalize speaker names in existing transcripts"""
+    try:
+        # Create backup first
+        if HAS_BACKUP:
+            logging.info("📦 Creating backup before fixing transcripts")
+            backup_path = backup_database.create_backup(reason='pre_fix_transcripts')
+            if not backup_path:
+                return jsonify({'error': 'Backup failed'}), 500
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all transcripts
+        cursor.execute("SELECT id, title, primary_speaker FROM transcripts")
+        rows = cursor.fetchall()
+        
+        fixed_count = 0
+        changes = []
+        
+        for row in rows:
+            transcript_id = row['id']
+            old_title = row['title']
+            old_speaker = row['primary_speaker']
+            
+            new_title = clean_title(old_title)
+            
+            # Normalize speaker name
+            new_speaker = old_speaker
+            if old_speaker:
+                s = old_speaker.strip()
+                if 'mamdani' in s.lower():
+                    new_speaker = 'Mamdani'
+                elif 'hochul' in s.lower():
+                    new_speaker = 'Hochul'
+                elif 'trump' in s.lower():
+                    new_speaker = 'Trump'
+                elif 'vance' in s.lower():
+                    new_speaker = 'JD Vance'
+            
+            if new_title != old_title or new_speaker != old_speaker:
+                cursor.execute(
+                    "UPDATE transcripts SET title = ?, primary_speaker = ? WHERE id = ?",
+                    (new_title, new_speaker, transcript_id)
+                )
+                fixed_count += 1
+                
+                change = {'id': transcript_id}
+                if new_title != old_title:
+                    change['title_old'] = old_title
+                    change['title_new'] = new_title
+                if new_speaker != old_speaker:
+                    change['speaker_old'] = old_speaker
+                    change['speaker_new'] = new_speaker
+                changes.append(change)
+        
+        conn.commit()
+        conn.close()
+        
+        logging.info(f"✅ Fixed {fixed_count} transcripts")
+        return jsonify({
+            'success': True,
+            'fixed_count': fixed_count,
+            'changes': changes,
+            'message': f'Fixed {fixed_count} transcripts'
+        })
+        
+    except Exception as e:
+        logging.error(f"Fix transcripts error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 def format_seconds(seconds):
     """Format seconds as M:SS or H:MM:SS"""
     h = int(seconds // 3600)
