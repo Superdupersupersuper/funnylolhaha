@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """
 Python API server for the Mention Market Tool
-Provides endpoints for querying data and triggering scraper updates
+Provides endpoints for querying data and triggering scraper updates.
+
+Storage back-end is selected via the TRANSCRIPT_STORE env var:
+  - "github"  → persists transcripts in a private GitHub repo (recommended for Render)
+  - "sqlite"  → local SQLite file (default, for local dev)
 """
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 import sqlite3
 import json
+import time
 import threading
 import os
 import logging
 import sys
 import re
 
-# Import backup utilities
+# Import backup utilities (only used in sqlite mode)
 try:
     import backup_database
     HAS_BACKUP = True
@@ -28,9 +33,22 @@ except ImportError:
     HAS_EXPORT = False
     logging.warning("export_backup module not available - JSON exports will be skipped")
 
+# Import GitHub-backed store
+try:
+    from github_store import get_github_store
+    HAS_GITHUB_STORE = True
+except ImportError:
+    HAS_GITHUB_STORE = False
+    logging.warning("github_store module not available")
+
 # Version info for deployment tracking
-API_VERSION = "2.0.1"
-DEPLOY_TIMESTAMP = "2025-12-19T01:30:00Z"
+API_VERSION = "3.0.0"
+DEPLOY_TIMESTAMP = "2026-02-16T00:00:00Z"
+
+# ---------------------------------------------------------------------------
+# Store selection  (set TRANSCRIPT_STORE=github on Render)
+# ---------------------------------------------------------------------------
+TRANSCRIPT_STORE = os.environ.get("TRANSCRIPT_STORE", "sqlite")  # "github" | "sqlite"
 
 # Try to import flask_compress, but don't fail if not available
 try:
@@ -84,6 +102,143 @@ scraper_status = {
     'failed': 0,
     'discovered': 0
 }
+
+# ---------------------------------------------------------------------------
+# In-memory transcript cache  (used when TRANSCRIPT_STORE == "github")
+# ---------------------------------------------------------------------------
+_cache = {
+    'index': [],        # list of metadata dicts (no full_dialogue)
+    'full': {},         # id (int) -> full transcript dict
+    'loaded_at': 0,     # time.time() when cache was last populated
+    'ttl': 300,         # seconds before we consider the cache stale
+}
+_cache_lock = threading.Lock()
+
+
+def _use_github():
+    """Return True when the GitHub-backed store should be used."""
+    return TRANSCRIPT_STORE == "github" and HAS_GITHUB_STORE and get_github_store().enabled
+
+
+def _warm_cache():
+    """Load index + all transcripts from GitHub into the in-memory cache."""
+    store = get_github_store()
+    index, _sha = store.load_index()
+    full_map = {}
+    for meta in index:
+        tid = meta.get("id")
+        full = store.get_transcript(tid)
+        if full:
+            full_map[tid] = full
+        else:
+            full_map[tid] = meta  # fallback to metadata only
+    with _cache_lock:
+        _cache['index'] = index
+        _cache['full'] = full_map
+        _cache['loaded_at'] = time.time()
+    logging.info(f"🔄 GitHub cache warmed: {len(index)} transcripts")
+
+
+def _ensure_cache():
+    """Make sure the cache is populated and not stale."""
+    with _cache_lock:
+        age = time.time() - _cache['loaded_at']
+        stale = age > _cache['ttl'] or not _cache['index'] and _cache['loaded_at'] == 0
+    if stale:
+        _warm_cache()
+
+
+def _get_cached_index():
+    """Return the cached index list."""
+    _ensure_cache()
+    with _cache_lock:
+        return list(_cache['index'])
+
+
+def _get_cached_transcript(tid: int):
+    """Return a full transcript dict from cache (or None)."""
+    _ensure_cache()
+    with _cache_lock:
+        return _cache['full'].get(tid)
+
+
+def _get_all_cached_transcripts():
+    """Return all full transcript dicts from cache, sorted by date desc."""
+    _ensure_cache()
+    with _cache_lock:
+        items = list(_cache['full'].values())
+    items.sort(key=lambda t: t.get('date', ''), reverse=True)
+    return items
+
+
+def _invalidate_cache():
+    """Force the next read to reload from GitHub."""
+    with _cache_lock:
+        _cache['loaded_at'] = 0
+
+
+def _update_cache_after_write(tid: int, payload: dict):
+    """Update the local cache immediately after a create/update."""
+    meta = {k: v for k, v in payload.items() if k != 'full_dialogue'}
+    with _cache_lock:
+        # Update full map
+        _cache['full'][tid] = payload
+        # Update index (replace or append)
+        _cache['index'] = [m for m in _cache['index'] if m.get('id') != tid]
+        _cache['index'].append(meta)
+        _cache['index'].sort(key=lambda m: m.get('date', ''), reverse=True)
+        _cache['loaded_at'] = time.time()
+
+
+def _remove_from_cache(tid: int):
+    """Remove a transcript from the local cache after deletion."""
+    with _cache_lock:
+        _cache['full'].pop(tid, None)
+        _cache['index'] = [m for m in _cache['index'] if m.get('id') != tid]
+        _cache['loaded_at'] = time.time()
+
+
+# ---------------------------------------------------------------------------
+# Helper: build a standard transcript response dict from a stored payload
+# ---------------------------------------------------------------------------
+
+def _build_transcript_response(t, include_full_text=True):
+    """
+    Convert a stored transcript dict into the shape the frontend expects.
+    Works identically for both GitHub and SQLite payloads.
+    """
+    title = clean_title(t.get('title', ''))
+    speakers_raw = t.get('speakers', [])
+    if isinstance(speakers_raw, str):
+        try:
+            speakers_raw = json.loads(speakers_raw)
+        except Exception:
+            speakers_raw = []
+    speakers = normalize_speakers(speakers_raw) if speakers_raw else []
+
+    full_dialogue = t.get('full_dialogue', '') or ''
+
+    result = {
+        'id': t.get('id'),
+        'title': title,
+        'date': t.get('date', ''),
+        'speech_type': t.get('speech_type', ''),
+        'location': t.get('location', ''),
+        'url': t.get('url', ''),
+        'word_count': t.get('word_count', 0) or 0,
+        'speakers': speakers,
+        'primary_speaker': t.get('primary_speaker', ''),
+    }
+
+    if include_full_text:
+        result['preview'] = full_dialogue
+        result['full_dialogue'] = full_dialogue
+        result['dialogue'] = parse_dialogue_to_segments(full_dialogue)
+    else:
+        result['preview'] = ''
+
+    return result
+
 
 def init_database_if_needed():
     """Initialize database schema if it doesn't exist"""
@@ -383,65 +538,96 @@ def serve_admin():
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint with database info"""
-    db_exists = os.path.exists(DB_PATH)
-
+    """Health check endpoint with store info"""
     health_data = {
-        'status': 'healthy' if db_exists else 'warning',
+        'status': 'healthy',
         'version': API_VERSION,
         'deploy_timestamp': DEPLOY_TIMESTAMP,
-        'database': {
-            'path': DB_PATH,
-            'exists': db_exists,
-            'size_mb': round(os.path.getsize(DB_PATH) / (1024 * 1024), 2) if db_exists else 0
-        },
+        'store': TRANSCRIPT_STORE,
         'transcripts': {
             'count': 0,
             'error': None
         }
     }
-    
-    if db_exists:
+
+    if _use_github():
         try:
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) as count FROM transcripts")
-            count = cursor.fetchone()['count']
-            health_data['transcripts']['count'] = count
-            
-            # Also get a quick sample
-            cursor.execute("SELECT COUNT(*) as empty_count FROM transcripts WHERE word_count = 0")
-            empty_count = cursor.fetchone()['empty_count']
-            health_data['transcripts']['empty_count'] = empty_count
-            
-            conn.close()
-            
-            if count == 0:
+            index = _get_cached_index()
+            health_data['transcripts']['count'] = len(index)
+            if not index:
                 health_data['status'] = 'warning'
-                health_data['message'] = 'Database is empty. Run scraper to populate.'
+                health_data['message'] = 'GitHub store is empty.'
         except Exception as e:
             health_data['status'] = 'error'
             health_data['transcripts']['error'] = str(e)
     else:
-        health_data['message'] = f'Database file not found at {DB_PATH}'
-    
+        db_exists = os.path.exists(DB_PATH)
+        health_data['database'] = {
+            'path': DB_PATH,
+            'exists': db_exists,
+            'size_mb': round(os.path.getsize(DB_PATH) / (1024 * 1024), 2) if db_exists else 0
+        }
+        if db_exists:
+            try:
+                conn = get_db()
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) as count FROM transcripts")
+                count = cursor.fetchone()['count']
+                health_data['transcripts']['count'] = count
+                conn.close()
+                if count == 0:
+                    health_data['status'] = 'warning'
+                    health_data['message'] = 'Database is empty.'
+            except Exception as e:
+                health_data['status'] = 'error'
+                health_data['transcripts']['error'] = str(e)
+        else:
+            health_data['status'] = 'warning'
+            health_data['message'] = f'Database file not found at {DB_PATH}'
+
     return jsonify(health_data)
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     """Get database statistics"""
+    if _use_github():
+        index = _get_cached_index()
+        total = len(index)
+        total_words = sum(m.get('word_count', 0) or 0 for m in index)
+        dates = [m['date'] for m in index if re.match(r'^\d{4}-\d{2}-\d{2}$', m.get('date', ''))]
+        min_date = min(dates) if dates else None
+        max_date = max(dates) if dates else None
+        # Speech types
+        st_counts = {}
+        yr_counts = {}
+        for m in index:
+            st = m.get('speech_type', '')
+            st_counts[st] = st_counts.get(st, 0) + 1
+            d = m.get('date', '')
+            if len(d) >= 4:
+                yr = d[:4]
+                yr_counts[yr] = yr_counts.get(yr, 0) + 1
+        speech_types = [{'speech_type': k, 'count': v} for k, v in sorted(st_counts.items(), key=lambda x: -x[1])]
+        years = [{'year': k, 'count': v} for k, v in sorted(yr_counts.items())]
+
+        return jsonify({
+            'totalTranscripts': total,
+            'totalWords': total_words,
+            'dateRange': {'minDate': min_date, 'maxDate': max_date},
+            'speechTypes': speech_types,
+            'yearDistribution': years
+        })
+
+    # --- SQLite path ---
     conn = get_db()
     cursor = conn.cursor()
 
-    # Total transcripts
     cursor.execute("SELECT COUNT(*) as count FROM transcripts")
     total = cursor.fetchone()['count']
 
-    # Total words
     cursor.execute("SELECT SUM(word_count) as total FROM transcripts")
     total_words = cursor.fetchone()['total'] or 0
 
-    # Date range
     cursor.execute("""
         SELECT
             MIN(CASE WHEN date LIKE '____-__-__' THEN date END) as min_date,
@@ -450,36 +636,24 @@ def get_stats():
     """)
     date_range = cursor.fetchone()
 
-    # Speech types
     cursor.execute("""
         SELECT speech_type, COUNT(*) as count
-        FROM transcripts
-        GROUP BY speech_type
-        ORDER BY count DESC
+        FROM transcripts GROUP BY speech_type ORDER BY count DESC
     """)
     speech_types = [dict(row) for row in cursor.fetchall()]
 
-    # Year distribution
     cursor.execute("""
-        SELECT
-            SUBSTR(date, 1, 4) as year,
-            COUNT(*) as count
-        FROM transcripts
-        WHERE date LIKE '____-__-__'
-        GROUP BY SUBSTR(date, 1, 4)
-        ORDER BY year
+        SELECT SUBSTR(date, 1, 4) as year, COUNT(*) as count
+        FROM transcripts WHERE date LIKE '____-__-__'
+        GROUP BY SUBSTR(date, 1, 4) ORDER BY year
     """)
     years = [dict(row) for row in cursor.fetchall()]
-
     conn.close()
 
     return jsonify({
         'totalTranscripts': total,
         'totalWords': total_words,
-        'dateRange': {
-            'minDate': date_range['min_date'],
-            'maxDate': date_range['max_date']
-        },
+        'dateRange': {'minDate': date_range['min_date'], 'maxDate': date_range['max_date']},
         'speechTypes': speech_types,
         'yearDistribution': years
     })
@@ -488,144 +662,114 @@ def get_stats():
 def get_transcripts_metadata():
     """Get transcript metadata WITHOUT full text - lightweight endpoint"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        logging.info("📋 Fetching transcript metadata (no full text)")
+        if _use_github():
+            all_t = _get_all_cached_transcripts()
+            transcripts = [_build_transcript_response(t, include_full_text=False) for t in all_t]
+        else:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, title, date, speech_type, location, url,
+                       word_count, speakers_json, primary_speaker
+                FROM transcripts ORDER BY date DESC
+            """)
+            rows = cursor.fetchall()
+            conn.close()
 
-        cursor.execute("""
-            SELECT
-                id,
-                title,
-                date,
-                speech_type,
-                location,
-                url,
-                word_count,
-                speakers_json,
-                primary_speaker
-            FROM transcripts
-            ORDER BY date DESC
-        """)
+            transcripts = []
+            for row in rows:
+                speakers_raw = json.loads(row['speakers_json']) if row['speakers_json'] else []
+                transcripts.append({
+                    'id': row['id'],
+                    'title': clean_title(row['title']),
+                    'date': row['date'],
+                    'speech_type': row['speech_type'],
+                    'location': row['location'] or '',
+                    'url': row['url'],
+                    'word_count': row['word_count'] or 0,
+                    'preview': '',
+                    'speakers': normalize_speakers(speakers_raw),
+                    'primary_speaker': row['primary_speaker'] or ''
+                })
 
-        rows = cursor.fetchall()
-        logging.info(f"✅ Fetched {len(rows)} transcript metadata entries")
-        
-        transcripts = []
-        for row in rows:
-            speakers_raw = json.loads(row['speakers_json']) if row['speakers_json'] else []
-            transcripts.append({
-                'id': row['id'],
-                'title': clean_title(row['title']),
-                'date': row['date'],
-                'speech_type': row['speech_type'],
-                'location': row['location'] or '',
-                'url': row['url'],
-                'word_count': row['word_count'] or 0,
-                'preview': '',  # Empty - use separate endpoint for full text
-                'speakers': normalize_speakers(speakers_raw),
-                'primary_speaker': row['primary_speaker'] or ''
-            })
-
-        conn.close()
         logging.info(f"📤 Returning {len(transcripts)} metadata entries")
-
         response = jsonify(transcripts)
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
         return response
-        
+
     except Exception as e:
-        logging.error(f"❌ Error in get_transcripts_metadata: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logging.error(f"❌ Error in get_transcripts_metadata: {str(e)}", exc_info=True)
         return jsonify({'error': str(e), 'transcripts': []}), 500
 
 @app.route('/api/transcripts', methods=['GET'])
 def get_transcripts():
-    """Get ALL transcripts with FULL dialogue text - OPTIMIZED"""
+    """Get ALL transcripts with FULL dialogue text"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Check if full_dialogue column exists, fallback to full_text
-        cursor.execute("PRAGMA table_info(transcripts)")
-        columns = [col[1] for col in cursor.fetchall()]
-        
-        text_column = 'full_dialogue' if 'full_dialogue' in columns else 'full_text'
-        
-        logging.info(f"🔍 Fetching transcripts with {text_column} column...")
+        if _use_github():
+            all_t = _get_all_cached_transcripts()
+            transcripts = [_build_transcript_response(t, include_full_text=True) for t in all_t]
+        else:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(transcripts)")
+            columns = [col[1] for col in cursor.fetchall()]
+            text_column = 'full_dialogue' if 'full_dialogue' in columns else 'full_text'
 
-        # Get ALL transcripts with FULL text - single optimized query
-        cursor.execute(f"""
-            SELECT
-                id,
-                title,
-                date,
-                speech_type,
-                location,
-                url,
-                word_count,
-                {text_column} as preview,
-                speakers_json,
-                primary_speaker
-            FROM transcripts
-            ORDER BY date DESC
-        """)
+            cursor.execute(f"""
+                SELECT id, title, date, speech_type, location, url, word_count,
+                       {text_column} as preview, speakers_json, primary_speaker
+                FROM transcripts ORDER BY date DESC
+            """)
+            rows = cursor.fetchall()
+            conn.close()
 
-        rows = cursor.fetchall()
-        logging.info(f"✅ Fetched {len(rows)} transcripts from database")
-        
-        transcripts = []
-        for row in rows:
-            # Handle preview text - ensure it's a string
-            preview_text = row['preview'] or ''
-            if isinstance(preview_text, bytes):
-                preview_text = preview_text.decode('utf-8', errors='ignore')
-            
-            # Parse dialogue into structured segments
-            dialogue_segments = parse_dialogue_to_segments(preview_text)
-            
-            speakers_raw = json.loads(row['speakers_json']) if row['speakers_json'] else []
-            transcripts.append({
-                'id': row['id'],
-                'title': clean_title(row['title']),
-                'date': row['date'],
-                'speech_type': row['speech_type'],
-                'location': row['location'] or '',
-                'url': row['url'],
-                'word_count': row['word_count'] or 0,
-                'preview': preview_text,  # FULL TRANSCRIPT TEXT (for backwards compat)
-                'dialogue': dialogue_segments,  # STRUCTURED DIALOGUE SEGMENTS
-                'speakers': normalize_speakers(speakers_raw),
-                'primary_speaker': row['primary_speaker'] or ''
-            })
+            transcripts = []
+            for row in rows:
+                preview_text = row['preview'] or ''
+                if isinstance(preview_text, bytes):
+                    preview_text = preview_text.decode('utf-8', errors='ignore')
+                dialogue_segments = parse_dialogue_to_segments(preview_text)
+                speakers_raw = json.loads(row['speakers_json']) if row['speakers_json'] else []
+                transcripts.append({
+                    'id': row['id'],
+                    'title': clean_title(row['title']),
+                    'date': row['date'],
+                    'speech_type': row['speech_type'],
+                    'location': row['location'] or '',
+                    'url': row['url'],
+                    'word_count': row['word_count'] or 0,
+                    'preview': preview_text,
+                    'dialogue': dialogue_segments,
+                    'speakers': normalize_speakers(speakers_raw),
+                    'primary_speaker': row['primary_speaker'] or ''
+                })
 
-        conn.close()
-        logging.info(f"📤 Returning {len(transcripts)} transcripts to frontend")
-
+        logging.info(f"📤 Returning {len(transcripts)} transcripts")
         response = jsonify(transcripts)
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
         return response
-        
+
     except Exception as e:
-        logging.error(f"❌ Error in get_transcripts: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logging.error(f"❌ Error in get_transcripts: {str(e)}", exc_info=True)
         return jsonify({'error': str(e), 'transcripts': []}), 500
 
 @app.route('/api/transcripts/<int:id>', methods=['GET'])
 def get_transcript(id):
     """Get single transcript"""
+    if _use_github():
+        t = _get_cached_transcript(id)
+        if t:
+            return jsonify(_build_transcript_response(t, include_full_text=True))
+        return jsonify({'error': 'Not found'}), 404
+
     conn = get_db()
     cursor = conn.cursor()
-
     cursor.execute("SELECT * FROM transcripts WHERE id = ?", (id,))
     transcript = cursor.fetchone()
-
     conn.close()
 
     if transcript:
@@ -739,37 +883,42 @@ def scraper_status_endpoint():
 @app.route('/api/speech-types', methods=['GET'])
 def get_speech_types():
     """Get all speech types"""
+    if _use_github():
+        index = _get_cached_index()
+        counts = {}
+        for m in index:
+            st = m.get('speech_type', '')
+            counts[st] = counts.get(st, 0) + 1
+        return jsonify([{'speech_type': k, 'count': v} for k, v in sorted(counts.items(), key=lambda x: -x[1])])
+
     conn = get_db()
     cursor = conn.cursor()
-
     cursor.execute("""
         SELECT DISTINCT speech_type, COUNT(*) as count
-        FROM transcripts
-        GROUP BY speech_type
-        ORDER BY count DESC
+        FROM transcripts GROUP BY speech_type ORDER BY count DESC
     """)
-
     types = [dict(row) for row in cursor.fetchall()]
     conn.close()
-
     return jsonify(types)
 
 @app.route('/api/date-range', methods=['GET'])
 def get_date_range():
     """Get min/max dates"""
+    if _use_github():
+        index = _get_cached_index()
+        dates = [m['date'] for m in index if re.match(r'^\d{4}-\d{2}-\d{2}$', m.get('date', ''))]
+        return jsonify({'minDate': min(dates) if dates else None, 'maxDate': max(dates) if dates else None})
+
     conn = get_db()
     cursor = conn.cursor()
-
     cursor.execute("""
         SELECT
             MIN(CASE WHEN date LIKE '____-__-__' THEN date END) as minDate,
             MAX(CASE WHEN date LIKE '____-__-__' THEN date END) as maxDate
         FROM transcripts
     """)
-
     result = dict(cursor.fetchone())
     conn.close()
-
     return jsonify(result)
 
 @app.route('/api/admin/parse', methods=['POST'])
@@ -792,89 +941,68 @@ def parse_transcript():
 
 @app.route('/api/admin/transcripts', methods=['POST'])
 def create_transcript():
-    """Create a new transcript in the database"""
+    """Create a new transcript"""
     try:
         logging.info("=== CREATE TRANSCRIPT REQUEST START ===")
         data = request.json
-        logging.info(f"Data keys: {list(data.keys()) if data else 'None'}")
-        
+        if not data:
+            return jsonify({'error': 'No JSON body'}), 400
+
         # Required fields
         title = data.get('title')
         event_date = data.get('event_date')
         speech_type = data.get('speech_type')
         primary_speaker = data.get('primary_speaker')
         segments = data.get('segments', [])
-        
-        logging.info(f"Title: '{title}', Date: '{event_date}', Type: '{speech_type}', Speaker: '{primary_speaker}'")
-        logging.info(f"Segments: {len(segments)} items")
-        
+
         if not all([title, event_date, speech_type, primary_speaker]):
-            logging.error("Validation failed: missing required fields")
             return jsonify({'error': 'Missing required fields'}), 400
-        
         if not segments:
-            logging.error("Validation failed: no segments")
             return jsonify({'error': 'No segments provided'}), 400
-        
-        # Build full dialogue from segments
-        try:
-            logging.info("Building full_dialogue...")
-            full_dialogue = '\n\n'.join([
-                f"{seg['speaker']} ({format_seconds(seg['start_seconds'])}): {seg['text']}"
-                for seg in segments
-            ])
-            logging.info(f"Full dialogue built: {len(full_dialogue)} chars")
-        except Exception as e:
-            logging.error(f"Error building full_dialogue: {e}", exc_info=True)
-            return jsonify({'error': f'Error building dialogue: {str(e)}'}), 500
-        
-        # Calculate word count
-        try:
-            logging.info("Calculating word count...")
-            word_count = sum(len(seg['text'].split()) for seg in segments)
-            logging.info(f"Word count: {word_count}")
-        except Exception as e:
-            logging.error(f"Error calculating word_count: {e}", exc_info=True)
-            return jsonify({'error': f'Error calculating word count: {str(e)}'}), 500
-        
-        # Get speakers list
-        try:
-            logging.info("Extracting speakers...")
-            speakers = list(set(seg['speaker'] for seg in segments))
-            logging.info(f"Speakers: {speakers}")
-        except Exception as e:
-            logging.error(f"Error extracting speakers: {e}", exc_info=True)
-            return jsonify({'error': f'Error extracting speakers: {str(e)}'}), 500
-        
+
+        # Build full dialogue
+        full_dialogue = '\n\n'.join([
+            f"{seg['speaker']} ({format_seconds(seg['start_seconds'])}): {seg['text']}"
+            for seg in segments
+        ])
+        word_count = sum(len(seg['text'].split()) for seg in segments)
+        speakers = list(set(seg['speaker'] for seg in segments))
+        cleaned_title = clean_title(title)
+        normalized_speakers = normalize_speakers(speakers)
+        url_slug = f'admin-upload-{event_date}-{title[:30].replace(" ", "-")}'
+        total_seconds = data.get('total_seconds', 0)
+
         # Q&A data
         has_qa = data.get('has_q_and_a', False)
         qa_analytics = data.get('qa_analytics')
-        logging.info(f"Has Q&A: {has_qa}")
-        
-        # Prepare data for insertion
-        try:
-            logging.info("Preparing data for insertion...")
-            cleaned_title = clean_title(title)
-            normalized_speakers = normalize_speakers(speakers)
-            url_slug = f'admin-upload-{event_date}-{title[:30].replace(" ", "-")}'
-            total_seconds = data.get('total_seconds', 0)
-            speakers_json = json.dumps(normalized_speakers)
-            
-            logging.info(f"Cleaned title: '{cleaned_title}'")
-            logging.info(f"Normalized speakers: {normalized_speakers}")
-            logging.info(f"URL slug: '{url_slug}'")
-            logging.info(f"Total seconds: {total_seconds}")
-        except Exception as e:
-            logging.error(f"Error preparing data: {e}", exc_info=True)
-            return jsonify({'error': f'Error preparing data: {str(e)}'}), 500
-        
-        # Insert into database
-        try:
-            logging.info("Getting database connection...")
+
+        if _use_github():
+            # --- GitHub path ---
+            store = get_github_store()
+            payload = {
+                'title': cleaned_title,
+                'date': event_date,
+                'speech_type': speech_type,
+                'location': '',
+                'url': url_slug,
+                'word_count': word_count,
+                'speech_duration_seconds': total_seconds,
+                'full_dialogue': full_dialogue,
+                'speakers': normalized_speakers,
+                'primary_speaker': primary_speaker,
+                'has_q_and_a': has_qa,
+                'qa_analytics': qa_analytics,
+            }
+            transcript_id = store.create_transcript(payload)
+            payload['id'] = transcript_id
+            _update_cache_after_write(transcript_id, payload)
+            logging.info(f"✅ Created transcript {transcript_id} in GitHub store")
+
+        else:
+            # --- SQLite path ---
+            speakers_json_str = json.dumps(normalized_speakers)
             conn = get_db()
             cursor = conn.cursor()
-            
-            logging.info("Executing INSERT query...")
             cursor.execute("""
                 INSERT INTO transcripts (
                     title, date, speech_type, location, url, word_count,
@@ -882,112 +1010,100 @@ def create_transcript():
                     primary_speaker
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                cleaned_title,
-                event_date,
-                speech_type,
-                '',  # location
-                url_slug,
-                word_count,
-                0,  # trump_word_count (calculate if needed)
-                total_seconds,
-                full_dialogue,
-                speakers_json,
-                primary_speaker
+                cleaned_title, event_date, speech_type, '', url_slug, word_count,
+                0, total_seconds, full_dialogue, speakers_json_str, primary_speaker
             ))
-            
             transcript_id = cursor.lastrowid
-            logging.info(f"INSERT successful, ID: {transcript_id}")
-            
             conn.commit()
-            logging.info("Commit successful")
-            
             conn.close()
-            logging.info("Connection closed")
-            
-        except Exception as e:
-            logging.error(f"Database error: {e}", exc_info=True)
-            try:
-                conn.close()
-            except:
-                pass
-            return jsonify({'error': f'Database error: {str(e)}'}), 500
-        
-        logging.info(f"✅ Created transcript ID {transcript_id}: {title}")
-        
-        # Auto-export backup (non-blocking)
-        try:
-            logging.info("Starting auto-export...")
+            logging.info(f"✅ Created transcript {transcript_id} in SQLite")
             auto_export_backup()
-            logging.info("Auto-export initiated")
-        except Exception as e:
-            logging.error(f"Auto-export error (non-fatal): {e}", exc_info=True)
-        
-        logging.info("=== CREATE TRANSCRIPT REQUEST END ===")
+
         return jsonify({'id': transcript_id, 'success': True}), 201
-        
+
     except Exception as e:
-        logging.error(f"❌ Unexpected error in create_transcript: {e}", exc_info=True)
+        logging.error(f"❌ create_transcript error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/admin/transcripts/by-speaker', methods=['GET'])
 def get_transcripts_by_speaker():
     """Get all transcripts for database viewer"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT id, title, date, speech_type, word_count, speakers_json, primary_speaker
-            FROM transcripts
-            ORDER BY date DESC
-        """)
-        
-        rows = cursor.fetchall()
-        transcripts = []
-        
-        for row in rows:
-            speakers_raw = json.loads(row['speakers_json']) if row['speakers_json'] else []
-            transcripts.append({
-                'id': row['id'],
-                'title': clean_title(row['title']),
-                'date': row['date'],
-                'speech_type': row['speech_type'],
-                'word_count': row['word_count'] or 0,
-                'speakers': normalize_speakers(speakers_raw),
-                'primary_speaker': row['primary_speaker'] or ''
-            })
-        
-        conn.close()
+        if _use_github():
+            all_t = _get_all_cached_transcripts()
+            transcripts = [_build_transcript_response(t, include_full_text=False) for t in all_t]
+        else:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, title, date, speech_type, word_count, speakers_json, primary_speaker
+                FROM transcripts ORDER BY date DESC
+            """)
+            rows = cursor.fetchall()
+            conn.close()
+            transcripts = []
+            for row in rows:
+                speakers_raw = json.loads(row['speakers_json']) if row['speakers_json'] else []
+                transcripts.append({
+                    'id': row['id'],
+                    'title': clean_title(row['title']),
+                    'date': row['date'],
+                    'speech_type': row['speech_type'],
+                    'word_count': row['word_count'] or 0,
+                    'speakers': normalize_speakers(speakers_raw),
+                    'primary_speaker': row['primary_speaker'] or ''
+                })
+
         return jsonify({'transcripts': transcripts})
-        
+
     except Exception as e:
-        logging.error(f"Get transcripts error: {e}", exc_info=True)
+        logging.error(f"Get transcripts by-speaker error: {e}", exc_info=True)
         return jsonify({'error': str(e), 'transcripts': []}), 500
 
 @app.route('/api/admin/transcripts/<int:transcript_id>', methods=['GET'])
 def get_transcript_for_edit(transcript_id):
     """Get a single transcript for editing"""
     try:
+        if _use_github():
+            t = _get_cached_transcript(transcript_id)
+            if not t:
+                return jsonify({'error': 'Transcript not found'}), 404
+            full_text = t.get('full_dialogue', '') or ''
+            speakers = t.get('speakers', [])
+            if isinstance(speakers, str):
+                try: speakers = json.loads(speakers)
+                except: speakers = []
+            return jsonify({
+                'id': t.get('id'),
+                'title': t.get('title', ''),
+                'date': t.get('date', ''),
+                'speech_type': t.get('speech_type', ''),
+                'location': t.get('location', ''),
+                'url': t.get('url', ''),
+                'word_count': t.get('word_count', 0) or 0,
+                'speech_duration_seconds': t.get('speech_duration_seconds', 0) or 0,
+                'full_dialogue': full_text,
+                'full_text': full_text,
+                'speakers': speakers,
+                'primary_speaker': t.get('primary_speaker', ''),
+            })
+
+        # SQLite path
         conn = get_db()
         cursor = conn.cursor()
-        
         cursor.execute("""
             SELECT id, title, date, speech_type, location, url, word_count,
                    speech_duration_seconds, full_dialogue, speakers_json
-            FROM transcripts
-            WHERE id = ?
+            FROM transcripts WHERE id = ?
         """, (transcript_id,))
-        
         row = cursor.fetchone()
         conn.close()
-        
+
         if not row:
             return jsonify({'error': 'Transcript not found'}), 404
-        
-        # Check if full_dialogue exists, fallback to full_text
+
         text_content = row['full_dialogue']
         if not text_content:
-            # Try full_text column if it exists
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute("SELECT full_text FROM transcripts WHERE id = ?", (transcript_id,))
@@ -995,9 +1111,9 @@ def get_transcript_for_edit(transcript_id):
             conn.close()
             if alt_row and 'full_text' in alt_row.keys():
                 text_content = alt_row['full_text']
-        
+
         speakers = json.loads(row['speakers_json']) if row['speakers_json'] else []
-        
+
         return jsonify({
             'id': row['id'],
             'title': row['title'],
@@ -1011,7 +1127,7 @@ def get_transcript_for_edit(transcript_id):
             'full_text': text_content or '',
             'speakers': speakers
         })
-        
+
     except Exception as e:
         logging.error(f"Get transcript error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -1021,41 +1137,55 @@ def update_transcript(transcript_id):
     """Update a transcript"""
     try:
         data = request.json
-        
         title = data.get('title')
         date = data.get('date')
         speech_type = data.get('speech_type')
         full_dialogue = data.get('full_dialogue', '')
-        
+        primary_speaker = data.get('primary_speaker', '')
+
         if not all([title, date, speech_type]):
             return jsonify({'error': 'Missing required fields'}), 400
-        
-        # Recalculate word count
+
         word_count = len(full_dialogue.split()) if full_dialogue else 0
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            UPDATE transcripts
-            SET title = ?, date = ?, speech_type = ?, full_dialogue = ?, word_count = ?
-            WHERE id = ?
-        """, (title, date, speech_type, full_dialogue, word_count, transcript_id))
-        
-        if cursor.rowcount == 0:
+
+        if _use_github():
+            existing = _get_cached_transcript(transcript_id)
+            if not existing:
+                return jsonify({'error': 'Transcript not found'}), 404
+            # Merge fields
+            payload = dict(existing)
+            payload.update({
+                'title': title,
+                'date': date,
+                'speech_type': speech_type,
+                'full_dialogue': full_dialogue,
+                'word_count': word_count,
+                'primary_speaker': primary_speaker or payload.get('primary_speaker', ''),
+            })
+            store = get_github_store()
+            store.update_transcript_in_store(transcript_id, payload)
+            _update_cache_after_write(transcript_id, payload)
+            logging.info(f"✅ Updated transcript {transcript_id} in GitHub store")
+        else:
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE transcripts
+                SET title = ?, date = ?, speech_type = ?, full_dialogue = ?,
+                    word_count = ?, primary_speaker = ?
+                WHERE id = ?
+            """, (title, date, speech_type, full_dialogue, word_count,
+                  primary_speaker, transcript_id))
+            if cursor.rowcount == 0:
+                conn.close()
+                return jsonify({'error': 'Transcript not found'}), 404
+            conn.commit()
             conn.close()
-            return jsonify({'error': 'Transcript not found'}), 404
-        
-        conn.commit()
-        conn.close()
-        
-        logging.info(f"✅ Updated transcript ID {transcript_id}")
-        
-        # Auto-export backup
-        auto_export_backup()
-        
+            logging.info(f"✅ Updated transcript {transcript_id} in SQLite")
+            auto_export_backup()
+
         return jsonify({'success': True})
-        
+
     except Exception as e:
         logging.error(f"Update transcript error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -1064,30 +1194,27 @@ def update_transcript(transcript_id):
 def delete_transcript(transcript_id):
     """Delete a transcript"""
     try:
-        # Create backup before deletion
-        if HAS_BACKUP:
-            logging.info(f"📦 Creating backup before deleting transcript {transcript_id}")
-            backup_database.create_backup(reason=f'pre_delete_{transcript_id}')
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute("DELETE FROM transcripts WHERE id = ?", (transcript_id,))
-        
-        if cursor.rowcount == 0:
+        if _use_github():
+            store = get_github_store()
+            store.delete_transcript_from_store(transcript_id)
+            _remove_from_cache(transcript_id)
+            logging.info(f"🗑️ Deleted transcript {transcript_id} from GitHub store")
+        else:
+            if HAS_BACKUP:
+                backup_database.create_backup(reason=f'pre_delete_{transcript_id}')
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM transcripts WHERE id = ?", (transcript_id,))
+            if cursor.rowcount == 0:
+                conn.close()
+                return jsonify({'error': 'Transcript not found'}), 404
+            conn.commit()
             conn.close()
-            return jsonify({'error': 'Transcript not found'}), 404
-        
-        conn.commit()
-        conn.close()
-        
-        logging.info(f"🗑️ Deleted transcript ID {transcript_id}")
-        
-        # Auto-export backup
-        auto_export_backup()
-        
+            logging.info(f"🗑️ Deleted transcript {transcript_id} from SQLite")
+            auto_export_backup()
+
         return jsonify({'success': True})
-        
+
     except Exception as e:
         logging.error(f"Delete transcript error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -1195,70 +1322,74 @@ def download_backup():
 def fix_existing_transcripts_api():
     """Clean titles and normalize speaker names in existing transcripts"""
     try:
-        # Create backup first
-        if HAS_BACKUP:
-            logging.info("📦 Creating backup before fixing transcripts")
-            backup_path = backup_database.create_backup(reason='pre_fix_transcripts')
-            if not backup_path:
-                return jsonify({'error': 'Backup failed'}), 500
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Get all transcripts
-        cursor.execute("SELECT id, title, primary_speaker FROM transcripts")
-        rows = cursor.fetchall()
-        
         fixed_count = 0
         changes = []
-        
-        for row in rows:
-            transcript_id = row['id']
-            old_title = row['title']
-            old_speaker = row['primary_speaker']
-            
-            new_title = clean_title(old_title)
-            
-            # Normalize speaker name
-            new_speaker = old_speaker
-            if old_speaker:
-                s = old_speaker.strip()
-                if 'mamdani' in s.lower():
-                    new_speaker = 'Mamdani'
-                elif 'hochul' in s.lower():
-                    new_speaker = 'Hochul'
-                elif 'trump' in s.lower():
-                    new_speaker = 'Trump'
-                elif 'vance' in s.lower():
-                    new_speaker = 'JD Vance'
-            
-            if new_title != old_title or new_speaker != old_speaker:
-                cursor.execute(
-                    "UPDATE transcripts SET title = ?, primary_speaker = ? WHERE id = ?",
-                    (new_title, new_speaker, transcript_id)
-                )
-                fixed_count += 1
-                
-                change = {'id': transcript_id}
-                if new_title != old_title:
-                    change['title_old'] = old_title
-                    change['title_new'] = new_title
-                if new_speaker != old_speaker:
-                    change['speaker_old'] = old_speaker
-                    change['speaker_new'] = new_speaker
-                changes.append(change)
-        
-        conn.commit()
-        conn.close()
-        
+
+        def _normalize_primary(speaker):
+            if not speaker:
+                return speaker
+            s = speaker.strip().lower()
+            if 'mamdani' in s: return 'Mamdani'
+            if 'hochul' in s: return 'Hochul'
+            if 'trump' in s: return 'Trump'
+            if 'vance' in s: return 'JD Vance'
+            return speaker.strip()
+
+        if _use_github():
+            store = get_github_store()
+            all_t = _get_all_cached_transcripts()
+            for t in all_t:
+                tid = t.get('id')
+                old_title = t.get('title', '')
+                old_speaker = t.get('primary_speaker', '')
+                new_title = clean_title(old_title)
+                new_speaker = _normalize_primary(old_speaker)
+                if new_title != old_title or new_speaker != old_speaker:
+                    t['title'] = new_title
+                    t['primary_speaker'] = new_speaker
+                    store.update_transcript_in_store(tid, t)
+                    _update_cache_after_write(tid, t)
+                    fixed_count += 1
+                    change = {'id': tid}
+                    if new_title != old_title:
+                        change['title_old'] = old_title
+                        change['title_new'] = new_title
+                    if new_speaker != old_speaker:
+                        change['speaker_old'] = old_speaker
+                        change['speaker_new'] = new_speaker
+                    changes.append(change)
+        else:
+            if HAS_BACKUP:
+                backup_database.create_backup(reason='pre_fix_transcripts')
+            conn = get_db()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, title, primary_speaker FROM transcripts")
+            rows = cursor.fetchall()
+            for row in rows:
+                tid = row['id']
+                old_title = row['title']
+                old_speaker = row['primary_speaker']
+                new_title = clean_title(old_title)
+                new_speaker = _normalize_primary(old_speaker)
+                if new_title != old_title or new_speaker != old_speaker:
+                    cursor.execute(
+                        "UPDATE transcripts SET title = ?, primary_speaker = ? WHERE id = ?",
+                        (new_title, new_speaker, tid)
+                    )
+                    fixed_count += 1
+                    change = {'id': tid}
+                    if new_title != old_title:
+                        change['title_old'] = old_title; change['title_new'] = new_title
+                    if new_speaker != old_speaker:
+                        change['speaker_old'] = old_speaker; change['speaker_new'] = new_speaker
+                    changes.append(change)
+            conn.commit()
+            conn.close()
+
         logging.info(f"✅ Fixed {fixed_count} transcripts")
-        return jsonify({
-            'success': True,
-            'fixed_count': fixed_count,
-            'changes': changes,
-            'message': f'Fixed {fixed_count} transcripts'
-        })
-        
+        return jsonify({'success': True, 'fixed_count': fixed_count, 'changes': changes,
+                        'message': f'Fixed {fixed_count} transcripts'})
+
     except Exception as e:
         logging.error(f"Fix transcripts error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -1424,6 +1555,41 @@ def detect_qa_patterns(segments, primary_speaker):
         'avgResponseSeconds': avg_seconds,
         'pairs': pairs
     }
+
+@app.route('/api/store-status', methods=['GET'])
+def store_status():
+    """Debug endpoint showing current store configuration and cache state."""
+    info = {
+        'store': TRANSCRIPT_STORE,
+        'github_store_available': HAS_GITHUB_STORE,
+        'using_github': _use_github(),
+    }
+    if _use_github():
+        with _cache_lock:
+            info['cache'] = {
+                'index_count': len(_cache['index']),
+                'full_count': len(_cache['full']),
+                'loaded_at': _cache['loaded_at'],
+                'age_seconds': round(time.time() - _cache['loaded_at'], 1) if _cache['loaded_at'] else None,
+                'ttl': _cache['ttl'],
+            }
+    return jsonify(info)
+
+
+# ---------------------------------------------------------------------------
+# Warm cache on import when using GitHub store
+# ---------------------------------------------------------------------------
+if TRANSCRIPT_STORE == "github" and HAS_GITHUB_STORE:
+    try:
+        _store = get_github_store()
+        if _store.enabled:
+            logging.info("🔥 Warming GitHub transcript cache on startup...")
+            _warm_cache()
+        else:
+            logging.warning("⚠️  TRANSCRIPT_STORE=github but store is disabled (missing token/repo)")
+    except Exception as _e:
+        logging.error(f"⚠️  Failed to warm cache on startup: {_e}")
+
 
 if __name__ == '__main__':
     print("\n" + "="*80)
