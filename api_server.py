@@ -794,7 +794,9 @@ def parse_transcript():
 def create_transcript():
     """Create a new transcript in the database"""
     try:
+        logging.info("=== CREATE TRANSCRIPT REQUEST START ===")
         data = request.json
+        logging.info(f"Data keys: {list(data.keys()) if data else 'None'}")
         
         # Required fields
         title = data.get('title')
@@ -803,65 +805,128 @@ def create_transcript():
         primary_speaker = data.get('primary_speaker')
         segments = data.get('segments', [])
         
+        logging.info(f"Title: '{title}', Date: '{event_date}', Type: '{speech_type}', Speaker: '{primary_speaker}'")
+        logging.info(f"Segments: {len(segments)} items")
+        
         if not all([title, event_date, speech_type, primary_speaker]):
+            logging.error("Validation failed: missing required fields")
             return jsonify({'error': 'Missing required fields'}), 400
         
         if not segments:
+            logging.error("Validation failed: no segments")
             return jsonify({'error': 'No segments provided'}), 400
         
         # Build full dialogue from segments
-        full_dialogue = '\n\n'.join([
-            f"{seg['speaker']} ({format_seconds(seg['start_seconds'])}): {seg['text']}"
-            for seg in segments
-        ])
+        try:
+            logging.info("Building full_dialogue...")
+            full_dialogue = '\n\n'.join([
+                f"{seg['speaker']} ({format_seconds(seg['start_seconds'])}): {seg['text']}"
+                for seg in segments
+            ])
+            logging.info(f"Full dialogue built: {len(full_dialogue)} chars")
+        except Exception as e:
+            logging.error(f"Error building full_dialogue: {e}", exc_info=True)
+            return jsonify({'error': f'Error building dialogue: {str(e)}'}), 500
         
         # Calculate word count
-        word_count = sum(len(seg['text'].split()) for seg in segments)
+        try:
+            logging.info("Calculating word count...")
+            word_count = sum(len(seg['text'].split()) for seg in segments)
+            logging.info(f"Word count: {word_count}")
+        except Exception as e:
+            logging.error(f"Error calculating word_count: {e}", exc_info=True)
+            return jsonify({'error': f'Error calculating word count: {str(e)}'}), 500
         
         # Get speakers list
-        speakers = list(set(seg['speaker'] for seg in segments))
+        try:
+            logging.info("Extracting speakers...")
+            speakers = list(set(seg['speaker'] for seg in segments))
+            logging.info(f"Speakers: {speakers}")
+        except Exception as e:
+            logging.error(f"Error extracting speakers: {e}", exc_info=True)
+            return jsonify({'error': f'Error extracting speakers: {str(e)}'}), 500
         
         # Q&A data
         has_qa = data.get('has_q_and_a', False)
         qa_analytics = data.get('qa_analytics')
+        logging.info(f"Has Q&A: {has_qa}")
+        
+        # Prepare data for insertion
+        try:
+            logging.info("Preparing data for insertion...")
+            cleaned_title = clean_title(title)
+            normalized_speakers = normalize_speakers(speakers)
+            url_slug = f'admin-upload-{event_date}-{title[:30].replace(" ", "-")}'
+            total_seconds = data.get('total_seconds', 0)
+            speakers_json = json.dumps(normalized_speakers)
+            
+            logging.info(f"Cleaned title: '{cleaned_title}'")
+            logging.info(f"Normalized speakers: {normalized_speakers}")
+            logging.info(f"URL slug: '{url_slug}'")
+            logging.info(f"Total seconds: {total_seconds}")
+        except Exception as e:
+            logging.error(f"Error preparing data: {e}", exc_info=True)
+            return jsonify({'error': f'Error preparing data: {str(e)}'}), 500
         
         # Insert into database
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            INSERT INTO transcripts (
-                title, date, speech_type, location, url, word_count,
-                trump_word_count, speech_duration_seconds, full_dialogue, speakers_json,
+        try:
+            logging.info("Getting database connection...")
+            conn = get_db()
+            cursor = conn.cursor()
+            
+            logging.info("Executing INSERT query...")
+            cursor.execute("""
+                INSERT INTO transcripts (
+                    title, date, speech_type, location, url, word_count,
+                    trump_word_count, speech_duration_seconds, full_dialogue, speakers_json,
+                    primary_speaker
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                cleaned_title,
+                event_date,
+                speech_type,
+                '',  # location
+                url_slug,
+                word_count,
+                0,  # trump_word_count (calculate if needed)
+                total_seconds,
+                full_dialogue,
+                speakers_json,
                 primary_speaker
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            clean_title(title),
-            event_date,
-            speech_type,
-            '',  # location
-            f'admin-upload-{event_date}-{title[:30].replace(" ", "-")}',  # unique URL
-            word_count,
-            0,  # trump_word_count (calculate if needed)
-            data.get('total_seconds', 0),
-            full_dialogue,
-            json.dumps(normalize_speakers(speakers)),
-            primary_speaker
-        ))
-        
-        transcript_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
+            ))
+            
+            transcript_id = cursor.lastrowid
+            logging.info(f"INSERT successful, ID: {transcript_id}")
+            
+            conn.commit()
+            logging.info("Commit successful")
+            
+            conn.close()
+            logging.info("Connection closed")
+            
+        except Exception as e:
+            logging.error(f"Database error: {e}", exc_info=True)
+            try:
+                conn.close()
+            except:
+                pass
+            return jsonify({'error': f'Database error: {str(e)}'}), 500
         
         logging.info(f"✅ Created transcript ID {transcript_id}: {title}")
         
-        # Auto-export backup
-        auto_export_backup()
+        # Auto-export backup (non-blocking)
+        try:
+            logging.info("Starting auto-export...")
+            auto_export_backup()
+            logging.info("Auto-export initiated")
+        except Exception as e:
+            logging.error(f"Auto-export error (non-fatal): {e}", exc_info=True)
         
+        logging.info("=== CREATE TRANSCRIPT REQUEST END ===")
         return jsonify({'id': transcript_id, 'success': True}), 201
         
     except Exception as e:
-        logging.error(f"Create transcript error: {e}", exc_info=True)
+        logging.error(f"❌ Unexpected error in create_transcript: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/admin/transcripts/by-speaker', methods=['GET'])
