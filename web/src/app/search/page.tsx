@@ -20,6 +20,7 @@ interface SearchResult {
     start_seconds: number;
     text: string;
     highlighted: string;
+    isPrimary: boolean;
   }[];
 }
 
@@ -236,17 +237,22 @@ export default function SearchPage() {
                 {/* Matching segments */}
                 <div className="divide-y divide-border">
                   {shownSegments.map((seg, i) => (
-                    <div key={i} className="px-4 py-2.5 text-sm">
+                    <div key={i} className={`px-4 py-2.5 text-sm ${!seg.isPrimary ? "opacity-75" : ""}`}>
                       <div className="mb-0.5 flex items-center gap-2">
-                        <span className="font-medium text-blue-400">
+                        <span className={`font-medium ${seg.isPrimary ? "text-blue-400" : "text-orange-400"}`}>
                           {seg.speaker}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {secondsToTime(seg.start_seconds)}
                         </span>
+                        {!seg.isPrimary && (
+                          <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-400">
+                            Other speaker
+                          </span>
+                        )}
                       </div>
                       <p
-                        className="text-foreground/80 leading-relaxed"
+                        className="text-foreground/80 leading-relaxed [&_mark]:rounded [&_mark]:bg-blue-500/20 [&_mark]:px-0.5 [&_mark]:text-blue-300 [&_mark.other]:bg-orange-500/20 [&_mark.other]:text-orange-300"
                         dangerouslySetInnerHTML={{ __html: seg.highlighted }}
                       />
                     </div>

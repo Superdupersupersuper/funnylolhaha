@@ -6,7 +6,11 @@ import { prisma } from "@/lib/db";
  *
  * Searches across SpeakingSegment.text (case-insensitive contains),
  * with filters on the parent Transcript, then aggregates results
- * by transcript (mention count + first match context).
+ * by transcript.
+ *
+ * Only segments spoken by the transcript's primary_speaker contribute
+ * to mentionCount / totalMentions. Other-speaker matches are still
+ * returned (with isPrimary=false) for context display.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -90,6 +94,7 @@ export async function GET(req: NextRequest) {
           start_seconds: number;
           text: string;
           highlighted: string;
+          isPrimary: boolean;
         }[];
       }
     >();
@@ -105,24 +110,37 @@ export async function GET(req: NextRequest) {
       }
       const entry = transcriptMap.get(tid)!;
 
-      // Count all case-insensitive occurrences in this segment
+      const isPrimary = speakerMatchesPrimary(
+        seg.speaker,
+        seg.transcript.primary_speaker
+      );
+
+      // Count only primary-speaker occurrences
       const regex = new RegExp(escapeRegex(q), "gi");
       const matches = seg.text.match(regex);
-      entry.mentionCount += matches ? matches.length : 1;
+      const count = matches ? matches.length : 1;
+      if (isPrimary) {
+        entry.mentionCount += count;
+      }
 
-      // Simple highlight: wrap matches in <mark>
-      const highlighted = seg.text.replace(regex, "<mark>$&</mark>");
+      // Highlight: blue <mark> for primary, orange <mark class="other"> for non-primary
+      const highlighted = isPrimary
+        ? seg.text.replace(regex, "<mark>$&</mark>")
+        : seg.text.replace(regex, '<mark class="other">$&</mark>');
 
       entry.segments.push({
         speaker: seg.speaker,
         start_seconds: seg.start_seconds,
         text: seg.text,
         highlighted,
+        isPrimary,
       });
     }
 
-    // Convert to array + paginate at transcript level
-    const allResults = Array.from(transcriptMap.values());
+    // Only keep transcripts where the primary speaker has at least one mention
+    const allResults = Array.from(transcriptMap.values()).filter(
+      (r) => r.mentionCount > 0
+    );
     const paginated = allResults.slice(offset, offset + limit);
 
     return NextResponse.json({
@@ -141,3 +159,24 @@ function escapeRegex(str: string) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Case-insensitive, punctuation-stripped comparison.
+ * Returns true when one name contains the other (handles
+ * "Donald Trump" vs "Donald J. Trump", "J.D. Vance" vs "Vance", etc.)
+ */
+function speakerMatchesPrimary(
+  sectionSpeaker: string,
+  primarySpeaker: string
+): boolean {
+  if (!sectionSpeaker || !primarySpeaker) return false;
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const a = norm(sectionSpeaker);
+  const b = norm(primarySpeaker);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}

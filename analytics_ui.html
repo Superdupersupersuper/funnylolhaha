@@ -493,6 +493,14 @@
             background: #60a5fa;
         }
 
+        .progress-marker.other {
+            background: #f97316;
+        }
+
+        .progress-marker.other:hover {
+            background: #fb923c;
+        }
+
         /* STATS BARS - PROPORTIONAL WITH COLOR CODING */
         .stats-bar-item {
             height: 100%;
@@ -1012,6 +1020,18 @@
             return /^Speaker\s+\d+$/i.test(name) ? 'Unknown Speaker' : name;
         }
 
+        // Check if a section speaker matches the transcript's primary_speaker field.
+        // Uses case-insensitive, punctuation-stripped comparison.
+        // Returns true if the names are the same person (substring containment both ways).
+        function speakerMatchesPrimary(sectionSpeaker, primarySpeaker) {
+            if (!sectionSpeaker || !primarySpeaker) return false;
+            const norm = s => s.toLowerCase().replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
+            const a = norm(sectionSpeaker);
+            const b = norm(primarySpeaker);
+            if (!a || !b) return false;
+            return a === b || a.includes(b) || b.includes(a);
+        }
+
         // Clean title of otter.ai artifacts
         function cleanDisplayTitle(title) {
             if (!title) return title;
@@ -1419,45 +1439,69 @@
                     `;
                 }
 
-                // Progress bar
+                // Progress bar — blue markers for primary speaker, orange for others
+                const otherMentionLocations = t.other_mention_locations || [];
                 let progressBarHTML = '';
-                if (mentionLocations.length > 0 && document.getElementById('showMatchLocations').checked) {
-                    const markersHTML = mentionLocations.map(loc =>
-                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
+                if ((mentionLocations.length > 0 || otherMentionLocations.length > 0) && document.getElementById('showMatchLocations').checked) {
+                    const primaryMarkersHTML = mentionLocations.map(loc =>
+                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="Primary speaker – ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
+                    ).join('');
+                    const otherMarkersHTML = otherMentionLocations.map(loc =>
+                        `<div class="progress-marker other" style="left: ${loc.location * 100}%;" title="Other speaker – ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
                     ).join('');
                     progressBarHTML = `
                         <div class="progress-bar-container" onclick="seekInTranscript(event, ${t.id})">
-                            <div class="progress-bar-markers">${markersHTML}</div>
+                            <div class="progress-bar-markers">${primaryMarkersHTML}${otherMarkersHTML}</div>
                         </div>
                     `;
                 }
 
-                // Full transcript preview
+                // Full transcript preview — speaker-aware highlighting
                 let previewText = t.preview || '';
                 const hasPreview = previewText.length > 0;
+                const primarySpeaker = t.primary_speaker || '';
 
                 if (hasPreview) {
-                    previewText = previewText
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;');
-
-                    if (isSearching && mentions.length > 0) {
-                        const searchTerms = getCombinedSearchTerms().map(t => t.toLowerCase());
-                        searchTerms.forEach(term => {
-                            const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                            const regex = new RegExp(`(${escapedTerm})`, 'gi');
-                            previewText = previewText.replace(regex, '###BLUESTART###$1###BLUEEND###');
-                        });
-                    }
-
-                    // Normalize Speaker N in transcript text
+                    // Normalize Speaker N in raw text first
                     previewText = previewText.replace(/\bSpeaker\s+\d+\b/gi, 'Unknown Speaker');
 
-                    previewText = previewText.replace(/\n/g, '<br>');
+                    if (isSearching && (mentions.length > 0 || otherMentionLocations.length > 0)) {
+                        // Split into lines and highlight per-speaker block
+                        const rawLines = previewText.split('\n');
+                        const searchTerms = getCombinedSearchTerms().map(t => t.toLowerCase());
+                        let currentIsPrimary = false;
+                        const processed = rawLines.map(line => {
+                            // Detect speaker header lines (e.g., "Donald Trump (0:22)")
+                            const speakerHeaderMatch = line.match(/^([A-Z][a-zA-Z\s\.\-,']+?)(\s*\([^)]*\))?\s*$/);
+                            if (speakerHeaderMatch) {
+                                const speakerName = speakerHeaderMatch[1].trim();
+                                currentIsPrimary = speakerMatchesPrimary(speakerName, primarySpeaker);
+                            }
+                            // Escape HTML
+                            let escaped = line
+                                .replace(/&/g, '&amp;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;');
+                            // Highlight search terms with color based on current speaker
+                            searchTerms.forEach(term => {
+                                const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                                const color = currentIsPrimary ? '#3b82f6' : '#f97316';
+                                escaped = escaped.replace(regex, `<strong style="color: ${color};">$1</strong>`);
+                            });
+                            return escaped;
+                        });
+                        previewText = processed.join('<br>');
+                    } else {
+                        previewText = previewText
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/\n/g, '<br>');
+                    }
+
+                    // Bold speaker names in the rendered HTML
                     previewText = previewText.replace(/([A-Z][a-zA-Z\s\.]+?)(\s*\([^)]*\))?<br>/g, '<strong>$1$2:</strong><br>');
-                    previewText = previewText.replace(/###BLUESTART###/g, '<strong style="color: #3b82f6;">');
-                    previewText = previewText.replace(/###BLUEEND###/g, '</strong>');
                 } else {
                     previewText = '<em style="color: #9ca3af;">Transcript content not available</em>';
                 }
@@ -1641,41 +1685,54 @@
                     if (!selectedCategories.includes(t.speech_type)) return false;
                     if ((t.word_count || 0) < minWordCount) return false;
 
-                    const sections = getDialogueForSpeaker(t, activePrimarySpeaker);
-                    const speakerText = sections.map(s => s.text).join(' ').toLowerCase();
-                    return terms.some(term => speakerText.includes(term));
+                    // Get ALL sections, then check if primary speaker has at least one match
+                    const allSections = getDialogueForSpeaker(t, 'all');
+                    const primarySpeaker = t.primary_speaker || '';
+                    const primarySections = allSections.filter(s => speakerMatchesPrimary(s.speaker, primarySpeaker));
+                    const primaryText = primarySections.map(s => s.text).join(' ').toLowerCase();
+                    return terms.some(term => primaryText.includes(term));
                 }).map(t => {
-                    const sections = getDialogueForSpeaker(t, activePrimarySpeaker);
-                    const positions = []; // Positions not needed for structured dialogue
+                    // Get ALL dialogue sections for this transcript
+                    const allSections = getDialogueForSpeaker(t, 'all');
+                    const primarySpeaker = t.primary_speaker || '';
+
                     const mentions = [];
                     const mentionLocations = [];
+                    const otherMentionLocations = [];
                     let mentionCount = 0;
+                    let otherMentionCount = 0;
 
-                    // Per-term data for context cards
+                    // Per-term data for context cards (primary only)
                     const perTermData = {};
                     terms.forEach(term => { perTermData[term] = { count: 0, contexts: [] }; });
 
                     terms.forEach(term => {
-                        sections.forEach((sec, sIdx) => {
+                        allSections.forEach((sec, sIdx) => {
                             let pos = 0;
                             const sectionLower = sec.text.toLowerCase();
+                            const isPrimary = speakerMatchesPrimary(sec.speaker, primarySpeaker);
                             while ((pos = sectionLower.indexOf(term, pos)) !== -1) {
-                                mentionCount++;
-                                perTermData[term].count++;
+                                const location = allSections.length > 0 ? sIdx / allSections.length : 0;
+                                const absolutePos = sIdx * 1000 + pos;
 
-                                // Build context excerpt (±120 chars around match)
-                                const ctxStart = Math.max(0, pos - 120);
-                                const ctxEnd = Math.min(sec.text.length, pos + term.length + 120);
-                                let excerpt = (ctxStart > 0 ? '…' : '') + sec.text.substring(ctxStart, ctxEnd) + (ctxEnd < sec.text.length ? '…' : '');
-                                perTermData[term].contexts.push({ excerpt, speaker: sec.speaker });
+                                if (isPrimary) {
+                                    mentionCount++;
+                                    perTermData[term].count++;
 
-                                const fullContext = sec.speaker + '\n' + sec.text;
-                                mentions.push({ context: fullContext, highlight_start: 0, highlight_end: 0 });
+                                    // Build context excerpt (±120 chars around match)
+                                    const ctxStart = Math.max(0, pos - 120);
+                                    const ctxEnd = Math.min(sec.text.length, pos + term.length + 120);
+                                    let excerpt = (ctxStart > 0 ? '…' : '') + sec.text.substring(ctxStart, ctxEnd) + (ctxEnd < sec.text.length ? '…' : '');
+                                    perTermData[term].contexts.push({ excerpt, speaker: sec.speaker });
 
-                                // Calculate location based on section index within all sections
-                                const location = sections.length > 0 ? sIdx / sections.length : 0;
-                                const absolutePos = sIdx * 1000 + pos; // Approximate position
-                                mentionLocations.push({ location, position: absolutePos });
+                                    const fullContext = sec.speaker + '\n' + sec.text;
+                                    mentions.push({ context: fullContext, highlight_start: 0, highlight_end: 0 });
+
+                                    mentionLocations.push({ location, position: absolutePos });
+                                } else {
+                                    otherMentionCount++;
+                                    otherMentionLocations.push({ location, position: absolutePos });
+                                }
 
                                 pos += term.length;
                             }
@@ -1685,8 +1742,10 @@
                     return {
                         ...t,
                         mention_count: mentionCount,
+                        other_mention_count: otherMentionCount,
                         mentions,
                         mention_locations: mentionLocations,
+                        other_mention_locations: otherMentionLocations,
                         per_term: perTermData
                     };
                 });
@@ -2229,7 +2288,7 @@
                 errorMsg += '<ol style="text-align: left; margin: 10px auto; max-width: 600px;">';
                 errorMsg += '<li>Start the API server:<br/><code>./start_api.sh</code><br/>or<br/><code>python3 api_server.py</code></li>';
                 errorMsg += '<li>Check the console output shows: "✅ Database found"</li>';
-                errorMsg += '<li>If database is empty, click the "Sync Transcripts" button</li>';
+                errorMsg += '<li>If database is empty, import transcripts via the admin panel</li>';
                 errorMsg += '</ol>';
                 errorMsg += `<p><a href="${API_BASE}/api/health" target="_blank" style="color: #3b82f6; text-decoration: underline;">View API health check →</a></p>`;
                 errorMsg += '</div>';
@@ -2282,82 +2341,6 @@
             return found;
         }
 
-        // Sync/Refresh transcripts from RollCall
-        async function syncTranscripts() {
-            const btn = document.getElementById('syncBtn');
-            btn.textContent = '⟳ Syncing...';
-            btn.disabled = true;
-
-            try {
-                // Trigger scraper via API
-                const response = await fetch(`${API_BASE}/api/scraper/refresh`, {
-                    method: 'POST'
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to start scraper');
-                }
-
-                const data = await response.json();
-                console.log('Scraper response:', data);
-
-                if (data.status === 'already_running') {
-                    btn.textContent = 'Already Running';
-                    setTimeout(() => {
-                        btn.textContent = '⟳ Sync Transcripts';
-                        btn.disabled = false;
-                    }, 2000);
-                    return;
-                }
-
-                // Poll for status
-                btn.textContent = 'Running...';
-                const pollInterval = setInterval(async () => {
-                    try {
-                        const statusResponse = await fetch(`${API_BASE}/api/scraper/status`);
-                        const status = await statusResponse.json();
-
-                        console.log('Scraper status:', status);
-
-                        if (status.progress) {
-                            btn.textContent = status.progress.substring(0, 20);
-                        }
-
-                        if (!status.running) {
-                            clearInterval(pollInterval);
-                            btn.textContent = '✓ Complete!';
-
-                            // Reload data
-                            await loadStaticData();
-
-                            setTimeout(() => {
-                                btn.textContent = '⟳ Sync Transcripts';
-                                btn.disabled = false;
-                            }, 2000);
-                        }
-                    } catch (e) {
-                        console.error('Status poll error:', e);
-                    }
-                }, 2000);
-
-                // Timeout after 10 minutes (sync can take a while)
-                setTimeout(() => {
-                    clearInterval(pollInterval);
-                    btn.textContent = '⟳ Sync Transcripts';
-                    btn.disabled = false;
-                    console.warn('Sync timeout - check server logs for status');
-                }, 600000);
-
-            } catch (error) {
-                console.error('Sync error:', error);
-                btn.textContent = '✗ Sync Failed';
-                setTimeout(() => {
-                    btn.textContent = '⟳ Sync Transcripts';
-                    btn.disabled = false;
-                }, 3000);
-            }
-        }
-
         // Initialize
         window.addEventListener('DOMContentLoaded', async () => {
             // Set end date to today dynamically
@@ -2381,26 +2364,6 @@
         });
     </script>
 
-    <!-- Floating Sync Button -->
-    <button id="syncBtn" onclick="syncTranscripts()" style="
-        position: fixed;
-        bottom: 20px;
-        left: 20px;
-        padding: 12px 20px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 25px;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        transition: all 0.3s ease;
-        z-index: 1000;
-    " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.6)'"
-       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.4)'">
-        ⟳ Sync Transcripts
-    </button>
 </body>
 </html>
 <!-- deploy 1766107584 -->

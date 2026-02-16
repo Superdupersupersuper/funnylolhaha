@@ -493,6 +493,14 @@
             background: #60a5fa;
         }
 
+        .progress-marker.other {
+            background: #f97316;
+        }
+
+        .progress-marker.other:hover {
+            background: #fb923c;
+        }
+
         /* STATS BARS - PROPORTIONAL WITH COLOR CODING */
         .stats-bar-item {
             height: 100%;
@@ -787,6 +795,16 @@
         let allTranscripts = [];
         let transcriptsData = [];
         let additionalSearchTerms = [];
+
+        // Check if a section speaker matches the transcript's primary_speaker field.
+        function speakerMatchesPrimary(sectionSpeaker, primarySpeaker) {
+            if (!sectionSpeaker || !primarySpeaker) return false;
+            const norm = s => s.toLowerCase().replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
+            const a = norm(sectionSpeaker);
+            const b = norm(primarySpeaker);
+            if (!a || !b) return false;
+            return a === b || a.includes(b) || b.includes(a);
+        }
 
         function normalizeSearchTerm(term) {
             return (term || '').trim().replace(/\s+/g, ' ');
@@ -1138,66 +1156,67 @@
                 const mentions = t.mentions || [];
                 const mentionLocations = t.mention_locations || [];
 
-                // Get all speakers who mentioned the term
+                // Primary speaker totals
                 let totalsHTML = '';
                 if (mentionCount > 0) {
-                    const speakerCounts = {'Donald Trump': mentionCount};
-                    const speakersStr = Object.entries(speakerCounts)
-                        .map(([speaker, count]) => `${speaker}: ${count}`)
-                        .join(', ');
-                    totalsHTML = `<div class="transcript-totals"><strong>Totals:</strong> ${speakersStr}</div>`;
+                    const speaker = t.primary_speaker || 'Primary Speaker';
+                    totalsHTML = `<div class="transcript-totals"><strong>Total mentions (${speaker}):</strong> ${mentionCount}</div>`;
                 }
 
-                // Context is now handled by "Show Full Transcript" - no separate context box needed
                 let contentHTML = '';
 
-                // Create YouTube-style progress bar - ONLY MARKERS (no blue fill)
+                // Progress bar — blue for primary speaker, orange for others
+                const otherMentionLocations = t.other_mention_locations || [];
                 let progressBarHTML = '';
-                if (mentionLocations.length > 0 && document.getElementById('showMatchLocations').checked) {
-                    const markersHTML = mentionLocations.map(loc =>
-                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
+                if ((mentionLocations.length > 0 || otherMentionLocations.length > 0) && document.getElementById('showMatchLocations').checked) {
+                    const primaryMarkersHTML = mentionLocations.map(loc =>
+                        `<div class="progress-marker" style="left: ${loc.location * 100}%;" title="Primary speaker – ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
                     ).join('');
-
+                    const otherMarkersHTML = otherMentionLocations.map(loc =>
+                        `<div class="progress-marker other" style="left: ${loc.location * 100}%;" title="Other speaker – ${(loc.location * 100).toFixed(1)}%" onclick="seekToMention(${t.id}, ${loc.position})"></div>`
+                    ).join('');
                     progressBarHTML = `
                         <div class="progress-bar-container" onclick="seekInTranscript(event, ${t.id})">
-                            <div class="progress-bar-markers">${markersHTML}</div>
+                            <div class="progress-bar-markers">${primaryMarkersHTML}${otherMarkersHTML}</div>
                         </div>
                     `;
                 }
 
-                // FULL TRANSCRIPT - Show ENTIRE thing with search terms highlighted
+                // Full transcript preview — speaker-aware highlighting
                 let previewText = t.preview || '';
                 const hasPreview = previewText.length > 0;
+                const primarySpeaker = t.primary_speaker || '';
 
                 if (hasPreview) {
-                    // Step 1: Escape HTML
-                    previewText = previewText
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;');
+                    previewText = previewText.replace(/\bSpeaker\s+\d+\b/gi, 'Unknown Speaker');
 
-                    // Step 2: Make search terms BOLD and BLUE (BEFORE converting newlines)
-                    if (isSearching && mentions.length > 0) {
+                    if (isSearching && (mentions.length > 0 || otherMentionLocations.length > 0)) {
+                        const rawLines = previewText.split('\n');
                         const searchTerms = getCombinedSearchTerms().map(t => t.toLowerCase());
-                        searchTerms.forEach(term => {
-                            // Create case-insensitive regex for the FULL word
-                            const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                            const regex = new RegExp(`(${escapedTerm})`, 'gi');
-
-                            // Replace with placeholder that uses unique characters that won't be in the text
-                            previewText = previewText.replace(regex, '###BLUESTART###$1###BLUEEND###');
+                        let currentIsPrimary = false;
+                        const processed = rawLines.map(line => {
+                            const speakerHeaderMatch = line.match(/^([A-Z][a-zA-Z\s.\-,']+?)(\s*\([^)]*\))?\s*$/);
+                            if (speakerHeaderMatch) {
+                                const speakerName = speakerHeaderMatch[1].trim();
+                                currentIsPrimary = speakerMatchesPrimary(speakerName, primarySpeaker);
+                            }
+                            let escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            searchTerms.forEach(term => {
+                                const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                                const color = currentIsPrimary ? '#3b82f6' : '#f97316';
+                                escaped = escaped.replace(regex, `<strong style="color: ${color};">$1</strong>`);
+                            });
+                            return escaped;
                         });
+                        previewText = processed.join('<br>');
+                    } else {
+                        previewText = previewText
+                            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                            .replace(/\n/g, '<br>');
                     }
 
-                    // Step 3: Convert newlines to <br>
-                    previewText = previewText.replace(/\n/g, '<br>');
-
-                    // Step 4: Make speaker names bold with colon
-                    previewText = previewText.replace(/([A-Z][a-zA-Z\s\.]+?)<br>/g, '<strong>$1:</strong><br>');
-
-                    // Step 5: Convert blue text placeholders to actual HTML (AFTER all other replacements)
-                    previewText = previewText.replace(/###BLUESTART###/g, '<strong style="color: #3b82f6;">');
-                    previewText = previewText.replace(/###BLUEEND###/g, '</strong>');
+                    previewText = previewText.replace(/([A-Z][a-zA-Z\s\.]+?)(\s*\([^)]*\))?<br>/g, '<strong>$1$2:</strong><br>');
                 }
 
                 return `
@@ -1284,89 +1303,97 @@
                 console.log('Categories:', selectedCategories);
                 console.log('Total transcripts to search:', transcriptsData.length);
 
-                // Client-side search in preview text - ONLY in Trump's dialogue
+                // Client-side search — only primary speaker's dialogue counts
                 const results = transcriptsData.filter(t => {
-                    // Filter by date and category
                     const tDate = new Date(t.date);
                     if (tDate < startDate || tDate > endDate) return false;
                     if (!selectedCategories.includes(t.speech_type)) return false;
-
-                    // Filter by minimum word count
                     if ((t.word_count || 0) < minWordCount) return false;
 
-                    // ONLY search in Donald Trump's dialogue (not title, not other speakers)
                     const preview = t.preview || '';
                     const lines = preview.split('\n');
+                    const primarySpeaker = t.primary_speaker || '';
 
-                    // Find sections where Donald Trump is speaking
-                    let trumpSections = [];
+                    // Build primary-speaker sections
+                    let primarySections = [];
+                    let currentSpeakerIsPrimary = false;
                     for (let i = 0; i < lines.length; i++) {
-                        if (lines[i].trim().toLowerCase().includes('donald trump')) {
-                            // This is a speaker line, get the next line (what Trump said)
-                            if (i + 1 < lines.length) {
-                                trumpSections.push(lines[i + 1]);
-                            }
+                        const trimmed = lines[i].trim();
+                        const isSpeakerHeader = /^[A-Z][a-zA-Z\s.\-,']+(\s*\([^)]*\))?\s*$/.test(trimmed) && trimmed.length < 60;
+                        if (isSpeakerHeader) {
+                            const name = trimmed.replace(/\s*\([^)]*\)\s*$/, '').trim();
+                            currentSpeakerIsPrimary = speakerMatchesPrimary(name, primarySpeaker);
+                        } else if (currentSpeakerIsPrimary && trimmed) {
+                            primarySections.push(trimmed);
                         }
                     }
 
-                    // Check if search term appears in any of Trump's sections
-                    const trumpText = trumpSections.join(' ').toLowerCase();
-                    const found = terms.some(term => trumpText.includes(term));
-                    return found;
+                    const primaryText = primarySections.join(' ').toLowerCase();
+                    return terms.some(term => primaryText.includes(term));
                 }).map(t => {
-                    // Calculate mention_count and mention_locations ONLY in Trump's dialogue
                     const preview = t.preview || '';
                     const lines = preview.split('\n');
+                    const primarySpeaker = t.primary_speaker || '';
                     const mentions = [];
                     const mentionLocations = [];
+                    const otherMentionLocations = [];
                     let mentionCount = 0;
+                    let otherMentionCount = 0;
 
-                    // Find Trump's sections
-                    let trumpSections = [];
-                    let trumpPositions = []; // Track where in the full text these sections are
+                    // Parse ALL speaker sections with positions
+                    let sections = []; // { speaker, text, position, isPrimary }
+                    let currentSpeaker = '';
+                    let currentIsPrimary = false;
                     let currentPos = 0;
+                    let sectionStart = 0;
+                    let sectionLines = [];
+
+                    function flushSection() {
+                        if (sectionLines.length > 0 && currentSpeaker) {
+                            sections.push({
+                                speaker: currentSpeaker,
+                                text: sectionLines.join(' '),
+                                position: sectionStart,
+                                isPrimary: currentIsPrimary
+                            });
+                        }
+                        sectionLines = [];
+                    }
 
                     for (let i = 0; i < lines.length; i++) {
-                        const lineLength = lines[i].length + 1; // +1 for newline
-
-                        if (lines[i].trim().toLowerCase().includes('donald trump')) {
-                            // This is a speaker line, get the next line (what Trump said)
-                            if (i + 1 < lines.length) {
-                                const trumpLine = lines[i + 1];
-                                trumpSections.push(trumpLine);
-                                trumpPositions.push(currentPos + lineLength); // Position of Trump's dialogue
-                            }
+                        const lineLength = lines[i].length + 1;
+                        const trimmed = lines[i].trim();
+                        const isSpeakerHeader = /^[A-Z][a-zA-Z\s.\-,']+(\s*\([^)]*\))?\s*$/.test(trimmed) && trimmed.length < 60;
+                        if (isSpeakerHeader) {
+                            flushSection();
+                            currentSpeaker = trimmed.replace(/\s*\([^)]*\)\s*$/, '').trim();
+                            currentIsPrimary = speakerMatchesPrimary(currentSpeaker, primarySpeaker);
+                            sectionStart = currentPos + lineLength;
+                        } else if (trimmed) {
+                            sectionLines.push(trimmed);
                         }
                         currentPos += lineLength;
                     }
+                    flushSection();
 
-                    // Search ONLY in Trump's sections
+                    // Search in all sections, count primary vs other
                     terms.forEach(term => {
-                        trumpSections.forEach((section, sectionIdx) => {
+                        sections.forEach((sec, sIdx) => {
                             let pos = 0;
-                            const sectionLower = section.toLowerCase();
-
+                            const sectionLower = sec.text.toLowerCase();
                             while ((pos = sectionLower.indexOf(term, pos)) !== -1) {
-                                mentionCount++;
+                                const absolutePos = sec.position + pos;
+                                const location = preview.length > 0 ? absolutePos / preview.length : 0;
 
-                                // Get FULL Trump section with speaker name
-                                // Include "Donald Trump" speaker line + the full dialogue section
-                                const speakerLine = "Donald Trump";
-                                const fullContext = speakerLine + "\n" + section;
-
-                                mentions.push({
-                                    context: fullContext,
-                                    highlight_start: 0,  // Will be handled by search term highlighting
-                                    highlight_end: 0
-                                });
-
-                                // Calculate location in full document
-                                const absolutePos = trumpPositions[sectionIdx] + pos;
-                                const location = absolutePos / preview.length;
-                                mentionLocations.push({
-                                    location: location,
-                                    position: absolutePos
-                                });
+                                if (sec.isPrimary) {
+                                    mentionCount++;
+                                    const fullContext = sec.speaker + "\n" + sec.text;
+                                    mentions.push({ context: fullContext, highlight_start: 0, highlight_end: 0 });
+                                    mentionLocations.push({ location, position: absolutePos });
+                                } else {
+                                    otherMentionCount++;
+                                    otherMentionLocations.push({ location, position: absolutePos });
+                                }
 
                                 pos += term.length;
                             }
@@ -1376,8 +1403,10 @@
                     return {
                         ...t,
                         mention_count: mentionCount,
-                        mentions: mentions,
-                        mention_locations: mentionLocations
+                        other_mention_count: otherMentionCount,
+                        mentions,
+                        mention_locations: mentionLocations,
+                        other_mention_locations: otherMentionLocations
                     };
                 });
 
@@ -1962,81 +1991,6 @@
             return found;
         }
 
-        // Sync/Refresh transcripts from RollCall
-        async function syncTranscripts() {
-            const btn = document.getElementById('syncBtn');
-            btn.textContent = '⟳ Syncing...';
-            btn.disabled = true;
-
-            try {
-                // Trigger scraper via API
-                const response = await fetch(`${API_BASE}/api/scraper/refresh`, {
-                    method: 'POST'
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to start scraper');
-                }
-
-                const data = await response.json();
-                console.log('Scraper response:', data);
-
-                if (data.status === 'already_running') {
-                    btn.textContent = 'Already Running';
-                    setTimeout(() => {
-                        btn.textContent = '⟳ Sync Transcripts';
-                        btn.disabled = false;
-                    }, 2000);
-                    return;
-                }
-
-                // Poll for status
-                btn.textContent = 'Running...';
-                const pollInterval = setInterval(async () => {
-                    try {
-                        const statusResponse = await fetch(`${API_BASE}/api/scraper/status`);
-                        const status = await statusResponse.json();
-
-                        console.log('Scraper status:', status);
-
-                        if (status.progress) {
-                            btn.textContent = status.progress.substring(0, 20);
-                        }
-
-                        if (!status.running) {
-                            clearInterval(pollInterval);
-                            btn.textContent = '✓ Complete!';
-
-                            // Reload data
-                            await loadStaticData();
-
-                            setTimeout(() => {
-                                btn.textContent = '⟳ Sync Transcripts';
-                                btn.disabled = false;
-                            }, 2000);
-                        }
-                    } catch (e) {
-                        console.error('Status poll error:', e);
-                    }
-                }, 2000);
-
-                // Timeout after 5 minutes
-                setTimeout(() => {
-                    clearInterval(pollInterval);
-                    btn.textContent = '⟳ Sync Transcripts';
-                    btn.disabled = false;
-                }, 300000);
-
-            } catch (error) {
-                console.error('Sync error:', error);
-                btn.textContent = '✗ Sync Failed';
-                setTimeout(() => {
-                    btn.textContent = '⟳ Sync Transcripts';
-                    btn.disabled = false;
-                }, 3000);
-            }
-        }
-
         // Initialize
         window.addEventListener('DOMContentLoaded', async () => {
             initCharts();
@@ -2055,25 +2009,5 @@
         });
     </script>
 
-    <!-- Floating Sync Button -->
-    <button id="syncBtn" onclick="syncTranscripts()" style="
-        position: fixed;
-        bottom: 20px;
-        left: 20px;
-        padding: 12px 20px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 25px;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        transition: all 0.3s ease;
-        z-index: 1000;
-    " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(102, 126, 234, 0.6)'"
-       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 15px rgba(102, 126, 234, 0.4)'">
-        ⟳ Sync Transcripts
-    </button>
 </body>
 </html>
