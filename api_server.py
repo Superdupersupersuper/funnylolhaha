@@ -198,6 +198,38 @@ def _check_and_restore_if_empty():
         logging.error(f"Check and restore error: {e}")
 
 
+def parse_dialogue_to_segments(full_dialogue_text):
+    """Parse full_dialogue text into structured dialogue segments for the frontend"""
+    if not full_dialogue_text:
+        return []
+    
+    segments = []
+    # Split by double newline to get individual segments
+    lines = full_dialogue_text.strip().split('\n\n')
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Match pattern: "Speaker Name (timestamp): text"
+        # e.g., "Zohran Mamdani (0:22): Wow, I love your work."
+        import re
+        match = re.match(r'^(.+?)\s*\(([0-9:]+)\):\s*(.+)$', line, re.DOTALL)
+        
+        if match:
+            speaker = match.group(1).strip()
+            timestamp = match.group(2).strip()
+            text = match.group(3).strip()
+            
+            segments.append({
+                'speaker': speaker,
+                'timestamp': timestamp,
+                'text': text
+            })
+    
+    return segments
+
 def normalize_speakers(speakers):
     """Normalize speaker names: collapse 'Speaker 1', 'Speaker 2', etc. into 'Unknown Speaker'."""
     normalized = []
@@ -550,6 +582,9 @@ def get_transcripts():
             if isinstance(preview_text, bytes):
                 preview_text = preview_text.decode('utf-8', errors='ignore')
             
+            # Parse dialogue into structured segments
+            dialogue_segments = parse_dialogue_to_segments(preview_text)
+            
             speakers_raw = json.loads(row['speakers_json']) if row['speakers_json'] else []
             transcripts.append({
                 'id': row['id'],
@@ -559,7 +594,8 @@ def get_transcripts():
                 'location': row['location'] or '',
                 'url': row['url'],
                 'word_count': row['word_count'] or 0,
-                'preview': preview_text,  # FULL TRANSCRIPT TEXT
+                'preview': preview_text,  # FULL TRANSCRIPT TEXT (for backwards compat)
+                'dialogue': dialogue_segments,  # STRUCTURED DIALOGUE SEGMENTS
                 'speakers': normalize_speakers(speakers_raw),
                 'primary_speaker': row['primary_speaker'] or ''
             })
