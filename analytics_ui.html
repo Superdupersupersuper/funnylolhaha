@@ -1571,6 +1571,31 @@
             return { sections, positions };
         }
 
+        // Get dialogue segments for the active primary speaker (uses structured dialogue if available)
+        function getDialogueForSpeaker(transcript, tab) {
+            if (transcript.dialogue && Array.isArray(transcript.dialogue)) {
+                // Use structured dialogue array
+                if (tab === 'all') {
+                    return transcript.dialogue.map(seg => ({
+                        speaker: seg.speaker || '',
+                        text: seg.text || ''
+                    }));
+                } else {
+                    return transcript.dialogue.filter(seg => {
+                        const speaker = (seg.speaker || '').toLowerCase();
+                        return PRIMARY_SPEAKER_MATCHERS[tab] && PRIMARY_SPEAKER_MATCHERS[tab](speaker);
+                    }).map(seg => ({
+                        speaker: seg.speaker || '',
+                        text: seg.text || ''
+                    }));
+                }
+            } else {
+                // Fallback: parse preview text
+                const { sections } = extractSpeakerSections(transcript.preview || '', tab);
+                return sections;
+            }
+        }
+
         // Perform search — generalized for any primary speaker tab
         async function performSearch() {
             const searchBtn = document.getElementById('searchBtn');
@@ -1613,13 +1638,12 @@
                     if (!selectedCategories.includes(t.speech_type)) return false;
                     if ((t.word_count || 0) < minWordCount) return false;
 
-                    const preview = t.preview || '';
-                    const { sections } = extractSpeakerSections(preview, activePrimarySpeaker);
+                    const sections = getDialogueForSpeaker(t, activePrimarySpeaker);
                     const speakerText = sections.map(s => s.text).join(' ').toLowerCase();
                     return terms.some(term => speakerText.includes(term));
                 }).map(t => {
-                    const preview = t.preview || '';
-                    const { sections, positions } = extractSpeakerSections(preview, activePrimarySpeaker);
+                    const sections = getDialogueForSpeaker(t, activePrimarySpeaker);
+                    const positions = []; // Positions not needed for structured dialogue
                     const mentions = [];
                     const mentionLocations = [];
                     let mentionCount = 0;
