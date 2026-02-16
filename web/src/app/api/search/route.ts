@@ -162,7 +162,7 @@ function escapeRegex(str: string) {
 /**
  * Case-insensitive, punctuation-stripped comparison.
  * Returns true when one name contains the other (handles
- * "Donald Trump" vs "Donald J. Trump", "J.D. Vance" vs "Vance", etc.)
+ * "Donald Trump" vs "Donald J. Trump", "J.D. Vance" vs "Vance", "Zohran Mamdani" vs "Mamdani", etc.)
  */
 function speakerMatchesPrimary(
   sectionSpeaker: string,
@@ -178,5 +178,17 @@ function speakerMatchesPrimary(
   const a = norm(sectionSpeaker);
   const b = norm(primarySpeaker);
   if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
+
+  // Exact match
+  if (a === b) return true;
+
+  // Split into words for more robust matching
+  const aWords = a.split(" ").filter((w) => w.length > 0);
+  const bWords = b.split(" ").filter((w) => w.length > 0);
+
+  // If either contains all words of the other, it's a match
+  const aContainsAllB = bWords.every((w) => aWords.includes(w));
+  const bContainsAllA = aWords.every((w) => bWords.includes(w));
+
+  return aContainsAllB || bContainsAllA;
 }

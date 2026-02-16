@@ -803,7 +803,19 @@
             const a = norm(sectionSpeaker);
             const b = norm(primarySpeaker);
             if (!a || !b) return false;
-            return a === b || a.includes(b) || b.includes(a);
+            
+            // Exact match
+            if (a === b) return true;
+            
+            // Split into words for more robust matching
+            const aWords = a.split(' ').filter(w => w.length > 0);
+            const bWords = b.split(' ').filter(w => w.length > 0);
+            
+            // If either contains all words of the other, it's a match
+            const aContainsAllB = bWords.every(w => aWords.includes(w));
+            const bContainsAllA = aWords.every(w => bWords.includes(w));
+            
+            return aContainsAllB || bContainsAllA;
         }
 
         function normalizeSearchTerm(term) {
@@ -1804,13 +1816,35 @@
         // Seek functions for progress bar
         function seekToMention(transcriptId, position) {
             const preview = document.getElementById(`preview-${transcriptId}`);
+            const card = document.getElementById(`card-${transcriptId}`);
             if (preview) {
                 // First, make sure preview is visible
                 if (preview.style.display === 'none') {
                     togglePreview(transcriptId);
                 }
-                // Then scroll to position
-                preview.scrollTop = position / 10;
+                
+                // Wait a tick for the preview to expand
+                setTimeout(() => {
+                    // Scroll the card into view first (middle of viewport)
+                    if (card) {
+                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                    
+                    // Calculate scroll position within the preview
+                    const previewText = preview.textContent || '';
+                    const ratio = previewText.length > 0 ? position / previewText.length : 0;
+                    const targetScroll = ratio * preview.scrollHeight;
+                    
+                    // Scroll to middle of the preview viewport
+                    preview.scrollTop = Math.max(0, targetScroll - preview.clientHeight / 2);
+                    
+                    // Flash effect
+                    preview.style.transition = 'box-shadow 0.3s ease';
+                    preview.style.boxShadow = '0 0 0 3px #3b82f6, inset 0 0 20px rgba(59, 130, 246, 0.3)';
+                    setTimeout(() => {
+                        preview.style.boxShadow = '';
+                    }, 800);
+                }, 100);
             }
         }
 
