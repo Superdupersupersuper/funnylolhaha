@@ -158,6 +158,7 @@ def _migrate_add_primary_speaker():
 def _auto_restore_from_backup():
     """Auto-restore transcripts from latest JSON backup if available"""
     if not HAS_EXPORT:
+        logging.info("ℹ️ Export module not available - skipping auto-restore")
         return
     
     try:
@@ -166,14 +167,17 @@ def _auto_restore_from_backup():
             logging.info(f"📦 Found backup file: {latest_backup}")
             logging.info("🔄 Auto-restoring transcripts from backup...")
             
-            if export_backup.import_from_backup(latest_backup):
-                logging.info("✅ Transcripts restored from backup")
-            else:
-                logging.warning("⚠️ Failed to restore from backup")
+            try:
+                if export_backup.import_from_backup(latest_backup):
+                    logging.info("✅ Transcripts restored from backup")
+                else:
+                    logging.warning("⚠️ Failed to restore from backup")
+            except Exception as restore_error:
+                logging.error(f"⚠️ Restore failed but continuing: {restore_error}")
         else:
             logging.info("ℹ️ No backup file found - starting with empty database")
     except Exception as e:
-        logging.error(f"Auto-restore error: {e}")
+        logging.error(f"⚠️ Auto-restore error (continuing anyway): {e}")
 
 def _check_and_restore_if_empty():
     """Check if database is empty and restore from backup if needed"""
@@ -220,12 +224,23 @@ def clean_title(title):
 
 def auto_export_backup():
     """Automatically export transcripts to JSON after any database change"""
-    if HAS_EXPORT:
-        try:
-            export_backup.export_all_transcripts()
-            logging.info("✅ Auto-exported transcripts to JSON backup")
-        except Exception as e:
-            logging.error(f"❌ Auto-export failed: {e}")
+    if not HAS_EXPORT:
+        return
+    
+    try:
+        # Run in background thread to not block the response
+        import threading
+        def _export():
+            try:
+                export_backup.export_all_transcripts()
+                logging.info("✅ Auto-exported transcripts to JSON backup")
+            except Exception as e:
+                logging.error(f"❌ Auto-export failed: {e}")
+        
+        thread = threading.Thread(target=_export, daemon=True)
+        thread.start()
+    except Exception as e:
+        logging.error(f"❌ Failed to start export thread: {e}")
 
 def get_db():
     """Get database connection"""

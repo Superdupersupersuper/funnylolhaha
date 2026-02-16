@@ -91,6 +91,9 @@ def import_from_backup(filepath):
             print(f"❌ Backup file not found: {filepath}")
             return False
         
+        # Ensure database directory exists
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        
         with open(filepath, 'r') as f:
             data = json.load(f)
         
