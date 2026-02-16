@@ -38,7 +38,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(mess
 # ---------- configuration ----------
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 RENDER_API_KEY = os.environ.get("RENDER_API_KEY", "rnd_XToSneCSEQP0QdaeAYQTtlZWCNzy")
-RENDER_SERVICE_ID = "srv-d694bsjuibrs739aiib0"
+RENDER_SERVICE_ID = "srv-d5239ckhg0os73cnqk40"  # funnylolhaha Flask app
 GITHUB_BRANCH = "main"
 STORE_PREFIX = "transcripts_store"
 
