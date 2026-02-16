@@ -254,7 +254,24 @@
             
             <div class="form-group">
                 <label>Transcript Text (Otter.ai format)</label>
-                <textarea id="transcriptText" rows="12" placeholder="Paste your Otter.ai transcript here...
+                
+                <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                    <button type="button" onclick="document.getElementById('fileInput').click()" class="button-secondary" style="flex: 1;">
+                        📎 Upload .txt File
+                    </button>
+                    <button type="button" onclick="clearTranscript()" class="button-secondary" style="flex: 1;">
+                        🗑️ Clear
+                    </button>
+                </div>
+                
+                <input type="file" id="fileInput" accept=".txt" style="display: none;" onchange="handleFileUpload(event)">
+                
+                <div id="fileInfo" style="display: none; background: #1e3a5f; border: 1px solid #3b82f6; border-radius: 6px; padding: 10px; margin-bottom: 8px; font-size: 13px;">
+                    <span style="color: #60a5fa;">📄</span> <span id="fileName"></span>
+                    <span style="color: #9ca3af; margin-left: 8px;" id="fileSize"></span>
+                </div>
+                
+                <textarea id="transcriptText" rows="12" placeholder="Paste your Otter.ai transcript here, or click 'Upload .txt File' above...
 
 Example format:
 Speaker Name  0:22  
@@ -380,6 +397,49 @@ More text..."></textarea>
         let parsedData = null;
         let currentSpeaker = null;
         let allTranscripts = [];
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Show file info
+            document.getElementById('fileInfo').style.display = 'block';
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = `(${(file.size / 1024).toFixed(1)} KB)`;
+
+            // Read file content
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                document.getElementById('transcriptText').value = content;
+
+                // Auto-fill title from filename (remove .txt extension)
+                const titleField = document.getElementById('title');
+                if (!titleField.value || titleField.value === 'e.g., Mayor Mamdani Press Conference') {
+                    let titleFromFile = file.name.replace(/\.txt$/i, '');
+                    // Clean up common patterns like dates, timestamps
+                    titleFromFile = titleFromFile
+                        .replace(/_/g, ' ')  // Replace underscores with spaces
+                        .replace(/-/g, ' ')  // Replace hyphens with spaces
+                        .replace(/\s+/g, ' ')  // Normalize multiple spaces
+                        .trim();
+                    titleField.value = titleFromFile;
+                }
+
+                showAlert(`📄 File loaded: ${file.name}`, 'success');
+            };
+            reader.onerror = function() {
+                showAlert('Error reading file', 'error');
+            };
+            reader.readAsText(file);
+        }
+
+        function clearTranscript() {
+            document.getElementById('transcriptText').value = '';
+            document.getElementById('fileInput').value = '';
+            document.getElementById('fileInfo').style.display = 'none';
+            showAlert('Transcript cleared', 'warning');
+        }
 
         function showTab(tab) {
             const uploadSection = document.getElementById('uploadSection');
