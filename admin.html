@@ -244,6 +244,9 @@
             <button onclick="showTab('database')" id="databaseTab" style="padding: 12px 24px; background: transparent; border: none; border-bottom: 3px solid transparent; color: #9ca3af; font-weight: 600; cursor: pointer;">
                 📊 View Database
             </button>
+            <button onclick="showTab('speechTypes')" id="speechTypesTab" style="padding: 12px 24px; background: transparent; border: none; border-bottom: 3px solid transparent; color: #9ca3af; font-weight: 600; cursor: pointer;">
+                🎯 Speech Types
+            </button>
         </div>
 
         <div id="alertContainer"></div>
@@ -336,6 +339,28 @@ More text..."></textarea>
                 <div id="previewContent"></div>
             </div>
         </div>
+        </div>
+
+        <div id="speechTypesSection" style="display: none;">
+            <div class="card">
+                <h2>Manage Speech Types</h2>
+                <p style="color: #9ca3af; margin-bottom: 20px;">Add custom speech types that will appear in upload forms and search filters</p>
+                
+                <div class="form-group">
+                    <label>Add New Speech Type</label>
+                    <div style="display: flex; gap: 12px;">
+                        <input type="text" id="newSpeechType" placeholder="e.g., Town Hall, Debate, Committee Hearing..." style="flex: 1;">
+                        <button onclick="addSpeechType()">➕ Add</button>
+                    </div>
+                </div>
+
+                <div style="margin-top: 24px;">
+                    <h3 style="font-size: 16px; color: #60a5fa; margin-bottom: 12px;">Current Speech Types</h3>
+                    <div id="speechTypesList" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        <!-- Speech types will be loaded here -->
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div id="databaseSection" style="display: none;">
@@ -489,24 +514,39 @@ More text..."></textarea>
         function showTab(tab) {
             const uploadSection = document.getElementById('uploadSection');
             const databaseSection = document.getElementById('databaseSection');
+            const speechTypesSection = document.getElementById('speechTypesSection');
             const uploadTab = document.getElementById('uploadTab');
             const databaseTab = document.getElementById('databaseTab');
+            const speechTypesTab = document.getElementById('speechTypesTab');
 
+            // Hide all sections
+            uploadSection.style.display = 'none';
+            databaseSection.style.display = 'none';
+            speechTypesSection.style.display = 'none';
+
+            // Reset all tab styles
+            uploadTab.style.borderBottomColor = 'transparent';
+            uploadTab.style.color = '#9ca3af';
+            databaseTab.style.borderBottomColor = 'transparent';
+            databaseTab.style.color = '#9ca3af';
+            speechTypesTab.style.borderBottomColor = 'transparent';
+            speechTypesTab.style.color = '#9ca3af';
+
+            // Show selected tab
             if (tab === 'upload') {
                 uploadSection.style.display = 'block';
-                databaseSection.style.display = 'none';
                 uploadTab.style.borderBottomColor = '#3b82f6';
                 uploadTab.style.color = '#3b82f6';
-                databaseTab.style.borderBottomColor = 'transparent';
-                databaseTab.style.color = '#9ca3af';
-            } else {
-                uploadSection.style.display = 'none';
+            } else if (tab === 'database') {
                 databaseSection.style.display = 'block';
-                uploadTab.style.borderBottomColor = 'transparent';
-                uploadTab.style.color = '#9ca3af';
                 databaseTab.style.borderBottomColor = '#3b82f6';
                 databaseTab.style.color = '#3b82f6';
                 loadSpeakerBoxes();
+            } else if (tab === 'speechTypes') {
+                speechTypesSection.style.display = 'block';
+                speechTypesTab.style.borderBottomColor = '#3b82f6';
+                speechTypesTab.style.color = '#3b82f6';
+                loadSpeechTypes();
             }
         }
 
@@ -862,6 +902,132 @@ More text..."></textarea>
                 showAlert('Save error: ' + error.message, 'error');
             }
         }
+
+        // Speech Types Management
+        let speechTypes = [];
+
+        async function loadSpeechTypes() {
+            try {
+                const response = await fetch('/api/speech-types');
+                if (!response.ok) throw new Error('Failed to load speech types');
+                
+                const data = await response.json();
+                speechTypes = data.speech_types || [];
+                
+                displaySpeechTypes();
+                updateSpeechTypeDropdowns();
+                
+            } catch (error) {
+                showAlert('Error loading speech types: ' + error.message, 'error');
+            }
+        }
+
+        function displaySpeechTypes() {
+            const container = document.getElementById('speechTypesList');
+            
+            if (speechTypes.length === 0) {
+                container.innerHTML = '<p style="color: #9ca3af;">No custom speech types yet. Add one above!</p>';
+                return;
+            }
+            
+            let html = '';
+            speechTypes.forEach(type => {
+                const isDefault = ['Remarks', 'Press Conference', 'Interview', 'Rally', 'Press Briefing', 'Other'].includes(type);
+                html += `
+                    <div style="display: inline-flex; align-items: center; gap: 8px; background: ${isDefault ? '#1a2332' : '#2d3748'}; 
+                                border: 1px solid ${isDefault ? '#4b5563' : '#3b82f6'}; padding: 8px 12px; border-radius: 6px;">
+                        <span style="color: #e5e7eb;">${type}</span>
+                        ${!isDefault ? `<button onclick="deleteSpeechType('${type.replace(/'/g, "\\'")}')" 
+                                style="background: none; border: none; color: #ef4444; cursor: pointer; padding: 0 4px; font-size: 16px;"
+                                title="Delete">✕</button>` : ''}
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        async function addSpeechType() {
+            const input = document.getElementById('newSpeechType');
+            const newType = input.value.trim();
+            
+            if (!newType) {
+                showAlert('Please enter a speech type name', 'error');
+                return;
+            }
+            
+            if (speechTypes.includes(newType)) {
+                showAlert('This speech type already exists', 'warning');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/speech-types', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ speech_type: newType })
+                });
+                
+                if (!response.ok) throw new Error('Failed to add speech type');
+                
+                showAlert(`✅ Added speech type: ${newType}`, 'success');
+                input.value = '';
+                await loadSpeechTypes();
+                
+            } catch (error) {
+                showAlert('Error adding speech type: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteSpeechType(type) {
+            if (!confirm(`Delete speech type "${type}"? Existing transcripts will not be affected.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/speech-types/${encodeURIComponent(type)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) throw new Error('Failed to delete speech type');
+                
+                showAlert(`✅ Deleted speech type: ${type}`, 'success');
+                await loadSpeechTypes();
+                
+            } catch (error) {
+                showAlert('Error deleting speech type: ' + error.message, 'error');
+            }
+        }
+
+        function updateSpeechTypeDropdowns() {
+            // Update the upload form dropdown
+            const uploadDropdown = document.getElementById('speechType');
+            const editDropdown = document.getElementById('editSpeechType');
+            
+            [uploadDropdown, editDropdown].forEach(dropdown => {
+                if (!dropdown) return;
+                
+                const currentValue = dropdown.value;
+                dropdown.innerHTML = '<option value="">Select...</option>';
+                
+                speechTypes.forEach(type => {
+                    const option = document.createElement('option');
+                    option.value = type;
+                    option.textContent = type;
+                    dropdown.appendChild(option);
+                });
+                
+                // Restore previous selection if it still exists
+                if (currentValue && speechTypes.includes(currentValue)) {
+                    dropdown.value = currentValue;
+                }
+            });
+        }
+
+        // Load speech types on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSpeechTypes();
+        });
     </script>
 </body>
 </html>

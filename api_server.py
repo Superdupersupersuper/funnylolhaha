@@ -905,24 +905,47 @@ def scraper_status_endpoint():
 
 @app.route('/api/speech-types', methods=['GET'])
 def get_speech_types():
-    """Get all speech types"""
+    """Get speech types, optionally filtered by primary speaker"""
+    speaker = request.args.get('speaker', None)
+    
     if _use_github():
         index = _get_cached_index()
         counts = {}
         for m in index:
+            # Filter by speaker if specified
+            if speaker and m.get('primary_speaker') != speaker:
+                continue
             st = m.get('speech_type', '')
             counts[st] = counts.get(st, 0) + 1
-        return jsonify([{'speech_type': k, 'count': v} for k, v in sorted(counts.items(), key=lambda x: -x[1])])
+        return jsonify({'speech_types': sorted(counts.keys())})
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT DISTINCT speech_type, COUNT(*) as count
-        FROM transcripts GROUP BY speech_type ORDER BY count DESC
-    """)
-    types = [dict(row) for row in cursor.fetchall()]
+    
+    if speaker:
+        # Get speech types used by this specific speaker
+        cursor.execute("""
+            SELECT DISTINCT speech_type
+            FROM transcripts 
+            WHERE primary_speaker = ?
+            ORDER BY speech_type
+        """, (speaker,))
+    else:
+        # Get all speech types
+        cursor.execute("""
+            SELECT DISTINCT speech_type
+            FROM transcripts 
+            ORDER BY speech_type
+        """)
+    
+    types = [row[0] for row in cursor.fetchall() if row[0]]
     conn.close()
-    return jsonify(types)
+    
+    # Add default types if they don't exist yet
+    default_types = ['Remarks', 'Press Conference', 'Interview', 'Rally', 'Press Briefing', 'Other']
+    all_types = default_types + [t for t in types if t not in default_types]
+    
+    return jsonify({'speech_types': all_types if not speaker else types})
 
 @app.route('/api/date-range', methods=['GET'])
 def get_date_range():

@@ -1074,17 +1074,11 @@
         // Load initial data
         async function loadInitialData() {
             try {
-                // Get unique speech types from data
-                const speechTypes = [...new Set(transcriptsData.map(t => t.speech_type))].sort();
+                // Load speech types from API for dynamic filters
+                await loadSpeechTypesFilter();
 
-                // Populate categories
-                const categoriesFilter = document.getElementById('categoriesFilter');
-                categoriesFilter.innerHTML = speechTypes.map((type, idx) => `
-                    <div class="filter-item">
-                        <input type="checkbox" id="cat-${idx}" value="${type}" checked>
-                        <label for="cat-${idx}">${type}</label>
-                    </div>
-                `).join('');
+                // Get unique speech types from data (for backwards compatibility)
+                const speechTypes = [...new Set(transcriptsData.map(t => t.speech_type))].sort();
 
                 // Get all unique speakers from transcripts and count frequency
                 const speakerCounts = {};
@@ -2074,6 +2068,53 @@
             // Apply initial filters to show transcripts within default date range
             applyFilters();
         });
+
+        // Load speech types from API and populate filter (speaker-specific)
+        async function loadSpeechTypesFilter() {
+            try {
+                // Get current primary speaker tab
+                const currentSpeaker = activePrimarySpeaker === 'all' ? null : activePrimarySpeaker;
+                
+                // Fetch speech types for this speaker
+                const url = currentSpeaker 
+                    ? `/api/speech-types?speaker=${encodeURIComponent(currentSpeaker)}`
+                    : '/api/speech-types';
+                    
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Failed to load speech types');
+                
+                const data = await response.json();
+                const speechTypes = data.speech_types || [];
+                
+                // Filter to only speech types actually present in current data
+                const dataTypes = [...new Set(transcriptsData.map(t => t.speech_type))].filter(Boolean);
+                const filteredTypes = speechTypes.filter(type => dataTypes.includes(type));
+                
+                // Populate categories filter with speaker-specific speech types
+                const categoriesFilter = document.getElementById('categoriesFilter');
+                if (filteredTypes.length === 0) {
+                    categoriesFilter.innerHTML = '<p style="color: #9ca3af; font-size: 12px;">No speech types for this speaker</p>';
+                } else {
+                    categoriesFilter.innerHTML = filteredTypes.map((type, idx) => `
+                        <div class="filter-item">
+                            <input type="checkbox" id="cat-${idx}" value="${type}" checked>
+                            <label for="cat-${idx}">${type}</label>
+                        </div>
+                    `).join('');
+                }
+                
+            } catch (error) {
+                console.error('Error loading speech types:', error);
+                // Fallback to data-driven filter
+                const dataTypes = [...new Set(transcriptsData.map(t => t.speech_type))].filter(Boolean).sort();
+                document.getElementById('categoriesFilter').innerHTML = dataTypes.map((type, idx) => `
+                    <div class="filter-item">
+                        <input type="checkbox" id="cat-${idx}" value="${type}" checked>
+                        <label for="cat-${idx}">${type}</label>
+                    </div>
+                `).join('');
+            }
+        }
     </script>
 
 </body>
