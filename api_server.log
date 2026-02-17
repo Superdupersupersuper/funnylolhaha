@@ -1,4 +1,4 @@
-2026-02-16 22:41:39,767 - WARNING - flask-compress not available - responses will not be compressed
+2026-02-17 21:53:09,978 - WARNING - flask-compress not available - responses will not be compressed
 
 ================================================================================
 🚀 MENTION MARKET TOOL - API SERVER
@@ -6,7 +6,7 @@
 
 📁 Database path: /Users/alexandermiron/Downloads/mention-markets/data/transcripts.db
 ✅ Database found (46.7 MB)
-✓ Database contains 1109 transcripts
+✓ Database contains 0 transcripts
 
 📍 Available Endpoints:
   GET  /api/health                      - Health check with DB info
@@ -30,20 +30,11 @@ Press Ctrl+C to stop
 
  * Serving Flask app 'api_server'
  * Debug mode: on
-2026-02-16 22:41:40,384 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+2026-02-17 21:53:10,167 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
  * Running on all addresses (0.0.0.0)
  * Running on http://127.0.0.1:5001
  * Running on http://192.168.1.36:5001
-2026-02-16 22:41:40,384 - INFO - [33mPress CTRL+C to quit[0m
-2026-02-16 22:41:44,315 - INFO - 📤 Returning 1109 transcripts
-2026-02-16 22:41:44,612 - INFO - 127.0.0.1 - - [16/Feb/2026 22:41:44] "GET /api/transcripts HTTP/1.1" 200 -
-2026-02-16 22:41:52,575 - INFO - 127.0.0.1 - - [16/Feb/2026 22:41:52] "GET /analytics_ui.html HTTP/1.1" 200 -
-2026-02-16 22:41:52,825 - INFO - 📤 Returning 1109 metadata entries
-2026-02-16 22:41:52,830 - INFO - 127.0.0.1 - - [16/Feb/2026 22:41:52] "GET /api/transcripts/metadata HTTP/1.1" 200 -
-2026-02-16 22:41:53,198 - INFO - 📤 Returning 1109 transcripts
-2026-02-16 22:41:53,621 - INFO - 127.0.0.1 - - [16/Feb/2026 22:41:53] "GET /api/transcripts HTTP/1.1" 200 -
-2026-02-16 22:47:22,983 - INFO - 127.0.0.1 - - [16/Feb/2026 22:47:22] "GET /analytics_ui.html HTTP/1.1" 200 -
-2026-02-16 22:47:23,048 - INFO - ⚠️ Database is empty - attempting to restore from backup...
-2026-02-16 22:47:23,048 - INFO - ℹ️ No backup file found - starting with empty database
-2026-02-16 22:47:23,050 - INFO - 📤 Returning 0 metadata entries
-2026-02-16 22:47:23,052 - INFO - 127.0.0.1 - - [16/Feb/2026 22:47:23] "GET /api/transcripts/metadata HTTP/1.1" 200 -
+2026-02-17 21:53:10,167 - INFO - [33mPress CTRL+C to quit[0m
+2026-02-17 21:53:12,862 - INFO - ⚠️ Database is empty - attempting to restore from backup...
+2026-02-17 21:53:12,863 - INFO - ℹ️ No backup file found - starting with empty database
+2026-02-17 21:53:12,866 - INFO - 127.0.0.1 - - [17/Feb/2026 21:53:12] "GET /api/speech-types HTTP/1.1" 200 -
