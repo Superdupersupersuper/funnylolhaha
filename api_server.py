@@ -955,12 +955,19 @@ def get_speech_types():
             if st:  # Only count non-empty speech types
                 counts[st] = counts.get(st, 0) + 1
         
+        # Get custom speech types from the database (even in GitHub mode)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT speech_type FROM speech_types ORDER BY speech_type')
+        custom_types = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
         # Add default types
         default_types = ['Remarks', 'Press Conference', 'Interview', 'Rally', 'Press Briefing', 'Other']
         existing_types = list(counts.keys())
         
-        # Combine default types with existing types, maintaining order (defaults first)
-        all_types = default_types + [t for t in existing_types if t not in default_types]
+        # Combine default types + custom types + existing types, maintaining order
+        all_types = default_types + custom_types + [t for t in existing_types if t not in default_types and t not in custom_types]
         
         if speaker:
             # Filter to only types used by this speaker
