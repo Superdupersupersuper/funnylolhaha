@@ -228,6 +228,29 @@
             border: 1px solid #f59e0b;
             color: #fcd34d;
         }
+
+        .topic-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: #3b82f6;
+            color: white;
+            border-radius: 16px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .topic-chip-remove {
+            cursor: pointer;
+            font-weight: bold;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+
+        .topic-chip-remove:hover {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -319,6 +342,17 @@ More text..."></textarea>
                     <option value="__custom__">+ Add Custom Speaker</option>
                 </select>
                 <input type="text" id="customSpeaker" placeholder="Enter custom speaker name..." style="display: none; margin-top: 8px;">
+            </div>
+
+            <div class="form-group">
+                <label>Topics / Tags</label>
+                <div id="topicChips" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; min-height: 20px;"></div>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="topicInput" placeholder="Add topic (e.g., Healthcare, Immigration, etc.) and press Enter">
+                    <select id="topicSelect" style="max-width: 200px;">
+                        <option value="">Select existing...</option>
+                    </select>
+                </div>
             </div>
 
             <div class="form-group checkbox-group">
@@ -414,6 +448,17 @@ More text..."></textarea>
                     </div>
 
                     <div class="form-group">
+                        <label>Topics / Tags</label>
+                        <div id="editTopicChips" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; min-height: 20px;"></div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="editTopicInput" placeholder="Add topic and press Enter">
+                            <select id="editTopicSelect" style="max-width: 200px;">
+                                <option value="">Select existing...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
                         <label>Transcript Text</label>
                         <textarea id="editFullText" rows="15" style="font-family: monospace; font-size: 12px;"></textarea>
                     </div>
@@ -433,6 +478,157 @@ More text..."></textarea>
         let parsedData = null;
         let currentSpeaker = null;
         let allTranscripts = [];
+        let selectedTopics = [];
+
+        // ===== TOPICS MANAGEMENT =====
+        
+        async function loadAllTopics() {
+            try {
+                const response = await fetch('/api/topics');
+                const data = await response.json();
+                
+                // Update upload form dropdown
+                const topicSelect = document.getElementById('topicSelect');
+                topicSelect.innerHTML = '<option value="">Select existing...</option>';
+                data.topics.forEach(topic => {
+                    const option = document.createElement('option');
+                    option.value = topic;
+                    option.textContent = topic;
+                    topicSelect.appendChild(option);
+                });
+                
+                // Update edit form dropdown
+                const editTopicSelect = document.getElementById('editTopicSelect');
+                if (editTopicSelect) {
+                    editTopicSelect.innerHTML = '<option value="">Select existing...</option>';
+                    data.topics.forEach(topic => {
+                        const option = document.createElement('option');
+                        option.value = topic;
+                        option.textContent = topic;
+                        editTopicSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading topics:', error);
+            }
+        }
+
+        function addTopicChip(topic) {
+            if (!topic || selectedTopics.includes(topic)) return;
+            selectedTopics.push(topic);
+            renderTopicChips();
+            
+            // Add to backend
+            fetch('/api/topics', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic })
+            }).then(() => loadAllTopics());
+        }
+
+        function removeTopicChip(topic) {
+            selectedTopics = selectedTopics.filter(t => t !== topic);
+            renderTopicChips();
+        }
+
+        function renderTopicChips() {
+            const container = document.getElementById('topicChips');
+            container.innerHTML = '';
+            selectedTopics.forEach(topic => {
+                const chip = document.createElement('div');
+                chip.className = 'topic-chip';
+                chip.innerHTML = `
+                    <span>${topic}</span>
+                    <span class="topic-chip-remove" onclick="removeTopicChip('${topic.replace(/'/g, "\\'")}')">×</span>
+                `;
+                container.appendChild(chip);
+            });
+        }
+
+        // Edit form topic management
+        let editSelectedTopics = [];
+
+        function addEditTopicChip(topic) {
+            if (!topic || editSelectedTopics.includes(topic)) return;
+            editSelectedTopics.push(topic);
+            renderEditTopicChips();
+            
+            // Add to backend
+            fetch('/api/topics', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic })
+            }).then(() => loadAllTopics());
+        }
+
+        function removeEditTopicChip(topic) {
+            editSelectedTopics = editSelectedTopics.filter(t => t !== topic);
+            renderEditTopicChips();
+        }
+
+        function renderEditTopicChips() {
+            const container = document.getElementById('editTopicChips');
+            if (!container) return;
+            container.innerHTML = '';
+            editSelectedTopics.forEach(topic => {
+                const chip = document.createElement('div');
+                chip.className = 'topic-chip';
+                chip.innerHTML = `
+                    <span>${topic}</span>
+                    <span class="topic-chip-remove" onclick="removeEditTopicChip('${topic.replace(/'/g, "\\'")}')">×</span>
+                `;
+                container.appendChild(chip);
+            });
+        }
+
+        // Initialize topics
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAllTopics();
+            
+            // Add topic on Enter (upload form)
+            const topicInput = document.getElementById('topicInput');
+            topicInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const topic = topicInput.value.trim();
+                    if (topic) {
+                        addTopicChip(topic);
+                        topicInput.value = '';
+                    }
+                }
+            });
+            
+            // Add topic from select (upload form)
+            const topicSelect = document.getElementById('topicSelect');
+            topicSelect.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    addTopicChip(e.target.value);
+                    e.target.value = '';
+                }
+            });
+            
+            // Add topic on Enter (edit form)
+            const editTopicInput = document.getElementById('editTopicInput');
+            editTopicInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const topic = editTopicInput.value.trim();
+                    if (topic) {
+                        addEditTopicChip(topic);
+                        editTopicInput.value = '';
+                    }
+                }
+            });
+            
+            // Add topic from select (edit form)
+            const editTopicSelect = document.getElementById('editTopicSelect');
+            editTopicSelect.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    addEditTopicChip(e.target.value);
+                    e.target.value = '';
+                }
+            });
+        });
 
         function handleFileUpload(event) {
             const file = event.target.files[0];
@@ -699,6 +895,10 @@ More text..."></textarea>
                 document.getElementById('editSpeechType').value = transcript.speech_type || 'Other';
                 document.getElementById('editFullText').value = transcript.full_dialogue || transcript.full_text || '';
                 
+                // Load topics
+                editSelectedTopics = transcript.topics || [];
+                renderEditTopicChips();
+                
                 // Display Q&A analytics if available
                 const qaContainer = document.getElementById('editQAAnalytics');
                 if (transcript.has_q_and_a && transcript.qa_analytics) {
@@ -775,7 +975,8 @@ More text..."></textarea>
                         title,
                         date,
                         speech_type: speechType,
-                        full_dialogue: fullText
+                        full_dialogue: fullText,
+                        topics: editSelectedTopics
                     })
                 });
                 
@@ -941,7 +1142,8 @@ More text..."></textarea>
                 segments: parsedData.segments,
                 total_seconds: parsedData.totalSeconds,
                 speakers: parsedData.speakersDetected,
-                qa_analytics: parsedData.qaAnalytics
+                qa_analytics: parsedData.qaAnalytics,
+                topics: selectedTopics
             };
 
             try {

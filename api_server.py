@@ -224,6 +224,12 @@ def _build_transcript_response(t, include_full_text=True):
         try: qa_analytics = json.loads(qa_analytics)
         except: qa_analytics = None
     
+    # Get topics if available
+    topics = t.get('topics', [])
+    if isinstance(topics, str):
+        try: topics = json.loads(topics)
+        except: topics = []
+    
     result = {
         'id': t.get('id'),
         'title': title,
@@ -235,7 +241,8 @@ def _build_transcript_response(t, include_full_text=True):
         'speakers': speakers,
         'primary_speaker': t.get('primary_speaker', ''),
         'has_q_and_a': t.get('has_q_and_a', False),
-        'qa_analytics': qa_analytics
+        'qa_analytics': qa_analytics,
+        'topics': topics
     }
 
     if include_full_text:
@@ -310,6 +317,9 @@ def init_database_if_needed():
         # Migrate: add Q&A columns if missing
         _migrate_add_qa_columns()
         
+        # Migrate: add topics column and table if missing
+        _migrate_add_topics_column()
+        
         # Check if database is empty and restore if needed
         _check_and_restore_if_empty()
 
@@ -376,6 +386,40 @@ def _migrate_add_qa_columns():
             cursor.execute("ALTER TABLE transcripts ADD COLUMN qa_analytics TEXT")
             conn.commit()
             logging.info("✅ qa_analytics column added")
+        
+        conn.close()
+    except Exception as e:
+        logging.error(f"Migration error: {e}")
+
+def _migrate_add_topics_column():
+    """Add topics column to transcripts table and create topics table"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Add topics column to transcripts
+        cursor.execute("PRAGMA table_info(transcripts)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'topics' not in columns:
+            logging.info("📦 Migrating: adding topics column...")
+            cursor.execute("ALTER TABLE transcripts ADD COLUMN topics TEXT")
+            conn.commit()
+            logging.info("✅ topics column added")
+        
+        # Create topics table for managing all unique topics
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='topics'")
+        if not cursor.fetchone():
+            logging.info("📦 Creating topics table...")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS topics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT UNIQUE NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            logging.info("✅ topics table created")
         
         conn.close()
     except Exception as e:
@@ -1114,6 +1158,77 @@ def get_date_range():
     conn.close()
     return jsonify(result)
 
+# ===== TOPICS MANAGEMENT =====
+
+@app.route('/api/topics', methods=['GET'])
+def get_topics():
+    """Get all topics (from database and GitHub transcripts)"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get topics from topics table
+        cursor.execute('SELECT topic FROM topics ORDER BY topic')
+        db_topics = set(row[0] for row in cursor.fetchall())
+        conn.close()
+        
+        # Also get topics from actual transcripts if using GitHub
+        transcript_topics = set()
+        if _use_github():
+            index = _get_cached_index()
+            for m in index:
+                topics = m.get('topics', [])
+                if isinstance(topics, str):
+                    try: topics = json.loads(topics)
+                    except: topics = []
+                if isinstance(topics, list):
+                    transcript_topics.update(topics)
+        
+        # Combine and sort
+        all_topics = sorted(list(db_topics | transcript_topics))
+        return jsonify({'topics': all_topics})
+    except Exception as e:
+        logging.error(f'Error getting topics: {e}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/topics', methods=['POST'])
+def add_topic():
+    """Add a new topic"""
+    try:
+        data = request.json
+        topic = data.get('topic', '').strip()
+        
+        if not topic:
+            return jsonify({'error': 'Topic is required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Add to topics table (ignore if already exists)
+        cursor.execute('INSERT OR IGNORE INTO topics (topic) VALUES (?)', (topic,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'topic': topic}), 200
+    except Exception as e:
+        logging.error(f'Error adding topic: {e}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/topics/<path:topic>', methods=['DELETE'])
+def delete_topic(topic):
+    """Delete a topic"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM topics WHERE topic = ?', (topic,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        logging.error(f'Error deleting topic: {e}')
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/admin/parse', methods=['POST'])
 def parse_transcript():
     """Parse Otter.ai transcript and return structured data with Q&A detection"""
@@ -1168,6 +1283,12 @@ def create_transcript():
         # Q&A data
         has_qa = data.get('has_q_and_a', False)
         qa_analytics = data.get('qa_analytics')
+        
+        # Topics data
+        topics = data.get('topics', [])
+        if isinstance(topics, str):
+            try: topics = json.loads(topics)
+            except: topics = []
 
         if _use_github():
             # --- GitHub path ---
@@ -1185,6 +1306,7 @@ def create_transcript():
                 'primary_speaker': primary_speaker,
                 'has_q_and_a': has_qa,
                 'qa_analytics': qa_analytics,
+                'topics': topics,
             }
             transcript_id = store.create_transcript(payload)
             payload['id'] = transcript_id
@@ -1195,18 +1317,19 @@ def create_transcript():
             # --- SQLite path ---
             speakers_json_str = json.dumps(normalized_speakers)
             qa_analytics_str = json.dumps(qa_analytics) if qa_analytics else None
+            topics_str = json.dumps(topics) if topics else None
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO transcripts (
                     title, date, speech_type, location, url, word_count,
                     trump_word_count, speech_duration_seconds, full_dialogue, speakers_json,
-                    primary_speaker, has_q_and_a, qa_analytics
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    primary_speaker, has_q_and_a, qa_analytics, topics
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 cleaned_title, event_date, speech_type, '', url_slug, word_count,
                 0, total_seconds, full_dialogue, speakers_json_str, primary_speaker,
-                1 if has_qa else 0, qa_analytics_str
+                1 if has_qa else 0, qa_analytics_str, topics_str
             ))
             transcript_id = cursor.lastrowid
             conn.commit()
@@ -1275,6 +1398,12 @@ def get_transcript_for_edit(transcript_id):
                 try: qa_analytics = json.loads(qa_analytics)
                 except: qa_analytics = None
             
+            # Get topics if available
+            topics = t.get('topics', [])
+            if isinstance(topics, str):
+                try: topics = json.loads(topics)
+                except: topics = []
+            
             return jsonify({
                 'id': t.get('id'),
                 'title': t.get('title', ''),
@@ -1289,7 +1418,8 @@ def get_transcript_for_edit(transcript_id):
                 'speakers': speakers,
                 'primary_speaker': t.get('primary_speaker', ''),
                 'has_q_and_a': t.get('has_q_and_a', False),
-                'qa_analytics': qa_analytics
+                'qa_analytics': qa_analytics,
+                'topics': topics
             })
 
         # SQLite path
@@ -1298,7 +1428,7 @@ def get_transcript_for_edit(transcript_id):
         cursor.execute("""
             SELECT id, title, date, speech_type, location, url, word_count,
                    speech_duration_seconds, full_dialogue, speakers_json, primary_speaker,
-                   has_q_and_a, qa_analytics
+                   has_q_and_a, qa_analytics, topics
             FROM transcripts WHERE id = ?
         """, (transcript_id,))
         row = cursor.fetchone()
@@ -1319,6 +1449,7 @@ def get_transcript_for_edit(transcript_id):
 
         speakers = json.loads(row['speakers_json']) if row['speakers_json'] else []
         qa_analytics = json.loads(row['qa_analytics']) if row['qa_analytics'] else None
+        topics = json.loads(row['topics']) if row.get('topics') else []
 
         return jsonify({
             'id': row['id'],
@@ -1334,7 +1465,8 @@ def get_transcript_for_edit(transcript_id):
             'speakers': speakers,
             'primary_speaker': row['primary_speaker'] or '',
             'has_q_and_a': row['has_q_and_a'] or 0,
-            'qa_analytics': qa_analytics
+            'qa_analytics': qa_analytics,
+            'topics': topics
         })
 
     except Exception as e:
@@ -1351,6 +1483,10 @@ def update_transcript(transcript_id):
         speech_type = data.get('speech_type')
         full_dialogue = data.get('full_dialogue', '')
         primary_speaker = data.get('primary_speaker', '')
+        topics = data.get('topics', [])
+        if isinstance(topics, str):
+            try: topics = json.loads(topics)
+            except: topics = []
 
         if not all([title, date, speech_type]):
             return jsonify({'error': 'Missing required fields'}), 400
@@ -1370,21 +1506,23 @@ def update_transcript(transcript_id):
                 'full_dialogue': full_dialogue,
                 'word_count': word_count,
                 'primary_speaker': primary_speaker or payload.get('primary_speaker', ''),
+                'topics': topics,
             })
             store = get_github_store()
             store.update_transcript_in_store(transcript_id, payload)
             _update_cache_after_write(transcript_id, payload)
             logging.info(f"✅ Updated transcript {transcript_id} in GitHub store")
         else:
+            topics_str = json.dumps(topics) if topics else None
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE transcripts
                 SET title = ?, date = ?, speech_type = ?, full_dialogue = ?,
-                    word_count = ?, primary_speaker = ?
+                    word_count = ?, primary_speaker = ?, topics = ?
                 WHERE id = ?
             """, (title, date, speech_type, full_dialogue, word_count,
-                  primary_speaker, transcript_id))
+                  primary_speaker, topics_str, transcript_id))
             if cursor.rowcount == 0:
                 conn.close()
                 return jsonify({'error': 'Transcript not found'}), 404
