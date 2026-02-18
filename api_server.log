@@ -1,4 +1,4 @@
-2026-02-18 08:51:16,315 - WARNING - flask-compress not available - responses will not be compressed
+2026-02-18 09:31:06,420 - WARNING - flask-compress not available - responses will not be compressed
 
 ================================================================================
 🚀 MENTION MARKET TOOL - API SERVER
@@ -30,23 +30,19 @@ Press Ctrl+C to stop
 
  * Serving Flask app 'api_server'
  * Debug mode: on
-2026-02-18 08:51:16,545 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+2026-02-18 09:31:06,547 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
  * Running on all addresses (0.0.0.0)
  * Running on http://127.0.0.1:5001
  * Running on http://192.168.1.36:5001
-2026-02-18 08:51:16,545 - INFO - [33mPress CTRL+C to quit[0m
-2026-02-18 08:51:23,396 - INFO - 127.0.0.1 - - [18/Feb/2026 08:51:23] "GET /admin HTTP/1.1" 200 -
-2026-02-18 08:51:23,414 - INFO - 📦 Migrating: adding speech_types table...
-2026-02-18 08:51:23,416 - INFO - ✅ speech_types table added
-2026-02-18 08:51:23,418 - INFO - ⚠️ Database is empty - attempting to restore from backup...
-2026-02-18 08:51:23,418 - INFO - ℹ️ No backup file found - starting with empty database
-2026-02-18 08:51:23,421 - INFO - 127.0.0.1 - - [18/Feb/2026 08:51:23] "GET /api/speech-types HTTP/1.1" 200 -
-2026-02-18 08:51:27,911 - INFO - ⚠️ Database is empty - attempting to restore from backup...
-2026-02-18 08:51:27,911 - INFO - ℹ️ No backup file found - starting with empty database
-2026-02-18 08:51:27,914 - INFO - 127.0.0.1 - - [18/Feb/2026 08:51:27] "GET /api/speech-types HTTP/1.1" 200 -
-2026-02-18 08:51:29,115 - INFO - ⚠️ Database is empty - attempting to restore from backup...
-2026-02-18 08:51:29,115 - INFO - ℹ️ No backup file found - starting with empty database
-2026-02-18 08:51:29,117 - INFO - 127.0.0.1 - - [18/Feb/2026 08:51:29] "[35m[1mPOST /api/speech-types HTTP/1.1[0m" 201 -
-2026-02-18 08:51:29,119 - INFO - ⚠️ Database is empty - attempting to restore from backup...
-2026-02-18 08:51:29,119 - INFO - ℹ️ No backup file found - starting with empty database
-2026-02-18 08:51:29,120 - INFO - 127.0.0.1 - - [18/Feb/2026 08:51:29] "GET /api/speech-types HTTP/1.1" 200 -
+2026-02-18 09:31:06,548 - INFO - [33mPress CTRL+C to quit[0m
+2026-02-18 09:31:16,761 - INFO - 127.0.0.1 - - [18/Feb/2026 09:31:16] "GET /admin HTTP/1.1" 200 -
+2026-02-18 09:31:16,780 - INFO - 📦 Migrating: adding has_q_and_a column...
+2026-02-18 09:31:16,783 - INFO - ✅ has_q_and_a column added
+2026-02-18 09:31:16,784 - INFO - 📦 Migrating: adding qa_analytics column...
+2026-02-18 09:31:16,784 - INFO - ✅ qa_analytics column added
+2026-02-18 09:31:16,784 - INFO - ⚠️ Database is empty - attempting to restore from backup...
+2026-02-18 09:31:16,784 - INFO - ℹ️ No backup file found - starting with empty database
+2026-02-18 09:31:16,786 - INFO - 127.0.0.1 - - [18/Feb/2026 09:31:16] "GET /api/speech-types HTTP/1.1" 200 -
+2026-02-18 09:31:22,078 - INFO - ⚠️ Database is empty - attempting to restore from backup...
+2026-02-18 09:31:22,078 - INFO - ℹ️ No backup file found - starting with empty database
+2026-02-18 09:31:22,083 - INFO - 127.0.0.1 - - [18/Feb/2026 09:31:22] "GET /api/admin/transcripts/by-speaker HTTP/1.1" 200 -
