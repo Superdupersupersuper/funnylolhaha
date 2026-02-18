@@ -299,6 +299,9 @@ def init_database_if_needed():
         # Migrate: add speech_types table if missing
         _migrate_add_speech_types_table()
         
+        # Migrate: add Q&A columns if missing
+        _migrate_add_qa_columns()
+        
         # Check if database is empty and restore if needed
         _check_and_restore_if_empty()
 
@@ -341,6 +344,30 @@ def _migrate_add_speech_types_table():
             """)
             conn.commit()
             logging.info("✅ speech_types table added")
+        
+        conn.close()
+    except Exception as e:
+        logging.error(f"Migration error: {e}")
+
+def _migrate_add_qa_columns():
+    """Add has_q_and_a and qa_analytics columns to transcripts table"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(transcripts)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'has_q_and_a' not in columns:
+            logging.info("📦 Migrating: adding has_q_and_a column...")
+            cursor.execute("ALTER TABLE transcripts ADD COLUMN has_q_and_a INTEGER DEFAULT 0")
+            conn.commit()
+            logging.info("✅ has_q_and_a column added")
+        
+        if 'qa_analytics' not in columns:
+            logging.info("📦 Migrating: adding qa_analytics column...")
+            cursor.execute("ALTER TABLE transcripts ADD COLUMN qa_analytics TEXT")
+            conn.commit()
+            logging.info("✅ qa_analytics column added")
         
         conn.close()
     except Exception as e:
@@ -1159,17 +1186,19 @@ def create_transcript():
         else:
             # --- SQLite path ---
             speakers_json_str = json.dumps(normalized_speakers)
+            qa_analytics_str = json.dumps(qa_analytics) if qa_analytics else None
             conn = get_db()
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO transcripts (
                     title, date, speech_type, location, url, word_count,
                     trump_word_count, speech_duration_seconds, full_dialogue, speakers_json,
-                    primary_speaker
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    primary_speaker, has_q_and_a, qa_analytics
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 cleaned_title, event_date, speech_type, '', url_slug, word_count,
-                0, total_seconds, full_dialogue, speakers_json_str, primary_speaker
+                0, total_seconds, full_dialogue, speakers_json_str, primary_speaker,
+                1 if has_qa else 0, qa_analytics_str
             ))
             transcript_id = cursor.lastrowid
             conn.commit()
@@ -1251,7 +1280,8 @@ def get_transcript_for_edit(transcript_id):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, title, date, speech_type, location, url, word_count,
-                   speech_duration_seconds, full_dialogue, speakers_json
+                   speech_duration_seconds, full_dialogue, speakers_json, primary_speaker,
+                   has_q_and_a, qa_analytics
             FROM transcripts WHERE id = ?
         """, (transcript_id,))
         row = cursor.fetchone()
@@ -1271,6 +1301,7 @@ def get_transcript_for_edit(transcript_id):
                 text_content = alt_row['full_text']
 
         speakers = json.loads(row['speakers_json']) if row['speakers_json'] else []
+        qa_analytics = json.loads(row['qa_analytics']) if row['qa_analytics'] else None
 
         return jsonify({
             'id': row['id'],
@@ -1283,7 +1314,10 @@ def get_transcript_for_edit(transcript_id):
             'speech_duration_seconds': row['speech_duration_seconds'] or 0,
             'full_dialogue': text_content or '',
             'full_text': text_content or '',
-            'speakers': speakers
+            'speakers': speakers,
+            'primary_speaker': row['primary_speaker'] or '',
+            'has_q_and_a': row['has_q_and_a'] or 0,
+            'qa_analytics': qa_analytics
         })
 
     except Exception as e:

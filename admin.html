@@ -315,6 +315,7 @@ More text..."></textarea>
                     <option value="Trump">Trump</option>
                     <option value="JD Vance">JD Vance</option>
                     <option value="Hochul">Hochul</option>
+                    <option value="Karoline Leavitt">Karoline Leavitt</option>
                     <option value="__custom__">+ Add Custom Speaker</option>
                 </select>
                 <input type="text" id="customSpeaker" placeholder="Enter custom speaker name..." style="display: none; margin-top: 8px;">
@@ -416,6 +417,8 @@ More text..."></textarea>
                         <label>Transcript Text</label>
                         <textarea id="editFullText" rows="15" style="font-family: monospace; font-size: 12px;"></textarea>
                     </div>
+
+                    <div id="editQAAnalytics" style="display: none;"></div>
 
                     <div style="display: flex; gap: 12px;">
                         <button onclick="saveEdit()">💾 Save Changes</button>
@@ -561,38 +564,63 @@ More text..."></textarea>
                 const speakerBoxes = document.getElementById('speakerBoxes');
                 const speakerCounts = {};
                 
-                // Group by primary speaker (extract from speakers_json or title)
+                // Group by primary speaker (use primary_speaker field if available, otherwise extract from title)
                 allTranscripts.forEach(t => {
                     let speaker = 'Other';
-                    const speakers = t.speakers || [];
-                    const title = t.title || '';
                     
-                    if (title.toLowerCase().includes('mamdani') || speakers.some(s => s.toLowerCase().includes('mamdani')) || (t.primary_speaker && t.primary_speaker.toLowerCase().includes('mamdani'))) {
-                        speaker = 'Mamdani';
-                    } else if (title.toLowerCase().includes('trump') || speakers.some(s => s.toLowerCase().includes('trump')) || (t.primary_speaker && t.primary_speaker.toLowerCase().includes('trump'))) {
-                        speaker = 'Trump';
-                    } else if (title.toLowerCase().includes('hochul') || speakers.some(s => s.toLowerCase().includes('hochul')) || (t.primary_speaker && t.primary_speaker.toLowerCase().includes('hochul'))) {
-                        speaker = 'Hochul';
+                    // First priority: use primary_speaker field
+                    if (t.primary_speaker && t.primary_speaker.trim()) {
+                        speaker = t.primary_speaker.trim();
+                    } else {
+                        // Fallback: extract from title or speakers
+                        const speakers = t.speakers || [];
+                        const title = (t.title || '').toLowerCase();
+                        
+                        if (title.includes('mamdani') || speakers.some(s => s.toLowerCase().includes('mamdani'))) {
+                            speaker = 'Mamdani';
+                        } else if (title.includes('trump') || speakers.some(s => s.toLowerCase().includes('trump'))) {
+                            speaker = 'Trump';
+                        } else if (title.includes('hochul') || speakers.some(s => s.toLowerCase().includes('hochul'))) {
+                            speaker = 'Hochul';
+                        } else if (title.includes('vance') || speakers.some(s => s.toLowerCase().includes('vance'))) {
+                            speaker = 'JD Vance';
+                        } else if (title.includes('leavitt') || speakers.some(s => s.toLowerCase().includes('leavitt'))) {
+                            speaker = 'Karoline Leavitt';
+                        }
                     }
                     
                     t.primarySpeaker = speaker;
                     speakerCounts[speaker] = (speakerCounts[speaker] || 0) + 1;
                 });
                 
-                // Create speaker boxes
+                // Create speaker boxes dynamically for all speakers found
                 const speakerColors = {
                     'Mamdani': '#3b82f6',
                     'Trump': '#ef4444',
                     'Hochul': '#8b5cf6',
+                    'JD Vance': '#f59e0b',
+                    'Karoline Leavitt': '#10b981',
                     'Other': '#6b7280'
                 };
                 
+                // Get all unique speakers, sorted by count
+                const sortedSpeakers = Object.entries(speakerCounts)
+                    .sort(([,a], [,b]) => b - a)
+                    .map(([speaker]) => speaker);
+                
                 let html = '';
-                ['Mamdani', 'Trump', 'Hochul', 'Other'].forEach(speaker => {
+                sortedSpeakers.forEach(speaker => {
                     const count = speakerCounts[speaker] || 0;
-                    const color = speakerColors[speaker];
+                    // Assign color based on speaker, default to rotating colors for unknowns
+                    let color = speakerColors[speaker];
+                    if (!color) {
+                        const colors = ['#3b82f6', '#ef4444', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#06b6d4'];
+                        const index = sortedSpeakers.indexOf(speaker) % colors.length;
+                        color = colors[index];
+                    }
+                    
                     html += `
-                        <div onclick="showSpeakerTranscripts('${speaker}')" 
+                        <div onclick="showSpeakerTranscripts('${speaker.replace(/'/g, "\\'")')" 
                              style="background: linear-gradient(135deg, ${color}22 0%, ${color}11 100%); 
                                     border: 2px solid ${color}; padding: 24px; border-radius: 8px; 
                                     cursor: pointer; transition: all 0.2s; text-align: center;"
@@ -671,12 +699,55 @@ More text..."></textarea>
                 document.getElementById('editSpeechType').value = transcript.speech_type || 'Other';
                 document.getElementById('editFullText').value = transcript.full_dialogue || transcript.full_text || '';
                 
+                // Display Q&A analytics if available
+                const qaContainer = document.getElementById('editQAAnalytics');
+                if (transcript.has_q_and_a && transcript.qa_analytics) {
+                    displayQAAnalyticsInEdit(transcript.qa_analytics);
+                    qaContainer.style.display = 'block';
+                } else {
+                    qaContainer.style.display = 'none';
+                }
+                
                 document.getElementById('transcriptsList').style.display = 'none';
                 document.getElementById('editTranscript').style.display = 'block';
                 
             } catch (error) {
                 showAlert('Error loading transcript: ' + error.message, 'error');
             }
+        }
+
+        function displayQAAnalyticsInEdit(qa) {
+            const container = document.getElementById('editQAAnalytics');
+            if (!qa || qa.questionCount === 0) {
+                container.innerHTML = '<div class="alert alert-warning">⚠️ No Q&A data available</div>';
+                return;
+            }
+
+            let html = '<div class="qa-analytics" style="margin-bottom: 20px;"><h3 style="color: #60a5fa; margin-bottom: 16px;">📊 Q&A Analytics</h3>';
+            html += '<div class="qa-stats">';
+            html += `<div class="qa-stat"><div class="qa-stat-label">Questions Asked</div><div class="qa-stat-value">${qa.questionCount}</div></div>`;
+            html += `<div class="qa-stat"><div class="qa-stat-label">Avg Response Length</div><div class="qa-stat-value">${qa.avgResponseWords} words</div></div>`;
+            html += `<div class="qa-stat"><div class="qa-stat-label">Avg Response Time</div><div class="qa-stat-value">${qa.avgResponseSeconds !== null ? qa.avgResponseSeconds + 's' : 'N/A'}</div></div>`;
+            html += '</div>';
+            
+            if (qa.pairs && qa.pairs.length > 0) {
+                html += '<details style="margin-top: 16px;"><summary style="cursor: pointer; font-weight: 600; margin-bottom: 12px;">View Questions</summary>';
+                html += '<div class="qa-list">';
+                qa.pairs.forEach((pair, idx) => {
+                    html += `<div class="qa-item" style="background: #1a2332; border: 1px solid #374151; padding: 12px; margin-bottom: 8px; border-radius: 6px;">`;
+                    html += `<div class="qa-question" style="font-weight: 600; color: #60a5fa; margin-bottom: 6px;">Q${idx + 1}: ${pair.questionSpeaker}</div>`;
+                    html += `<div class="qa-text" style="color: #e5e7eb; margin-bottom: 8px;">"${pair.questionText.substring(0, 150)}${pair.questionText.length > 150 ? '...' : ''}"</div>`;
+                    html += `<div class="qa-metrics" style="font-size: 12px; color: #9ca3af;">Response: ${pair.responseWordCount} words`;
+                    if (pair.responseDuration !== null) {
+                        html += ` • Duration: ${pair.responseDuration}s`;
+                    }
+                    html += '</div></div>';
+                });
+                html += '</div></details>';
+            }
+            
+            html += '</div>';
+            container.innerHTML = html;
         }
 
         function cancelEdit() {
