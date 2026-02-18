@@ -973,16 +973,19 @@
             });
             const uniqueSpeakers = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
 
-            // Rebuild tabs
+            // Rebuild tabs — use data-speaker + onclick="switchPrimarySpeaker(this.dataset.speaker)"
+            // so speaker name doesn't get interpreted as HTML or JS string literals
             tabsContainer.innerHTML = `
-                <button class="speaker-tab ${activePrimarySpeaker === 'all' ? 'active' : ''}" data-speaker="all" onclick="switchPrimarySpeaker('all')">
+                <button class="speaker-tab ${activePrimarySpeaker === 'all' ? 'active' : ''}" data-speaker="all" onclick="switchPrimarySpeaker(this.dataset.speaker)">
                     All<span class="tab-count" id="tab-count-all">${transcriptsData.length}</span>
                 </button>
-                ${uniqueSpeakers.map(sp => `
-                    <button class="speaker-tab ${activePrimarySpeaker === sp ? 'active' : ''}" data-speaker="${sp.replace(/"/g, '&quot;')}" onclick="switchPrimarySpeaker(${JSON.stringify(sp)})">
-                        ${sp}<span class="tab-count" id="tab-count-${sp.replace(/\s+/g, '-')}">${counts[sp]}</span>
-                    </button>
-                `).join('')}
+                ${uniqueSpeakers.map(sp => {
+                    const safeAttr = sp.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                    const isActive = activePrimarySpeaker === sp;
+                    return `<button class="speaker-tab ${isActive ? 'active' : ''}" data-speaker="${safeAttr}" onclick="switchPrimarySpeaker(this.dataset.speaker)">
+                        ${sp}<span class="tab-count">${counts[sp]}</span>
+                    </button>`;
+                }).join('')}
             `;
         }
 
