@@ -952,8 +952,21 @@ def get_speech_types():
             if speaker and m.get('primary_speaker') != speaker:
                 continue
             st = m.get('speech_type', '')
-            counts[st] = counts.get(st, 0) + 1
-        return jsonify({'speech_types': sorted(counts.keys())})
+            if st:  # Only count non-empty speech types
+                counts[st] = counts.get(st, 0) + 1
+        
+        # Add default types
+        default_types = ['Remarks', 'Press Conference', 'Interview', 'Rally', 'Press Briefing', 'Other']
+        existing_types = list(counts.keys())
+        
+        # Combine default types with existing types, maintaining order (defaults first)
+        all_types = default_types + [t for t in existing_types if t not in default_types]
+        
+        if speaker:
+            # Filter to only types used by this speaker
+            return jsonify({'speech_types': [t for t in all_types if t in existing_types]})
+        
+        return jsonify({'speech_types': all_types})
 
     conn = get_db()
     cursor = conn.cursor()
