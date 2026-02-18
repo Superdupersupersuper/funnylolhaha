@@ -272,6 +272,15 @@ def init_database_if_needed():
             )
         """)
         
+        # Create speech_types table for custom speech types
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS speech_types (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                speech_type TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
         # Create indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_date ON transcripts(date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_url ON transcripts(url)")
@@ -286,6 +295,9 @@ def init_database_if_needed():
     else:
         # Migrate: add primary_speaker column if missing
         _migrate_add_primary_speaker()
+        
+        # Migrate: add speech_types table if missing
+        _migrate_add_speech_types_table()
         
         # Check if database is empty and restore if needed
         _check_and_restore_if_empty()
@@ -305,6 +317,30 @@ def _migrate_add_primary_speaker():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_primary_speaker ON transcripts(primary_speaker)")
             conn.commit()
             logging.info("✅ primary_speaker column added")
+        
+        conn.close()
+    except Exception as e:
+        logging.error(f"Migration error: {e}")
+
+def _migrate_add_speech_types_table():
+    """Add speech_types table to existing databases that lack it."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check if speech_types table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='speech_types'")
+        if not cursor.fetchone():
+            logging.info("📦 Migrating: adding speech_types table...")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS speech_types (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    speech_type TEXT UNIQUE NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            logging.info("✅ speech_types table added")
         
         conn.close()
     except Exception as e:
@@ -922,30 +958,86 @@ def get_speech_types():
     conn = get_db()
     cursor = conn.cursor()
     
+    # Get custom speech types from the speech_types table
+    cursor.execute('SELECT speech_type FROM speech_types ORDER BY speech_type')
+    custom_types = [row[0] for row in cursor.fetchall()]
+    
+    # Add default types
+    default_types = ['Remarks', 'Press Conference', 'Interview', 'Rally', 'Press Briefing', 'Other']
+    all_types = default_types + custom_types
+    
     if speaker:
-        # Get speech types used by this specific speaker
+        # Filter to only speech types used by this specific speaker
         cursor.execute("""
             SELECT DISTINCT speech_type
             FROM transcripts 
             WHERE primary_speaker = ?
             ORDER BY speech_type
         """, (speaker,))
-    else:
-        # Get all speech types
-        cursor.execute("""
-            SELECT DISTINCT speech_type
-            FROM transcripts 
-            ORDER BY speech_type
-        """)
+        used_types = [row[0] for row in cursor.fetchall() if row[0]]
+        conn.close()
+        
+        # Return only types that this speaker has used
+        return jsonify({'speech_types': [t for t in all_types if t in used_types]})
     
-    types = [row[0] for row in cursor.fetchall() if row[0]]
     conn.close()
-    
-    # Add default types if they don't exist yet
-    default_types = ['Remarks', 'Press Conference', 'Interview', 'Rally', 'Press Briefing', 'Other']
-    all_types = default_types + [t for t in types if t not in default_types]
-    
-    return jsonify({'speech_types': all_types if not speaker else types})
+    return jsonify({'speech_types': all_types})
+
+@app.route('/api/speech-types', methods=['POST'])
+def add_speech_type():
+    """Add a new custom speech type"""
+    try:
+        data = request.get_json()
+        speech_type = data.get('speech_type', '').strip()
+        
+        if not speech_type:
+            return jsonify({'error': 'Speech type is required'}), 400
+        
+        # Default types cannot be added again
+        default_types = ['Remarks', 'Press Conference', 'Interview', 'Rally', 'Press Briefing', 'Other']
+        if speech_type in default_types:
+            return jsonify({'error': 'This is already a default speech type'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if it already exists in custom types table
+        cursor.execute('SELECT COUNT(*) FROM speech_types WHERE speech_type = ?', (speech_type,))
+        if cursor.fetchone()[0] > 0:
+            conn.close()
+            return jsonify({'error': 'Speech type already exists'}), 400
+        
+        # Insert new custom speech type
+        cursor.execute('INSERT INTO speech_types (speech_type) VALUES (?)', (speech_type,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'speech_type': speech_type}), 201
+    except Exception as e:
+        logging.error(f'Error adding speech type: {e}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/speech-types/<path:speech_type>', methods=['DELETE'])
+def delete_speech_type(speech_type):
+    """Delete a custom speech type"""
+    try:
+        # Default types cannot be deleted
+        default_types = ['Remarks', 'Press Conference', 'Interview', 'Rally', 'Press Briefing', 'Other']
+        if speech_type in default_types:
+            return jsonify({'error': 'Cannot delete default speech types'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Delete from custom types
+        cursor.execute('DELETE FROM speech_types WHERE speech_type = ?', (speech_type,))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        logging.error(f'Error deleting speech type: {e}')
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/date-range', methods=['GET'])
 def get_date_range():
