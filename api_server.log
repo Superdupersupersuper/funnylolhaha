@@ -1,4 +1,4 @@
-2026-02-18 09:31:06,420 - WARNING - flask-compress not available - responses will not be compressed
+2026-02-18 10:18:48,569 - WARNING - flask-compress not available - responses will not be compressed
 
 ================================================================================
 🚀 MENTION MARKET TOOL - API SERVER
@@ -30,23 +30,24 @@ Press Ctrl+C to stop
 
  * Serving Flask app 'api_server'
  * Debug mode: on
-2026-02-18 09:31:06,547 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+2026-02-18 10:18:48,738 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
  * Running on all addresses (0.0.0.0)
  * Running on http://127.0.0.1:5001
  * Running on http://192.168.1.36:5001
-2026-02-18 09:31:06,548 - INFO - [33mPress CTRL+C to quit[0m
-2026-02-18 09:31:16,761 - INFO - 127.0.0.1 - - [18/Feb/2026 09:31:16] "GET /admin HTTP/1.1" 200 -
-2026-02-18 09:31:16,780 - INFO - 📦 Migrating: adding has_q_and_a column...
-2026-02-18 09:31:16,783 - INFO - ✅ has_q_and_a column added
-2026-02-18 09:31:16,784 - INFO - 📦 Migrating: adding qa_analytics column...
-2026-02-18 09:31:16,784 - INFO - ✅ qa_analytics column added
-2026-02-18 09:31:16,784 - INFO - ⚠️ Database is empty - attempting to restore from backup...
-2026-02-18 09:31:16,784 - INFO - ℹ️ No backup file found - starting with empty database
-2026-02-18 09:31:16,786 - INFO - 127.0.0.1 - - [18/Feb/2026 09:31:16] "GET /api/speech-types HTTP/1.1" 200 -
-2026-02-18 09:31:22,078 - INFO - ⚠️ Database is empty - attempting to restore from backup...
-2026-02-18 09:31:22,078 - INFO - ℹ️ No backup file found - starting with empty database
-2026-02-18 09:31:22,083 - INFO - 127.0.0.1 - - [18/Feb/2026 09:31:22] "GET /api/admin/transcripts/by-speaker HTTP/1.1" 200 -
-2026-02-18 09:40:10,607 - INFO - 127.0.0.1 - - [18/Feb/2026 09:40:10] "GET /admin HTTP/1.1" 200 -
-2026-02-18 09:40:10,818 - INFO - ⚠️ Database is empty - attempting to restore from backup...
-2026-02-18 09:40:10,819 - INFO - ℹ️ No backup file found - starting with empty database
-2026-02-18 09:40:10,843 - INFO - 127.0.0.1 - - [18/Feb/2026 09:40:10] "GET /api/speech-types HTTP/1.1" 200 -
+2026-02-18 10:18:48,738 - INFO - [33mPress CTRL+C to quit[0m
+2026-02-18 10:19:03,403 - INFO - 📦 Migrating: adding topics column...
+2026-02-18 10:19:03,408 - INFO - ✅ topics column added
+2026-02-18 10:19:03,408 - INFO - 📦 Creating topics table...
+2026-02-18 10:19:03,413 - INFO - ✅ topics table created
+2026-02-18 10:19:03,414 - INFO - ⚠️ Database is empty - attempting to restore from backup...
+2026-02-18 10:19:03,414 - INFO - ℹ️ No backup file found - starting with empty database
+2026-02-18 10:19:03,423 - INFO - 127.0.0.1 - - [18/Feb/2026 10:19:03] "GET /api/health HTTP/1.1" 200 -
+2026-02-18 10:19:09,209 - INFO - ⚠️ Database is empty - attempting to restore from backup...
+2026-02-18 10:19:09,210 - INFO - ℹ️ No backup file found - starting with empty database
+2026-02-18 10:19:09,216 - INFO - 127.0.0.1 - - [18/Feb/2026 10:19:09] "GET /api/topics HTTP/1.1" 200 -
+2026-02-18 10:19:14,907 - INFO - ⚠️ Database is empty - attempting to restore from backup...
+2026-02-18 10:19:14,908 - INFO - ℹ️ No backup file found - starting with empty database
+2026-02-18 10:19:14,912 - INFO - 127.0.0.1 - - [18/Feb/2026 10:19:14] "POST /api/topics HTTP/1.1" 200 -
+2026-02-18 10:19:21,615 - INFO - ⚠️ Database is empty - attempting to restore from backup...
+2026-02-18 10:19:21,616 - INFO - ℹ️ No backup file found - starting with empty database
+2026-02-18 10:19:21,619 - INFO - 127.0.0.1 - - [18/Feb/2026 10:19:21] "GET /api/topics HTTP/1.1" 200 -
