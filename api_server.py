@@ -218,6 +218,12 @@ def _build_transcript_response(t, include_full_text=True):
 
     full_dialogue = t.get('full_dialogue', '') or ''
 
+    # Get Q&A analytics if available
+    qa_analytics = t.get('qa_analytics')
+    if isinstance(qa_analytics, str):
+        try: qa_analytics = json.loads(qa_analytics)
+        except: qa_analytics = None
+    
     result = {
         'id': t.get('id'),
         'title': title,
@@ -228,6 +234,8 @@ def _build_transcript_response(t, include_full_text=True):
         'word_count': t.get('word_count', 0) or 0,
         'speakers': speakers,
         'primary_speaker': t.get('primary_speaker', ''),
+        'has_q_and_a': t.get('has_q_and_a', False),
+        'qa_analytics': qa_analytics
     }
 
     if include_full_text:
@@ -1260,6 +1268,13 @@ def get_transcript_for_edit(transcript_id):
             if isinstance(speakers, str):
                 try: speakers = json.loads(speakers)
                 except: speakers = []
+            
+            # Get Q&A analytics if available
+            qa_analytics = t.get('qa_analytics')
+            if isinstance(qa_analytics, str):
+                try: qa_analytics = json.loads(qa_analytics)
+                except: qa_analytics = None
+            
             return jsonify({
                 'id': t.get('id'),
                 'title': t.get('title', ''),
@@ -1273,6 +1288,8 @@ def get_transcript_for_edit(transcript_id):
                 'full_text': full_text,
                 'speakers': speakers,
                 'primary_speaker': t.get('primary_speaker', ''),
+                'has_q_and_a': t.get('has_q_and_a', False),
+                'qa_analytics': qa_analytics
             })
 
         # SQLite path

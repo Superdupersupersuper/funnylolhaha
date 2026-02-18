@@ -46,3 +46,7 @@ Press Ctrl+C to stop
 2026-02-18 09:31:22,078 - INFO - ⚠️ Database is empty - attempting to restore from backup...
 2026-02-18 09:31:22,078 - INFO - ℹ️ No backup file found - starting with empty database
 2026-02-18 09:31:22,083 - INFO - 127.0.0.1 - - [18/Feb/2026 09:31:22] "GET /api/admin/transcripts/by-speaker HTTP/1.1" 200 -
+2026-02-18 09:40:10,607 - INFO - 127.0.0.1 - - [18/Feb/2026 09:40:10] "GET /admin HTTP/1.1" 200 -
+2026-02-18 09:40:10,818 - INFO - ⚠️ Database is empty - attempting to restore from backup...
+2026-02-18 09:40:10,819 - INFO - ℹ️ No backup file found - starting with empty database
+2026-02-18 09:40:10,843 - INFO - 127.0.0.1 - - [18/Feb/2026 09:40:10] "GET /api/speech-types HTTP/1.1" 200 -
