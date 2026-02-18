@@ -795,22 +795,10 @@
             </div>
         </div>
 
-        <!-- PRIMARY SPEAKER TABS -->
+        <!-- PRIMARY SPEAKER TABS - populated dynamically after data loads -->
         <div class="speaker-tabs" id="speakerTabs">
             <button class="speaker-tab active" data-speaker="all" onclick="switchPrimarySpeaker('all')">
                 All<span class="tab-count" id="tab-count-all">0</span>
-            </button>
-            <button class="speaker-tab" data-speaker="mamdani" onclick="switchPrimarySpeaker('mamdani')">
-                Mamdani<span class="tab-count" id="tab-count-mamdani">0</span>
-            </button>
-            <button class="speaker-tab" data-speaker="trump" onclick="switchPrimarySpeaker('trump')">
-                Trump<span class="tab-count" id="tab-count-trump">0</span>
-            </button>
-            <button class="speaker-tab" data-speaker="jd" onclick="switchPrimarySpeaker('jd')">
-                JD Vance<span class="tab-count" id="tab-count-jd">0</span>
-            </button>
-            <button class="speaker-tab" data-speaker="hochul" onclick="switchPrimarySpeaker('hochul')">
-                Hochul<span class="tab-count" id="tab-count-hochul">0</span>
             </button>
         </div>
 
@@ -834,7 +822,7 @@
                 <div class="filter-group">
                     <div class="filter-group-title">Date Range</div>
                     <label style="font-size: 12px; margin-bottom: 5px; color: #9ca3af;">Start Date</label>
-                    <input type="date" class="date-input" id="startDate" value="2026-01-01">
+                    <input type="date" class="date-input" id="startDate" value="2024-01-01">
                     <label style="font-size: 12px; margin-top: 8px; margin-bottom: 5px; color: #9ca3af;">End Date</label>
                     <input type="date" class="date-input" id="endDate" value="2026-12-31">
                 </div>
@@ -944,39 +932,27 @@
         let allTranscripts = [];
         let transcriptsData = [];
         let additionalSearchTerms = [];
-        let activePrimarySpeaker = 'all'; // 'all' | 'mamdani' | 'trump' | 'jd' | 'hochul'
+        // activePrimarySpeaker is 'all' or the exact primary_speaker label (e.g. "Mamdani", "JD Vance")
+        let activePrimarySpeaker = 'all';
 
-        // Primary speaker matching rules
-        const PRIMARY_SPEAKER_MATCHERS = {
-            mamdani: text => { const t = text.toLowerCase(); return t.includes('mamdani'); },
-            trump:   text => { const t = text.toLowerCase(); return t.includes('trump'); },
-            jd:      text => { const t = text.toLowerCase(); return t.includes('vance') || t.includes('jd'); },
-            hochul:  text => { const t = text.toLowerCase(); return t.includes('hochul'); }
-        };
-
-        // Check if a transcript belongs to a primary speaker tab
-        function transcriptMatchesPrimarySpeaker(transcript, tab) {
-            if (tab === 'all') return true;
-            const ps = (transcript.primary_speaker || '').toLowerCase();
-            // First try the stored primary_speaker field
-            if (PRIMARY_SPEAKER_MATCHERS[tab] && PRIMARY_SPEAKER_MATCHERS[tab](ps)) return true;
-            // Fallback: check title
-            if (PRIMARY_SPEAKER_MATCHERS[tab] && PRIMARY_SPEAKER_MATCHERS[tab](transcript.title || '')) return true;
-            // Fallback: check speakers array
-            if (transcript.speakers && transcript.speakers.length > 0) {
-                return transcript.speakers.some(s => PRIMARY_SPEAKER_MATCHERS[tab] && PRIMARY_SPEAKER_MATCHERS[tab](s));
-            }
-            return false;
+        // Check if a transcript belongs to the given tab label (case-insensitive via speakerMatchesPrimary)
+        function transcriptMatchesPrimarySpeaker(transcript, tabLabel) {
+            if (tabLabel === 'all') return true;
+            const ps = transcript.primary_speaker || '';
+            return speakerMatchesPrimary(ps, tabLabel);
         }
 
-        // Check if a line in a transcript is from the active primary speaker
-        function isPrimarySpeakerLine(line, tab) {
-            if (tab === 'all') {
-                // When "All" is selected, match any known primary speaker
-                return Object.values(PRIMARY_SPEAKER_MATCHERS).some(fn => fn(line.trim().replace(/\s*\([^)]*\)\s*$/g, '').replace(/\s*:\s*$/g, '').trim()));
+        // Check if a dialogue line speaker name matches the active primary speaker label
+        function isPrimarySpeakerLine(lineOrSpeaker, tabLabel) {
+            const normalized = lineOrSpeaker.trim()
+                .replace(/\s*\([^)]*\)\s*$/g, '')
+                .replace(/\s*:\s*$/g, '').trim();
+            if (tabLabel === 'all') {
+                // Match any known primary speaker present in loaded data
+                const knownPrimaries = [...new Set(transcriptsData.map(t => t.primary_speaker).filter(Boolean))];
+                return knownPrimaries.some(ps => speakerMatchesPrimary(normalized, ps));
             }
-            const normalized = line.trim().replace(/\s*\([^)]*\)\s*$/g, '').replace(/\s*:\s*$/g, '').trim();
-            return PRIMARY_SPEAKER_MATCHERS[tab] ? PRIMARY_SPEAKER_MATCHERS[tab](normalized) : false;
+            return speakerMatchesPrimary(normalized, tabLabel);
         }
 
         // Get filtered transcripts based on active tab
@@ -985,17 +961,40 @@
             return data.filter(t => transcriptMatchesPrimarySpeaker(t, activePrimarySpeaker));
         }
 
-        // Switch primary speaker tab
-        async function switchPrimarySpeaker(tab) {
-            activePrimarySpeaker = tab;
-            // Update tab UI
-            document.querySelectorAll('.speaker-tab').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.speaker === tab);
+        // Build primary-speaker tabs dynamically from loaded transcriptsData
+        function buildSpeakerTabs() {
+            const tabsContainer = document.getElementById('speakerTabs');
+            
+            // Collect unique primary speakers sorted by count
+            const counts = {};
+            transcriptsData.forEach(t => {
+                const ps = (t.primary_speaker || '').trim();
+                if (ps) counts[ps] = (counts[ps] || 0) + 1;
             });
-            
-            // Reload speech types filter for this speaker
-            await loadSpeechTypesFilter();
-            
+            const uniqueSpeakers = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+
+            // Rebuild tabs
+            tabsContainer.innerHTML = `
+                <button class="speaker-tab ${activePrimarySpeaker === 'all' ? 'active' : ''}" data-speaker="all" onclick="switchPrimarySpeaker('all')">
+                    All<span class="tab-count" id="tab-count-all">${transcriptsData.length}</span>
+                </button>
+                ${uniqueSpeakers.map(sp => `
+                    <button class="speaker-tab ${activePrimarySpeaker === sp ? 'active' : ''}" data-speaker="${sp.replace(/"/g, '&quot;')}" onclick="switchPrimarySpeaker(${JSON.stringify(sp)})">
+                        ${sp}<span class="tab-count" id="tab-count-${sp.replace(/\s+/g, '-')}">${counts[sp]}</span>
+                    </button>
+                `).join('')}
+            `;
+        }
+
+        // Switch primary speaker tab (tabLabel is 'all' or exact primary_speaker value)
+        async function switchPrimarySpeaker(tabLabel) {
+            activePrimarySpeaker = tabLabel;
+            // Update active class
+            document.querySelectorAll('.speaker-tab').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.speaker === tabLabel);
+            });
+            // Rebuild scoped filters for this tab
+            await refreshFiltersForActiveTab();
             // Re-apply filters / search
             if (getCombinedSearchTerms().length > 0) {
                 performSearch();
@@ -1004,19 +1003,12 @@
             }
         }
 
-        // Update tab counts
+        // Update "All" tab count (individual tab counts are set in buildSpeakerTabs)
         function updateTabCounts() {
-            const all = transcriptsData.length;
-            let counts = { all: all, mamdani: 0, trump: 0, jd: 0, hochul: 0 };
-            transcriptsData.forEach(t => {
-                ['mamdani', 'trump', 'jd', 'hochul'].forEach(tab => {
-                    if (transcriptMatchesPrimarySpeaker(t, tab)) counts[tab]++;
-                });
-            });
-            Object.entries(counts).forEach(([tab, count]) => {
-                const el = document.getElementById(`tab-count-${tab}`);
-                if (el) el.textContent = count;
-            });
+            const el = document.getElementById('tab-count-all');
+            if (el) el.textContent = transcriptsData.length;
+            // Rebuild all tabs with fresh counts
+            buildSpeakerTabs();
         }
 
         // Normalize speaker name for display
@@ -1025,15 +1017,17 @@
         }
 
         // Load speech types from API and populate filter (speaker-specific)
-        async function loadSpeechTypesFilter() {
+        // speakerOverride: optional label to use instead of activePrimarySpeaker
+        async function loadSpeechTypesFilter(speakerOverride) {
             try {
-                // Get current primary speaker tab
-                const currentSpeaker = activePrimarySpeaker === 'all' ? null : activePrimarySpeaker;
+                // Use the actual primary_speaker label (not a tab key)
+                const currentSpeaker = (speakerOverride !== undefined ? speakerOverride : activePrimarySpeaker);
+                const speakerParam = (currentSpeaker && currentSpeaker !== 'all') ? currentSpeaker : null;
                 
                 // Fetch speech types for this speaker
-                const url = currentSpeaker 
-                    ? `/api/speech-types?speaker=${encodeURIComponent(currentSpeaker)}`
-                    : '/api/speech-types';
+                const url = speakerParam
+                    ? `${API_BASE}/api/speech-types?speaker=${encodeURIComponent(speakerParam)}`
+                    : `${API_BASE}/api/speech-types`;
                     
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('Failed to load speech types');
@@ -1041,16 +1035,21 @@
                 const data = await response.json();
                 const speechTypes = data.speech_types || [];
                 
-                // Filter to only speech types actually present in current data
-                const dataTypes = [...new Set(transcriptsData.map(t => t.speech_type))].filter(Boolean);
-                const filteredTypes = speechTypes.filter(type => dataTypes.includes(type));
+                // Intersect with speech types present in the current tab's transcripts
+                const tabTranscripts = getFilteredByPrimarySpeaker(transcriptsData);
+                const dataTypes = [...new Set(tabTranscripts.map(t => t.speech_type))].filter(Boolean);
+                const filteredTypes = speechTypes.length > 0
+                    ? speechTypes.filter(type => dataTypes.includes(type))
+                    : dataTypes;
                 
                 // Populate categories filter with speaker-specific speech types
                 const categoriesFilter = document.getElementById('categoriesFilter');
-                if (filteredTypes.length === 0) {
+                if (filteredTypes.length === 0 && dataTypes.length === 0) {
                     categoriesFilter.innerHTML = '<p style="color: #9ca3af; font-size: 12px;">No speech types for this speaker</p>';
                 } else {
-                    categoriesFilter.innerHTML = filteredTypes.map((type, idx) => `
+                    // If API returned nothing useful, fall back to all data types
+                    const displayTypes = filteredTypes.length > 0 ? filteredTypes : dataTypes;
+                    categoriesFilter.innerHTML = displayTypes.map((type, idx) => `
                         <div class="filter-item">
                             <input type="checkbox" id="cat-${idx}" value="${type}" checked>
                             <label for="cat-${idx}">${type}</label>
@@ -1060,8 +1059,9 @@
                 
             } catch (error) {
                 console.error('Error loading speech types:', error);
-                // Fallback to data-driven filter
-                const dataTypes = [...new Set(transcriptsData.map(t => t.speech_type))].filter(Boolean).sort();
+                // Fallback to data-driven filter from current tab
+                const tabTranscripts = getFilteredByPrimarySpeaker(transcriptsData);
+                const dataTypes = [...new Set(tabTranscripts.map(t => t.speech_type))].filter(Boolean).sort();
                 document.getElementById('categoriesFilter').innerHTML = dataTypes.map((type, idx) => `
                     <div class="filter-item">
                         <input type="checkbox" id="cat-${idx}" value="${type}" checked>
@@ -1358,78 +1358,76 @@
             });
         }
 
-        // Load initial data
-        async function loadInitialData() {
-            try {
-                // Load speech types from API for dynamic filters
-                await loadSpeechTypesFilter();
+        // Rebuild Speakers, Events, Categories filters based on the active tab.
+        // Call this after tab switches and after data re-loads.
+        async function refreshFiltersForActiveTab() {
+            const tabTranscripts = getFilteredByPrimarySpeaker(transcriptsData);
 
-                // Get unique speech types from data (for backwards compatibility)
-                const speechTypes = [...new Set(transcriptsData.map(t => t.speech_type))].sort();
+            // --- Categories (speech types) scoped to this tab ---
+            await loadSpeechTypesFilter();
 
-                // Update primary speaker tab counts
-                updateTabCounts();
-
-                // Get all unique speakers from transcripts and count frequency
-                const speakerCounts = {};
-                transcriptsData.forEach(t => {
-                    if (t.speakers && Array.isArray(t.speakers)) {
-                        t.speakers.forEach(speaker => {
-                            const normalized = normalizeSpeakerName(speaker);
-                            speakerCounts[normalized] = (speakerCounts[normalized] || 0) + 1;
-                        });
-                    }
-                });
-
-                // Sort by frequency (most frequent first)
-                const uniqueSpeakers = Object.keys(speakerCounts).sort((a, b) => {
-                    return speakerCounts[b] - speakerCounts[a];
-                });
-
-                // Populate speakers filter
-                const speakersFilter = document.getElementById('speakersFilter');
-                console.log('Found speakers:', uniqueSpeakers.length, uniqueSpeakers.slice(0, 5));
-
-                if (uniqueSpeakers.length > 0) {
-                    speakersFilter.innerHTML = uniqueSpeakers.map((speaker, idx) => `
-                        <div class="filter-item">
-                            <input type="checkbox" id="speaker-${idx}" value="${speaker}" checked>
-                            <label for="speaker-${idx}">${speaker} <span style="color: #6b7280; font-size: 11px;">(${speakerCounts[speaker]})</span></label>
-                        </div>
-                    `).join('');
-                } else {
-                    speakersFilter.innerHTML = '<div style="padding: 10px; color: #9ca3af;">No speakers found</div>';
+            // --- Speakers scoped to this tab ---
+            const speakerCounts = {};
+            tabTranscripts.forEach(t => {
+                if (t.speakers && Array.isArray(t.speakers)) {
+                    t.speakers.forEach(speaker => {
+                        const normalized = normalizeSpeakerName(speaker);
+                        speakerCounts[normalized] = (speakerCounts[normalized] || 0) + 1;
+                    });
                 }
+            });
+            const uniqueSpeakers = Object.keys(speakerCounts).sort((a, b) => speakerCounts[b] - speakerCounts[a]);
+            const speakersFilter = document.getElementById('speakersFilter');
+            if (uniqueSpeakers.length > 0) {
+                speakersFilter.innerHTML = uniqueSpeakers.map((speaker, idx) => `
+                    <div class="filter-item">
+                        <input type="checkbox" id="speaker-${idx}" value="${speaker}" checked>
+                        <label for="speaker-${idx}">${speaker} <span style="color: #6b7280; font-size: 11px;">(${speakerCounts[speaker]})</span></label>
+                    </div>
+                `).join('');
+            } else {
+                speakersFilter.innerHTML = '<div style="padding: 10px; color: #9ca3af;">No speakers found</div>';
+            }
 
-                // Get recent transcripts (last 20)
-                allTranscripts = transcriptsData
-                    .sort((a, b) => new Date(b.date) - new Date(a.date))
-                    .slice(0, 20);
-
-                // Populate events
-                const eventsFilter = document.getElementById('eventsFilter');
-                eventsFilter.innerHTML = allTranscripts.map((t, idx) => {
-                    const ct = cleanDisplayTitle(t.title);
-                    return `
+            // --- Events scoped to this tab (most recent 40) ---
+            const tabSorted = [...tabTranscripts].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 40);
+            allTranscripts = tabSorted;
+            const eventsFilter = document.getElementById('eventsFilter');
+            eventsFilter.innerHTML = tabSorted.map((t, idx) => {
+                const ct = cleanDisplayTitle(t.title);
+                return `
                     <div class="filter-item">
                         <input type="checkbox" id="event-${idx}" value="${t.id}" checked>
                         <label for="event-${idx}" title="${ct}">${ct.substring(0, 60)}${ct.length > 60 ? '...' : ''}</label>
                     </div>
-                `}).join('');
+                `;
+            }).join('');
+        }
 
+        // Load initial data and wire up the UI
+        async function loadInitialData() {
+            try {
+                // Build dynamic tabs based on loaded data
+                buildSpeakerTabs();
+
+                // Build scoped filters for the default 'all' tab
+                await refreshFiltersForActiveTab();
+
+                // Display transcripts for current tab
                 displayTranscripts(allTranscripts);
 
-                // Update stats display
-                const latestDate = transcriptsData
-                    .map(t => t.date)
-                    .filter(d => d)
-                    .sort((a, b) => new Date(b) - new Date(a))[0] || 'N/A';
-
-                document.querySelector('.search-section').insertAdjacentHTML('afterbegin', `
-                    <div style="margin-bottom: 15px; padding: 10px; background: rgba(59, 130, 246, 0.1); border-radius: 6px; font-size: 13px;">
-                        📊 <strong>${transcriptsData.length}</strong> transcripts loaded | Latest: ${latestDate}
-                    </div>
-                `);
+                // Update stats banner (only add once)
+                if (!document.getElementById('statsLoadedBanner')) {
+                    const latestDate = transcriptsData
+                        .map(t => t.date)
+                        .filter(d => d)
+                        .sort((a, b) => new Date(b) - new Date(a))[0] || 'N/A';
+                    const banner = document.createElement('div');
+                    banner.id = 'statsLoadedBanner';
+                    banner.style.cssText = 'margin-bottom:15px;padding:10px;background:rgba(59,130,246,0.1);border-radius:6px;font-size:13px;';
+                    banner.innerHTML = `📊 <strong>${transcriptsData.length}</strong> transcripts loaded | Latest: ${latestDate}`;
+                    document.querySelector('.search-section').prepend(banner);
+                }
 
             } catch (error) {
                 console.error('Error loading data:', error);
@@ -1756,6 +1754,12 @@
             const endDate = new Date(document.getElementById('endDate').value);
             const minWordCount = parseInt(document.getElementById('minWordCount').value) || 0;
             const selectedCategories = Array.from(document.querySelectorAll('#categoriesFilter input:checked')).map(cb => cb.value);
+            const selectedSpeakers = Array.from(document.querySelectorAll('#speakersFilter input:checked')).map(cb => cb.value);
+            const selectedEventIds = new Set(
+                Array.from(document.querySelectorAll('#eventsFilter input:checked')).map(cb => String(cb.value))
+            );
+            const totalEventCheckboxes = document.querySelectorAll('#eventsFilter input').length;
+            const allEventsSelected = selectedEventIds.size === totalEventCheckboxes;
 
             try {
                 console.log('Searching for:', terms, '| tab:', activePrimarySpeaker);
@@ -1766,8 +1770,17 @@
                 const results = tabData.filter(t => {
                     const tDate = new Date(t.date);
                     if (tDate < startDate || tDate > endDate) return false;
-                    if (!selectedCategories.includes(t.speech_type)) return false;
+                    // Empty selectedCategories → treat as "no category filter"
+                    if (selectedCategories.length > 0 && !selectedCategories.includes(t.speech_type)) return false;
                     if ((t.word_count || 0) < minWordCount) return false;
+                    // Speakers filter
+                    if (selectedSpeakers.length > 0 && t.speakers && t.speakers.length > 0) {
+                        if (!t.speakers.some(s => selectedSpeakers.includes(s))) return false;
+                    }
+                    // Events filter
+                    if (!allEventsSelected && totalEventCheckboxes > 0) {
+                        if (!selectedEventIds.has(String(t.id))) return false;
+                    }
 
                     // Get ALL sections, then check if primary speaker has at least one match
                     const allSections = getDialogueForSpeaker(t, 'all');
@@ -1887,7 +1900,8 @@
             const allTranscriptsInRange = tabData.filter(t => {
                 const tDate = new Date(t.date);
                 const inDateRange = tDate >= startDate && tDate <= endDate;
-                const inCategory = selectedCategories.includes(t.speech_type);
+                // Empty selectedCategories → treat as "all categories"
+                const inCategory = selectedCategories.length === 0 || selectedCategories.includes(t.speech_type);
                 const meetsMinWordCount = (t.word_count || 0) >= minWordCount;
                 return inDateRange && inCategory && meetsMinWordCount;
             });
@@ -2171,6 +2185,11 @@
             const minWordCount = parseInt(document.getElementById('minWordCount').value) || 0;
             const selectedCategories = Array.from(document.querySelectorAll('#categoriesFilter input:checked')).map(cb => cb.value);
             const selectedSpeakers = Array.from(document.querySelectorAll('#speakersFilter input:checked')).map(cb => cb.value);
+            const selectedEventIds = new Set(
+                Array.from(document.querySelectorAll('#eventsFilter input:checked')).map(cb => String(cb.value))
+            );
+            const totalEventCheckboxes = document.querySelectorAll('#eventsFilter input').length;
+            const allEventsSelected = selectedEventIds.size === totalEventCheckboxes;
 
             // Start with transcripts filtered by primary speaker tab
             const tabFiltered = getFilteredByPrimarySpeaker(transcriptsData);
@@ -2185,8 +2204,8 @@
                 // Check date range
                 if (tDate < start || tDate > end) return false;
 
-                // Check category
-                if (!selectedCategories.includes(t.speech_type)) return false;
+                // Check category — if selectedCategories is empty treat as "all categories"
+                if (selectedCategories.length > 0 && !selectedCategories.includes(t.speech_type)) return false;
 
                 // Check minimum word count
                 if ((t.word_count || 0) < minWordCount) return false;
@@ -2196,6 +2215,11 @@
                     if (!t.speakers.some(speaker => selectedSpeakers.includes(speaker))) {
                         return false;
                     }
+                }
+
+                // Check events filter (only apply if not all events are selected)
+                if (!allEventsSelected && totalEventCheckboxes > 0) {
+                    if (!selectedEventIds.has(String(t.id))) return false;
                 }
 
                 return true;
@@ -2323,11 +2347,18 @@
                                     return fullResponse.json();
                                 }
                                 return [];
-                            }).then(fullData => {
+                            }).then(async fullData => {
                                 if (fullData.length > 0) {
                                     transcriptsData = fullData;
                                     console.log(`✅ Loaded full transcript data: ${fullData.length} transcripts`);
-                                    applyFilters(); // Refresh display
+                                    // Rebuild tabs + filters with full data (dialogue available for search)
+                                    buildSpeakerTabs();
+                                    await refreshFiltersForActiveTab();
+                                    if (getCombinedSearchTerms().length > 0) {
+                                        performSearch();
+                                    } else {
+                                        applyFilters();
+                                    }
                                 }
                             }).catch(err => {
                                 console.warn('Background full data load failed:', err);

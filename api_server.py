@@ -1023,12 +1023,25 @@ def get_speech_types():
     """Get speech types, optionally filtered by primary speaker"""
     speaker = request.args.get('speaker', None)
     
+    # Helper: case-insensitive fuzzy name match (word-based, same logic as frontend speakerMatchesPrimary)
+    def _speaker_name_matches(stored, query):
+        if not stored or not query:
+            return False
+        import re as _re
+        def norm(s):
+            return _re.sub(r'\s+', ' ', _re.sub(r'[^a-z\s]', '', s.lower())).strip()
+        a_words = norm(stored).split()
+        b_words = norm(query).split()
+        if not a_words or not b_words:
+            return False
+        return (all(w in a_words for w in b_words) or all(w in b_words for w in a_words))
+
     if _use_github():
         index = _get_cached_index()
         counts = {}
         for m in index:
-            # Filter by speaker if specified
-            if speaker and m.get('primary_speaker') != speaker:
+            # Filter by speaker if specified (case-insensitive fuzzy match)
+            if speaker and not _speaker_name_matches(m.get('primary_speaker', ''), speaker):
                 continue
             st = m.get('speech_type', '')
             if st:  # Only count non-empty speech types
@@ -1066,18 +1079,25 @@ def get_speech_types():
     all_types = default_types + custom_types
     
     if speaker:
-        # Filter to only speech types used by this specific speaker
+        # Filter to only speech types used by this specific speaker (case-insensitive)
         cursor.execute("""
             SELECT DISTINCT speech_type
-            FROM transcripts 
-            WHERE primary_speaker = ?
+            FROM transcripts
+            WHERE LOWER(primary_speaker) = LOWER(?)
             ORDER BY speech_type
         """, (speaker,))
-        used_types = [row[0] for row in cursor.fetchall() if row[0]]
+        used_types_exact = [row[0] for row in cursor.fetchall() if row[0]]
+        
+        # Also do fuzzy word-based match to catch e.g. "Zohran Mamdani" vs "Mamdani"
+        if not used_types_exact:
+            cursor.execute("SELECT DISTINCT primary_speaker, speech_type FROM transcripts WHERE speech_type IS NOT NULL AND speech_type != ''")
+            rows = cursor.fetchall()
+            used_types_exact = list({row[1] for row in rows if row[1] and _speaker_name_matches(row[0] or '', speaker)})
+        
         conn.close()
         
         # Return only types that this speaker has used
-        return jsonify({'speech_types': [t for t in all_types if t in used_types]})
+        return jsonify({'speech_types': [t for t in all_types if t in used_types_exact]})
     
     conn.close()
     return jsonify({'speech_types': all_types})
@@ -1274,7 +1294,9 @@ def create_transcript():
             for seg in segments
         ])
         word_count = sum(len(seg['text'].split()) for seg in segments)
-        speakers = list(set(seg['speaker'] for seg in segments))
+        # Merge segment-derived speakers with any additional speakers specified by admin
+        seg_speakers = list(set(seg['speaker'] for seg in segments))
+        speakers = seg_speakers + [s for s in additional_speakers if s and s not in seg_speakers]
         cleaned_title = clean_title(title)
         normalized_speakers = normalize_speakers(speakers)
         url_slug = f'admin-upload-{event_date}-{title[:30].replace(" ", "-")}'
@@ -1289,6 +1311,12 @@ def create_transcript():
         if isinstance(topics, str):
             try: topics = json.loads(topics)
             except: topics = []
+
+        # Additional speakers (metadata-only co-speakers; merged into speaker list)
+        additional_speakers = data.get('additional_speakers', [])
+        if isinstance(additional_speakers, str):
+            try: additional_speakers = json.loads(additional_speakers)
+            except: additional_speakers = []
 
         if _use_github():
             # --- GitHub path ---

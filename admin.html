@@ -345,6 +345,12 @@ More text..."></textarea>
             </div>
 
             <div class="form-group">
+                <label>Additional Speakers <span style="color: #6b7280; font-size: 12px;">(co-speakers, guests — shown in Speakers filter)</span></label>
+                <div id="additionalSpeakerChips" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; min-height: 20px;"></div>
+                <input type="text" id="additionalSpeakerInput" placeholder="Type a co-speaker name and press Enter (e.g., Howard Lutnick, JD Vance)">
+            </div>
+
+            <div class="form-group">
                 <label>Topics / Tags</label>
                 <div id="topicChips" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; min-height: 20px;"></div>
                 <div style="display: flex; gap: 8px;">
@@ -479,6 +485,36 @@ More text..."></textarea>
         let currentSpeaker = null;
         let allTranscripts = [];
         let selectedTopics = [];
+        let additionalSpeakers = [];
+
+        // ===== ADDITIONAL SPEAKERS MANAGEMENT =====
+
+        function addAdditionalSpeakerChip(name) {
+            const trimmed = name.trim();
+            if (!trimmed || additionalSpeakers.includes(trimmed)) return;
+            additionalSpeakers.push(trimmed);
+            renderAdditionalSpeakerChips();
+        }
+
+        function removeAdditionalSpeakerChip(name) {
+            additionalSpeakers = additionalSpeakers.filter(s => s !== name);
+            renderAdditionalSpeakerChips();
+        }
+
+        function renderAdditionalSpeakerChips() {
+            const container = document.getElementById('additionalSpeakerChips');
+            container.innerHTML = '';
+            additionalSpeakers.forEach(name => {
+                const chip = document.createElement('div');
+                chip.className = 'topic-chip';
+                chip.style.background = '#059669';
+                chip.innerHTML = `
+                    <span>${name}</span>
+                    <span class="topic-chip-remove" onclick="removeAdditionalSpeakerChip('${name.replace(/'/g, "\\'")}')">×</span>
+                `;
+                container.appendChild(chip);
+            });
+        }
 
         // ===== TOPICS MANAGEMENT =====
         
@@ -581,9 +617,22 @@ More text..."></textarea>
             });
         }
 
-        // Initialize topics
+        // Initialize topics + additional speakers
         document.addEventListener('DOMContentLoaded', () => {
             loadAllTopics();
+
+            // Additional speakers – add on Enter
+            const addlSpeakerInput = document.getElementById('additionalSpeakerInput');
+            addlSpeakerInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const name = addlSpeakerInput.value.trim();
+                    if (name) {
+                        addAdditionalSpeakerChip(name);
+                        addlSpeakerInput.value = '';
+                    }
+                }
+            });
             
             // Add topic on Enter (upload form)
             const topicInput = document.getElementById('topicInput');
@@ -1143,7 +1192,8 @@ More text..."></textarea>
                 total_seconds: parsedData.totalSeconds,
                 speakers: parsedData.speakersDetected,
                 qa_analytics: parsedData.qaAnalytics,
-                topics: selectedTopics
+                topics: selectedTopics,
+                additional_speakers: additionalSpeakers
             };
 
             try {
