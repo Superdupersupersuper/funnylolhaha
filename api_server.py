@@ -1288,6 +1288,12 @@ def create_transcript():
         if not segments:
             return jsonify({'error': 'No segments provided'}), 400
 
+        # Additional speakers (metadata-only co-speakers; merged into speaker list)
+        additional_speakers = data.get('additional_speakers', [])
+        if isinstance(additional_speakers, str):
+            try: additional_speakers = json.loads(additional_speakers)
+            except: additional_speakers = []
+
         # Build full dialogue
         full_dialogue = '\n\n'.join([
             f"{seg['speaker']} ({format_seconds(seg['start_seconds'])}): {seg['text']}"
@@ -1311,12 +1317,6 @@ def create_transcript():
         if isinstance(topics, str):
             try: topics = json.loads(topics)
             except: topics = []
-
-        # Additional speakers (metadata-only co-speakers; merged into speaker list)
-        additional_speakers = data.get('additional_speakers', [])
-        if isinstance(additional_speakers, str):
-            try: additional_speakers = json.loads(additional_speakers)
-            except: additional_speakers = []
 
         if _use_github():
             # --- GitHub path ---
