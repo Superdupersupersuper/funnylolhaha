@@ -1975,6 +1975,41 @@ if TRANSCRIPT_STORE == "github" and HAS_GITHUB_STORE:
         logging.error(f"⚠️  Failed to warm cache on startup: {_e}")
 
 
+def _start_keepalive():
+    """
+    Ping this service's own /api/health endpoint every 10 minutes so Render's
+    free-tier never spins the dyno down due to inactivity.
+    Only runs when RENDER_EXTERNAL_URL is set (i.e. on Render, not locally).
+    """
+    import urllib.request
+
+    render_url = os.environ.get('RENDER_EXTERNAL_URL', '').rstrip('/')
+    if not render_url:
+        return  # Not running on Render – nothing to do
+
+    ping_url = f"{render_url}/api/health"
+    interval = 10 * 60  # 10 minutes
+
+    def _ping_loop():
+        # Stagger the first ping so the server has time to fully start
+        time.sleep(60)
+        while True:
+            try:
+                with urllib.request.urlopen(ping_url, timeout=10) as resp:
+                    logging.info(f"[keep-alive] pinged {ping_url} → {resp.status}")
+            except Exception as exc:
+                logging.warning(f"[keep-alive] ping failed: {exc}")
+            time.sleep(interval)
+
+    t = threading.Thread(target=_ping_loop, daemon=True, name="keep-alive")
+    t.start()
+    logging.info(f"[keep-alive] started – pinging {ping_url} every {interval//60} min")
+
+
+# Start keep-alive as soon as the module is imported (works with gunicorn too)
+_start_keepalive()
+
+
 if __name__ == '__main__':
     print("\n" + "="*80)
     print("🚀 MENTION MARKET TOOL - API SERVER")
