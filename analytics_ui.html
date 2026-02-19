@@ -1120,6 +1120,65 @@
                 .filter(Boolean);
         }
 
+        /**
+         * Build a regex for a single search term honouring all checkbox options.
+         * matchBeginning  → add \b on the left  (term must start a word)
+         * matchEnding     → add \b on the right (term must end a word)
+         * Both checked    → \bterm\b  = exact whole-word match  ← DEFAULT
+         * includePlural   → also match -s / -'s suffix
+         * includeHyphenation → also allow hyphen as a word boundary
+         * caseSensitive   → honour case
+         */
+        function buildTermRegex(rawTerm) {
+            const matchBeginning     = document.getElementById('matchBeginning')?.checked ?? true;
+            const matchEnding        = document.getElementById('matchEnding')?.checked ?? true;
+            const includePlural      = document.getElementById('includePlural')?.checked ?? false;
+            const includeHyphenation = document.getElementById('includeHyphenation')?.checked ?? false;
+            const caseSensitive      = document.getElementById('caseSensitive')?.checked ?? false;
+
+            const esc = rawTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            const lBound = matchBeginning ? '\\b' : '';
+            const rBound = matchEnding    ? '\\b' : '';
+            const pluralSuffix = includePlural ? "('s|s)?" : '';
+
+            // Main pattern: e.g. \bice('s|s)?\b
+            let main = `${lBound}${esc}${pluralSuffix}${rBound}`;
+
+            let pattern = main;
+            if (includeHyphenation) {
+                // Also match when hyphen acts as a word separator:
+                // "ice-cold" → the "ice" part; "anti-ice" → the "ice" part
+                const lHyph = matchBeginning ? '(?:^|\\b|-)' : '';
+                const rHyph = matchEnding    ? '(?=$|\\b|-)' : '';
+                pattern = `${main}|${lHyph}${esc}${pluralSuffix}${rHyph}`;
+            }
+
+            const flags = caseSensitive ? 'g' : 'gi';
+            return new RegExp(pattern, flags);
+        }
+
+        /** Test whether text contains the term, respecting all options. */
+        function termMatches(text, rawTerm) {
+            const re = buildTermRegex(rawTerm);
+            return re.test(text);
+        }
+
+        /** Count non-overlapping matches of term in text, returning array of {index, length}. */
+        function findTermMatches(text, rawTerm) {
+            const re = buildTermRegex(rawTerm);
+            // Reset lastIndex if global flag is set
+            re.lastIndex = 0;
+            const hits = [];
+            let m;
+            while ((m = re.exec(text)) !== null) {
+                hits.push({ index: m.index, length: m[0].length });
+                // Avoid infinite loop on zero-length matches
+                if (m[0].length === 0) re.lastIndex++;
+            }
+            return hits;
+        }
+
         function getCombinedSearchTerms() {
             const primary = parseCommaSeparatedTerms(document.getElementById('searchInput')?.value || '');
             const extra = additionalSearchTerms.map(t => normalizeSearchTerm(t)).filter(Boolean);
@@ -1483,10 +1542,9 @@
                                     .replace(/&/g, '&amp;')
                                     .replace(/</g, '&lt;')
                                     .replace(/>/g, '&gt;');
-                                // Highlight the search term in blue
-                                const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                const re = new RegExp(`(${escapedTerm})`, 'gi');
-                                escaped = escaped.replace(re, '<span class="term-highlight">$1</span>');
+                                // Highlight the search term in blue (respects word-boundary settings)
+                                const re = buildTermRegex(term);
+                                escaped = escaped.replace(re, m => `<span class="term-highlight">${m}</span>`);
                                 return `<div class="context-excerpt">${escaped}</div>`;
                             }).join('');
                             return `<div class="context-excerpts" id="ctx-${t.id}-${encodeURIComponent(term)}">${excerpts}</div>`;
@@ -1537,10 +1595,9 @@
                                 // Escape and highlight text
                                 let escapedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 searchTerms.forEach(term => {
-                                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                                    const re = buildTermRegex(term);
                                     const color = isPrimary ? '#3b82f6' : '#f97316';
-                                    escapedText = escapedText.replace(regex, `<strong style="color: ${color};">$1</strong>`);
+                                    escapedText = escapedText.replace(re, m => `<strong style="color: ${color};">${m}</strong>`);
                                 });
                                 
                                 const speakerLine = timestamp ? `${speaker} (${timestamp})` : speaker;
@@ -1566,10 +1623,9 @@
                                 
                                 let escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 searchTerms.forEach(term => {
-                                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                                    const re = buildTermRegex(term);
                                     const color = currentIsPrimary ? '#3b82f6' : '#f97316';
-                                    escaped = escaped.replace(regex, `<strong style="color: ${color};">$1</strong>`);
+                                    escaped = escaped.replace(re, m => `<strong style="color: ${color};">${m}</strong>`);
                                 });
                                 return escaped;
                             });
@@ -1790,7 +1846,7 @@
                     const primarySpeaker = t.primary_speaker || '';
                     const primarySections = allSections.filter(s => speakerMatchesPrimary(s.speaker, primarySpeaker));
                     const primaryText = primarySections.map(s => s.text).join(' ').toLowerCase();
-                    return terms.some(term => primaryText.includes(term));
+                    return terms.some(term => termMatches(primaryText, term));
                 }).map(t => {
                     // Get ALL dialogue sections for this transcript
                     const allSections = getDialogueForSpeaker(t, 'all');
@@ -1808,10 +1864,11 @@
 
                     terms.forEach(term => {
                         allSections.forEach((sec, sIdx) => {
-                            let pos = 0;
-                            const sectionLower = sec.text.toLowerCase();
                             const isPrimary = speakerMatchesPrimary(sec.speaker, primarySpeaker);
-                            while ((pos = sectionLower.indexOf(term, pos)) !== -1) {
+                            const hits = findTermMatches(sec.text, term);
+                            hits.forEach(hit => {
+                                const pos = hit.index;
+                                const matchLen = hit.length;
                                 const location = allSections.length > 0 ? sIdx / allSections.length : 0;
                                 const absolutePos = sIdx * 1000 + pos;
 
@@ -1821,7 +1878,7 @@
 
                                     // Build context excerpt (±120 chars around match)
                                     const ctxStart = Math.max(0, pos - 120);
-                                    const ctxEnd = Math.min(sec.text.length, pos + term.length + 120);
+                                    const ctxEnd = Math.min(sec.text.length, pos + matchLen + 120);
                                     let excerpt = (ctxStart > 0 ? '…' : '') + sec.text.substring(ctxStart, ctxEnd) + (ctxEnd < sec.text.length ? '…' : '');
                                     perTermData[term].contexts.push({ excerpt, speaker: sec.speaker });
 
@@ -1833,9 +1890,7 @@
                                     otherMentionCount++;
                                     otherMentionLocations.push({ location, position: absolutePos });
                                 }
-
-                                pos += term.length;
-                            }
+                            });
                         });
                     });
 

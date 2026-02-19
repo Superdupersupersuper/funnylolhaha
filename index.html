@@ -829,6 +829,45 @@
                 .filter(Boolean);
         }
 
+        function buildTermRegex(rawTerm) {
+            const matchBeginning     = document.getElementById('matchBeginning')?.checked ?? true;
+            const matchEnding        = document.getElementById('matchEnding')?.checked ?? true;
+            const includePlural      = document.getElementById('includePlural')?.checked ?? false;
+            const includeHyphenation = document.getElementById('includeHyphenation')?.checked ?? false;
+            const caseSensitive      = document.getElementById('caseSensitive')?.checked ?? false;
+
+            const esc = rawTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const lBound = matchBeginning ? '\\b' : '';
+            const rBound = matchEnding    ? '\\b' : '';
+            const pluralSuffix = includePlural ? "('s|s)?" : '';
+
+            let main = `${lBound}${esc}${pluralSuffix}${rBound}`;
+            let pattern = main;
+            if (includeHyphenation) {
+                const lHyph = matchBeginning ? '(?:^|\\b|-)' : '';
+                const rHyph = matchEnding    ? '(?=$|\\b|-)' : '';
+                pattern = `${main}|${lHyph}${esc}${pluralSuffix}${rHyph}`;
+            }
+            const flags = caseSensitive ? 'g' : 'gi';
+            return new RegExp(pattern, flags);
+        }
+
+        function termMatches(text, rawTerm) {
+            return buildTermRegex(rawTerm).test(text);
+        }
+
+        function findTermMatches(text, rawTerm) {
+            const re = buildTermRegex(rawTerm);
+            re.lastIndex = 0;
+            const hits = [];
+            let m;
+            while ((m = re.exec(text)) !== null) {
+                hits.push({ index: m.index, length: m[0].length });
+                if (m[0].length === 0) re.lastIndex++;
+            }
+            return hits;
+        }
+
         function getCombinedSearchTerms() {
             const primary = parseCommaSeparatedTerms(document.getElementById('searchInput')?.value || '');
             const extra = additionalSearchTerms.map(t => normalizeSearchTerm(t)).filter(Boolean);
@@ -1208,10 +1247,9 @@
                                 
                                 let escapedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 searchTerms.forEach(term => {
-                                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                                    const re = buildTermRegex(term);
                                     const color = isPrimary ? '#3b82f6' : '#f97316';
-                                    escapedText = escapedText.replace(regex, `<strong style="color: ${color};">$1</strong>`);
+                                    escapedText = escapedText.replace(re, m => `<strong style="color: ${color};">${m}</strong>`);
                                 });
                                 
                                 const speakerLine = timestamp ? `${speaker} (${timestamp})` : speaker;
@@ -1234,10 +1272,9 @@
                                 
                                 let escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                                 searchTerms.forEach(term => {
-                                    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                    const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                                    const re = buildTermRegex(term);
                                     const color = currentIsPrimary ? '#3b82f6' : '#f97316';
-                                    escaped = escaped.replace(regex, `<strong style="color: ${color};">$1</strong>`);
+                                    escaped = escaped.replace(re, m => `<strong style="color: ${color};">${m}</strong>`);
                                 });
                                 return escaped;
                             });
@@ -1368,7 +1405,7 @@
                     }
 
                     const primaryText = primarySections.join(' ').toLowerCase();
-                    return terms.some(term => primaryText.includes(term));
+                    return terms.some(term => termMatches(primaryText, term));
                 }).map(t => {
                     const preview = t.preview || '';
                     const lines = preview.split('\n');
@@ -1418,10 +1455,9 @@
                     // Search in all sections, count primary vs other
                     terms.forEach(term => {
                         sections.forEach((sec, sIdx) => {
-                            let pos = 0;
-                            const sectionLower = sec.text.toLowerCase();
-                            while ((pos = sectionLower.indexOf(term, pos)) !== -1) {
-                                const absolutePos = sec.position + pos;
+                            const hits = findTermMatches(sec.text, term);
+                            hits.forEach(hit => {
+                                const absolutePos = sec.position + hit.index;
                                 const location = preview.length > 0 ? absolutePos / preview.length : 0;
 
                                 if (sec.isPrimary) {
@@ -1433,9 +1469,7 @@
                                     otherMentionCount++;
                                     otherMentionLocations.push({ location, position: absolutePos });
                                 }
-
-                                pos += term.length;
-                            }
+                            });
                         });
                     });
 
