@@ -54,3 +54,9 @@ Press Ctrl+C to stop
 2026-02-20 12:46:24,521 - INFO - 127.0.0.1 - - [20/Feb/2026 12:46:24] "[33mGET /test HTTP/1.1[0m" 404 -
 2026-02-20 12:46:34,136 - INFO - 127.0.0.1 - - [20/Feb/2026 12:46:34] "[33mGET /test HTTP/1.1[0m" 404 -
 2026-02-20 12:46:36,286 - INFO - 127.0.0.1 - - [20/Feb/2026 12:46:36] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-02-20 12:47:39,396 - INFO - 127.0.0.1 - - [20/Feb/2026 12:47:39] "[33mGET /test HTTP/1.1[0m" 404 -
+2026-02-20 12:57:45,957 - INFO - 127.0.0.1 - - [20/Feb/2026 12:57:45] "[33mGET /test HTTP/1.1[0m" 404 -
+2026-02-20 12:58:25,986 - INFO - 127.0.0.1 - - [20/Feb/2026 12:58:25] "[33mGET /test HTTP/1.1[0m" 404 -
+2026-02-20 12:58:55,956 - INFO - 127.0.0.1 - - [20/Feb/2026 12:58:55] "[33mGET /test HTTP/1.1[0m" 404 -
+/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/resource_tracker.py:301: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/mp-ri4wa3ws'}
+  warnings.warn(
