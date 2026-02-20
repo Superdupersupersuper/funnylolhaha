@@ -1114,6 +1114,12 @@
                         <div class="qa-metric-sub" id="qaResponseLenSub">answer word count</div>
                         <div class="qa-sd-band" id="qaResponseLenBand"></div>
                     </div>
+                    <div class="qa-metric-card">
+                        <div class="qa-metric-value" id="qaAvgPosition">—</div>
+                        <div class="qa-metric-label">Avg Q&amp;A Start Position</div>
+                        <div class="qa-metric-sub" id="qaPositionSub">% into the speech when Q&amp;A begins</div>
+                        <div class="qa-sd-band" id="qaPositionBand"></div>
+                    </div>
                 </div>
 
                 <!-- Q&A List with search -->
@@ -2922,6 +2928,45 @@
         }
 
         /**
+         * Estimate what percentage through a speech the Q&A section starts.
+         * Primary method: first pair's questionStart (seconds) vs last dialogue
+         * segment's start_seconds.  Falls back to segment-index ratio.
+         * Returns a number 0-100, or null if data is insufficient.
+         */
+        function getQAStartPosition(t) {
+            if (!t.has_q_and_a) return null;
+            const pairs = getTranscriptQAPairs(t);
+            if (pairs.length === 0) return null;
+
+            const firstPair = pairs[0];
+            const questionStart = firstPair.questionStart; // seconds, may be undefined
+
+            // Method 1: timestamp-based (most accurate)
+            if (questionStart != null && t.dialogue && Array.isArray(t.dialogue) && t.dialogue.length > 0) {
+                let maxTime = 0;
+                for (const seg of t.dialogue) {
+                    const ts = seg.start_seconds ?? seg.startSeconds;
+                    if (ts != null && ts > maxTime) maxTime = ts;
+                }
+                if (maxTime > 0) {
+                    return Math.min(100, (questionStart / maxTime) * 100);
+                }
+            }
+
+            // Method 2: dialogue segment-index ratio
+            if (t.dialogue && Array.isArray(t.dialogue) && t.dialogue.length > 0) {
+                for (let i = 0; i < t.dialogue.length; i++) {
+                    const seg = t.dialogue[i];
+                    if (seg.speaker === firstPair.questionSpeaker && seg.text === firstPair.questionText) {
+                        return (i / t.dialogue.length) * 100;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        /**
          * Render an SD band summary line inside a given element.
          */
         function renderSDBand(containerId, avg, sd) {
@@ -3064,6 +3109,24 @@
             document.getElementById('qaAvgResponseLen').textContent = respLens.length > 0 ? Math.round(avgR) : '—';
             document.getElementById('qaResponseLenSub').textContent = `words per answer (n=${respLens.length} pairs)`;
             renderSDBand('qaResponseLenBand', avgR, sdR);
+
+            // --- Avg Q&A start position (% through the speech) ---
+            const positions = withQAFlag
+                .map(t => getQAStartPosition(t))
+                .filter(p => p !== null);
+            if (positions.length > 0) {
+                const avgPos = qaAverage(positions);
+                const sdPos  = qaStdDev(positions);
+                document.getElementById('qaAvgPosition').textContent  = Math.round(avgPos) + '%';
+                document.getElementById('qaPositionSub').textContent  =
+                    `into the speech when Q&A begins (n=${positions.length})`;
+                renderSDBand('qaPositionBand', avgPos, sdPos);
+            } else {
+                document.getElementById('qaAvgPosition').textContent  = '—';
+                document.getElementById('qaPositionSub').textContent  = 'position data unavailable';
+                const el = document.getElementById('qaPositionBand');
+                if (el) el.textContent = '';
+            }
 
             // --- Build flat Q&A list for search/display ---
             window._qaAllPairs = withPairs.flatMap(t =>

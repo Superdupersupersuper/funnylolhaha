@@ -698,6 +698,142 @@
             background: #4b5563;
             border-radius: 3px;
         }
+
+        /* ===== Q&A ANALYSIS SECTION ===== */
+        .qa-analysis-section {
+            background-color: #1a2332;
+            border-radius: 8px;
+            padding: 25px;
+            margin-top: 30px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            border: 1px solid #374151;
+        }
+        .qa-analysis-section h2 {
+            color: #60a5fa;
+            margin-bottom: 20px;
+            font-size: 1.6em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .qa-metrics-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .qa-metric-card {
+            background-color: #2d3a4b;
+            padding: 18px;
+            border-radius: 8px;
+            border: 1px solid #374151;
+            text-align: center;
+        }
+        .qa-metric-value {
+            color: #60a5fa;
+            font-size: 2em;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .qa-metric-label {
+            color: #9ca3af;
+            font-size: 0.85em;
+            margin-bottom: 4px;
+        }
+        .qa-metric-sub {
+            color: #6b7280;
+            font-size: 0.75em;
+            margin-bottom: 6px;
+        }
+        .qa-sd-band {
+            color: #4b5563;
+            font-size: 0.75em;
+            font-style: italic;
+        }
+        .qa-list-section {
+            border-top: 1px solid #374151;
+            padding-top: 20px;
+            margin-top: 5px;
+        }
+        .qa-search-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+        .qa-search-row input[type="text"] {
+            flex-grow: 1;
+            min-width: 180px;
+            padding: 9px 14px;
+            border-radius: 6px;
+            border: 1px solid #374151;
+            background-color: #1a2332;
+            color: #e5e7eb;
+            font-size: 0.95em;
+        }
+        .qa-search-row .radio-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #e5e7eb;
+            font-size: 0.9em;
+        }
+        .qa-pair-card {
+            background-color: #2d3a4b;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+        .qa-pair-card .qa-meta {
+            font-size: 0.75em;
+            color: #6b7280;
+            margin-bottom: 8px;
+        }
+        .qa-pair-card .qa-q {
+            color: #e5e7eb;
+            margin-bottom: 8px;
+            line-height: 1.55;
+        }
+        .qa-pair-card .qa-q strong,
+        .qa-pair-card .qa-a strong {
+            color: #60a5fa;
+            margin-right: 6px;
+        }
+        .qa-pair-card .qa-a {
+            color: #c4b5fd;
+            line-height: 1.55;
+        }
+        .qa-empty-notice {
+            text-align: center;
+            color: #9ca3af;
+            padding: 28px;
+            border: 1px dashed #4b5563;
+            border-radius: 8px;
+        }
+        .qa-empty-notice h3 { color: #e5e7eb; margin-bottom: 8px; }
+        .qa-per-transcript-panel {
+            background-color: #2d3a4b;
+            border-top: 1px solid #374151;
+            padding: 14px;
+            margin-top: 12px;
+            border-radius: 0 0 8px 8px;
+        }
+        .qa-per-transcript-panel .qa-pair {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #374151;
+        }
+        .qa-per-transcript-panel .qa-pair:last-child {
+            border-bottom: none; margin-bottom: 0; padding-bottom: 0;
+        }
+        .qa-per-transcript-panel .q-label,
+        .qa-per-transcript-panel .a-label {
+            font-weight: bold; color: #60a5fa; margin-right: 5px;
+        }
+        .qa-per-transcript-panel .q-text { color: #e5e7eb; }
+        .qa-per-transcript-panel .a-text { color: #c4b5fd; }
     </style>
 </head>
 <body>
@@ -797,9 +933,7 @@
 
         <!-- PRIMARY SPEAKER TABS - populated dynamically after data loads -->
         <div class="speaker-tabs" id="speakerTabs">
-            <button class="speaker-tab active" data-speaker="all" onclick="switchPrimarySpeaker('all')">
-                All<span class="tab-count" id="tab-count-all">0</span>
-            </button>
+            <!-- Tabs injected by buildSpeakerTabs() -->
         </div>
 
         <!-- CHARTS SECTION -->
@@ -923,6 +1057,53 @@
         <div class="transcripts-section" id="transcriptsSection">
             <div class="loading">Loading transcripts...</div>
         </div>
+
+        <!-- Q&A ANALYSIS SECTION -->
+        <div class="qa-analysis-section" id="qaAnalysisSection">
+            <h2>📊 Q&amp;A Analysis</h2>
+            <div id="qaFormatNotice" class="qa-empty-notice">
+                <h3>Select at least one Format to see Q&amp;A Analysis</h3>
+                <p>Q&amp;A likelihood and patterns vary significantly by speech format (e.g., Press Conference vs. Announcement).</p>
+                <p>Check one or more boxes under the <strong>Categories</strong> filter above, then click <strong>Apply Filter</strong>.</p>
+            </div>
+            <div id="qaAnalysisContent" style="display:none;">
+                <div class="qa-metrics-row" id="qaMetricsRow">
+                    <div class="qa-metric-card">
+                        <div class="qa-metric-value" id="qaChancePercent">—</div>
+                        <div class="qa-metric-label">% Chance of Q&amp;A</div>
+                        <div class="qa-metric-sub" id="qaChanceSub">speeches with Q&amp;A in selected format(s)</div>
+                    </div>
+                    <div class="qa-metric-card">
+                        <div class="qa-metric-value" id="qaAvgQuestions">—</div>
+                        <div class="qa-metric-label">Avg Questions Asked</div>
+                        <div class="qa-metric-sub" id="qaQuestionsSub">per speech with Q&amp;A</div>
+                        <div class="qa-sd-band" id="qaQuestionsBand"></div>
+                    </div>
+                    <div class="qa-metric-card">
+                        <div class="qa-metric-value" id="qaAvgResponseLen">—</div>
+                        <div class="qa-metric-label">Avg Response Length (words)</div>
+                        <div class="qa-metric-sub" id="qaResponseLenSub">answer word count</div>
+                        <div class="qa-sd-band" id="qaResponseLenBand"></div>
+                    </div>
+                    <div class="qa-metric-card">
+                        <div class="qa-metric-value" id="qaAvgPosition">—</div>
+                        <div class="qa-metric-label">Avg Q&amp;A Start Position</div>
+                        <div class="qa-metric-sub" id="qaPositionSub">% into the speech when Q&amp;A begins</div>
+                        <div class="qa-sd-band" id="qaPositionBand"></div>
+                    </div>
+                </div>
+                <div class="qa-list-section">
+                    <div class="qa-search-row">
+                        <input type="text" id="qaSearchInput" placeholder="Search Q&amp;A pairs…" oninput="filterQAList()">
+                        <div class="radio-group">
+                            <label><input type="radio" name="qaSearchScope" value="question" checked> Search in Questions</label>
+                            <label><input type="radio" name="qaSearchScope" value="answer"> Search in Answers</label>
+                        </div>
+                    </div>
+                    <div id="qaList"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -932,8 +1113,9 @@
         let allTranscripts = [];
         let transcriptsData = [];
         let additionalSearchTerms = [];
-        // activePrimarySpeaker is 'all' or the exact primary_speaker label (e.g. "Mamdani", "JD Vance")
-        let activePrimarySpeaker = 'all';
+        // activePrimarySpeaker is the exact primary_speaker label (never 'all').
+        // Persisted in localStorage; falls back to most-common speaker after data loads.
+        let activePrimarySpeaker = localStorage.getItem('qa_active_speaker') || null;
 
         // Check if a transcript belongs to the given tab label (case-insensitive via speakerMatchesPrimary)
         function transcriptMatchesPrimarySpeaker(transcript, tabLabel) {
@@ -957,14 +1139,14 @@
 
         // Get filtered transcripts based on active tab
         function getFilteredByPrimarySpeaker(data) {
-            if (activePrimarySpeaker === 'all') return data;
+            if (!activePrimarySpeaker || activePrimarySpeaker === 'all') return data;
             return data.filter(t => transcriptMatchesPrimarySpeaker(t, activePrimarySpeaker));
         }
 
-        // Build primary-speaker tabs dynamically from loaded transcriptsData
+        // Build primary-speaker tabs dynamically from loaded transcriptsData (no All tab)
         function buildSpeakerTabs() {
             const tabsContainer = document.getElementById('speakerTabs');
-            
+
             // Collect unique primary speakers sorted by count
             const counts = {};
             transcriptsData.forEach(t => {
@@ -973,25 +1155,30 @@
             });
             const uniqueSpeakers = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
 
-            // Rebuild tabs — use data-speaker + onclick="switchPrimarySpeaker(this.dataset.speaker)"
-            // so speaker name doesn't get interpreted as HTML or JS string literals
-            tabsContainer.innerHTML = `
-                <button class="speaker-tab ${activePrimarySpeaker === 'all' ? 'active' : ''}" data-speaker="all" onclick="switchPrimarySpeaker(this.dataset.speaker)">
-                    All<span class="tab-count" id="tab-count-all">${transcriptsData.length}</span>
-                </button>
-                ${uniqueSpeakers.map(sp => {
-                    const safeAttr = sp.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-                    const isActive = activePrimarySpeaker === sp;
-                    return `<button class="speaker-tab ${isActive ? 'active' : ''}" data-speaker="${safeAttr}" onclick="switchPrimarySpeaker(this.dataset.speaker)">
-                        ${sp}<span class="tab-count">${counts[sp]}</span>
-                    </button>`;
-                }).join('')}
-            `;
+            // Validate / resolve activePrimarySpeaker:
+            //   1. If stored value is valid, keep it.
+            //   2. Otherwise fall back to the most-common speaker.
+            if (!activePrimarySpeaker || !counts[activePrimarySpeaker]) {
+                activePrimarySpeaker = uniqueSpeakers[0] || null;
+                if (activePrimarySpeaker) {
+                    localStorage.setItem('qa_active_speaker', activePrimarySpeaker);
+                }
+            }
+
+            // Rebuild tabs — use data-speaker attribute so names with special chars are safe
+            tabsContainer.innerHTML = uniqueSpeakers.map(sp => {
+                const safeAttr = sp.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                const isActive = activePrimarySpeaker === sp;
+                return `<button class="speaker-tab ${isActive ? 'active' : ''}" data-speaker="${safeAttr}" onclick="switchPrimarySpeaker(this.dataset.speaker)">
+                    ${sp}<span class="tab-count">${counts[sp]}</span>
+                </button>`;
+            }).join('');
         }
 
-        // Switch primary speaker tab (tabLabel is 'all' or exact primary_speaker value)
+        // Switch primary speaker tab
         async function switchPrimarySpeaker(tabLabel) {
             activePrimarySpeaker = tabLabel;
+            localStorage.setItem('qa_active_speaker', tabLabel);
             // Update active class
             document.querySelectorAll('.speaker-tab').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.speaker === tabLabel);
@@ -1006,11 +1193,8 @@
             }
         }
 
-        // Update "All" tab count (individual tab counts are set in buildSpeakerTabs)
+        // Rebuild all tabs with fresh counts
         function updateTabCounts() {
-            const el = document.getElementById('tab-count-all');
-            if (el) el.textContent = transcriptsData.length;
-            // Rebuild all tabs with fresh counts
             buildSpeakerTabs();
         }
 
@@ -1677,12 +1861,33 @@
                             border: 1px solid #374151;
                         ">${previewText}</div>
                         ${progressBarHTML}
+                        ${(t.has_q_and_a && typeof getTranscriptQAPairs === 'function' && getTranscriptQAPairs(t).length > 0) ? (() => {
+                            const tQAPairs = getTranscriptQAPairs(t);
+                            return `
+                            <div onclick="togglePerTranscriptQA(${t.id})" style="
+                                background-color:#4a0e7e;color:#e0b0ff;padding:7px 14px;
+                                border-radius:6px;margin-top:14px;cursor:pointer;font-size:0.88em;
+                                font-weight:600;display:inline-flex;align-items:center;gap:7px;">
+                                <span id="qa-toggle-icon-${t.id}">▶</span> Show Q&amp;A (${tQAPairs.length} exchanges)
+                            </div>
+                            <div id="qa-per-transcript-panel-${t.id}" class="qa-per-transcript-panel" style="display:none;">
+                                ${tQAPairs.map(pair => `
+                                    <div class="qa-pair">
+                                        <div class="q-text"><span class="q-label">Q:</span> ${pair.questionText}</div>
+                                        <div class="a-text"><span class="a-label">A:</span> ${pair.responseText}</div>
+                                    </div>`).join('')}
+                            </div>`;
+                        })() : ''}
                     </div>
                 `;
             }).join('');
                 console.warn('Cards HTML generated, length:', cardsHtml.length, 'first 200 chars:', cardsHtml.substring(0, 200));
                 container.innerHTML = cardsHtml;
                 console.warn('Container innerHTML set, children:', container.children.length);
+                // Update the Q&A Analysis section
+                if (typeof updateQAAnalysis === 'function') {
+                    updateQAAnalysis(transcripts);
+                }
             } catch (error) {
                 console.error('Error displaying transcripts:', error);
                 container.innerHTML = '<div class="empty-state"><h3>Error displaying transcripts</h3><p>Please check the console for details.</p></div>';
@@ -2558,8 +2763,217 @@
             // Apply initial filters to show transcripts within default date range
             applyFilters();
         });
+
+        // ===== Q&A ANALYSIS =====
+
+        function qaAverage(arr) {
+            return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+        }
+        function qaStdDev(arr) {
+            if (arr.length < 2) return 0;
+            const avg = qaAverage(arr);
+            return Math.sqrt(arr.reduce((sum, x) => sum + Math.pow(x - avg, 2), 0) / arr.length);
+        }
+
+        /**
+         * Get Q&A pairs using ONLY the pre-computed data stored during data entry.
+         * Never falls back to client-side detection.
+         */
+        function getTranscriptQAPairs(t) {
+            if (!t.has_q_and_a) return [];
+            if (t.qa_analytics && Array.isArray(t.qa_analytics.pairs) && t.qa_analytics.pairs.length > 0) {
+                return t.qa_analytics.pairs.map(p => ({
+                    questionSpeaker:   p.questionSpeaker   || '',
+                    questionText:      p.questionText      || '',
+                    responseSpeaker:   p.responseSpeaker   || '',
+                    responseText:      p.responseText      || '',
+                    responseWordCount: p.responseWordCount || 0,
+                    questionStart:     p.questionStart
+                }));
+            }
+            return [];
+        }
+
+        /**
+         * Estimate what % through a speech Q&A starts.
+         * Uses timestamp data if available, falls back to dialogue segment index.
+         */
+        function getQAStartPosition(t) {
+            if (!t.has_q_and_a) return null;
+            const pairs = getTranscriptQAPairs(t);
+            if (pairs.length === 0) return null;
+
+            const firstPair = pairs[0];
+            const questionStart = firstPair.questionStart;
+
+            if (questionStart != null && t.dialogue && Array.isArray(t.dialogue) && t.dialogue.length > 0) {
+                let maxTime = 0;
+                for (const seg of t.dialogue) {
+                    const ts = seg.start_seconds ?? seg.startSeconds;
+                    if (ts != null && ts > maxTime) maxTime = ts;
+                }
+                if (maxTime > 0) return Math.min(100, (questionStart / maxTime) * 100);
+            }
+
+            if (t.dialogue && Array.isArray(t.dialogue) && t.dialogue.length > 0) {
+                for (let i = 0; i < t.dialogue.length; i++) {
+                    const seg = t.dialogue[i];
+                    if (seg.speaker === firstPair.questionSpeaker && seg.text === firstPair.questionText) {
+                        return (i / t.dialogue.length) * 100;
+                    }
+                }
+            }
+            return null;
+        }
+
+        function renderSDBand(containerId, avg, sd) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            const lo = Math.max(0, avg - sd).toFixed(1);
+            const hi = (avg + sd).toFixed(1);
+            el.textContent = `±1 SD range: ${lo} – ${hi}`;
+        }
+
+        function renderQAList(pairs) {
+            const listEl = document.getElementById('qaList');
+            if (!listEl) return;
+
+            const query = (document.getElementById('qaSearchInput')?.value || '').toLowerCase().trim();
+            const scope = document.querySelector('input[name="qaSearchScope"]:checked')?.value || 'question';
+
+            let filtered = pairs;
+            if (query) {
+                filtered = pairs.filter(p => {
+                    const hay = (scope === 'question' ? p.questionText : p.responseText) || '';
+                    return hay.toLowerCase().includes(query);
+                });
+            }
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = '<div class="qa-empty-notice"><h3>No Q&amp;A pairs match your search.</h3></div>';
+                return;
+            }
+
+            const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const highlight = (text, q) => {
+                if (!q) return text;
+                const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');
+                return text.replace(re, m => `<mark style="background:#fbbf24;color:#111;border-radius:2px;padding:0 2px">${m}</mark>`);
+            };
+
+            listEl.innerHTML = filtered.map(p => {
+                let qText = esc(p.questionText);
+                let aText = esc(p.responseText);
+                if (query) {
+                    if (scope === 'question') qText = highlight(qText, query);
+                    else                      aText = highlight(aText, query);
+                }
+                const meta = [p.transcriptTitle, p.transcriptDate].filter(Boolean).join(' | ');
+                return `<div class="qa-pair-card">
+                    <div class="qa-meta">${esc(meta)}</div>
+                    <div class="qa-q"><strong>Q: ${esc(p.questionSpeaker)}</strong> ${qText}</div>
+                    <div class="qa-a"><strong>A: ${esc(p.responseSpeaker)}</strong> ${aText}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function filterQAList() {
+            if (window._qaAllPairs) renderQAList(window._qaAllPairs);
+        }
+
+        /**
+         * Compute and render the full Q&A Analysis section for the given transcript array.
+         */
+        function updateQAAnalysis(transcripts) {
+            const selectedCategories = Array.from(
+                document.querySelectorAll('#categoriesFilter input:checked')
+            ).map(cb => cb.value);
+
+            const formatNotice = document.getElementById('qaFormatNotice');
+            const qaContent    = document.getElementById('qaAnalysisContent');
+            if (!formatNotice || !qaContent) return;
+
+            if (selectedCategories.length === 0) {
+                formatNotice.style.display = 'block';
+                qaContent.style.display    = 'none';
+                return;
+            }
+            formatNotice.style.display = 'none';
+            qaContent.style.display    = 'block';
+
+            const scopedTranscripts = transcripts.filter(t => selectedCategories.includes(t.speech_type));
+            const total = scopedTranscripts.length;
+
+            if (total === 0) {
+                ['qaChancePercent','qaAvgQuestions','qaAvgResponseLen','qaAvgPosition'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = '—';
+                });
+                document.getElementById('qaChanceSub').textContent = 'No transcripts in selected format(s)';
+                window._qaAllPairs = [];
+                renderQAList([]);
+                return;
+            }
+
+            // % chance of Q&A — uses has_q_and_a from data entry (authoritative)
+            const withQAFlag = scopedTranscripts.filter(t => t.has_q_and_a);
+            const chancePercent = ((withQAFlag.length / total) * 100).toFixed(1);
+            document.getElementById('qaChancePercent').textContent = chancePercent + '%';
+            document.getElementById('qaChanceSub').textContent =
+                `${withQAFlag.length} of ${total} speeches have Q&A (selected format${selectedCategories.length > 1 ? 's' : ''})`;
+
+            const withPairs = withQAFlag.map(t => ({...t, _qaPairs: getTranscriptQAPairs(t)}))
+                                         .filter(t => t._qaPairs.length > 0);
+
+            const qCounts = withPairs.map(t => t._qaPairs.length);
+            const avgQ = qaAverage(qCounts);
+            document.getElementById('qaAvgQuestions').textContent = avgQ > 0 ? avgQ.toFixed(1) : '—';
+            document.getElementById('qaQuestionsSub').textContent = `per speech with Q&A (n=${withPairs.length})`;
+            renderSDBand('qaQuestionsBand', avgQ, qaStdDev(qCounts));
+
+            const respLens = withPairs.flatMap(t => t._qaPairs.map(p => p.responseWordCount || 0));
+            const avgR = qaAverage(respLens);
+            document.getElementById('qaAvgResponseLen').textContent = respLens.length > 0 ? Math.round(avgR) : '—';
+            document.getElementById('qaResponseLenSub').textContent = `words per answer (n=${respLens.length} pairs)`;
+            renderSDBand('qaResponseLenBand', avgR, qaStdDev(respLens));
+
+            const positions = withQAFlag.map(t => getQAStartPosition(t)).filter(p => p !== null);
+            if (positions.length > 0) {
+                const avgPos = qaAverage(positions);
+                document.getElementById('qaAvgPosition').textContent = Math.round(avgPos) + '%';
+                document.getElementById('qaPositionSub').textContent = `into the speech when Q&A begins (n=${positions.length})`;
+                renderSDBand('qaPositionBand', avgPos, qaStdDev(positions));
+            } else {
+                document.getElementById('qaAvgPosition').textContent = '—';
+                document.getElementById('qaPositionSub').textContent = 'position data unavailable';
+                const el = document.getElementById('qaPositionBand');
+                if (el) el.textContent = '';
+            }
+
+            window._qaAllPairs = withPairs.flatMap(t =>
+                t._qaPairs.map(p => ({
+                    ...p,
+                    transcriptTitle: cleanDisplayTitle(t.title) || '',
+                    transcriptDate:  t.date || ''
+                }))
+            );
+            renderQAList(window._qaAllPairs);
+        }
+
+        function togglePerTranscriptQA(transcriptId) {
+            const panel = document.getElementById(`qa-per-transcript-panel-${transcriptId}`);
+            const icon  = document.getElementById(`qa-toggle-icon-${transcriptId}`);
+            if (!panel) return;
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                if (icon) icon.textContent = '▼';
+            } else {
+                panel.style.display = 'none';
+                if (icon) icon.textContent = '▶';
+            }
+        }
     </script>
 
 </body>
 </html>
-<!-- deploy 1766107584 -->
+<!-- deploy 1766200000 -->
