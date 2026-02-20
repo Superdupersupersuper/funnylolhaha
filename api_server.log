@@ -51,3 +51,6 @@ Press Ctrl+C to stop
 2026-02-18 10:19:21,615 - INFO - ⚠️ Database is empty - attempting to restore from backup...
 2026-02-18 10:19:21,616 - INFO - ℹ️ No backup file found - starting with empty database
 2026-02-18 10:19:21,619 - INFO - 127.0.0.1 - - [18/Feb/2026 10:19:21] "GET /api/topics HTTP/1.1" 200 -
+2026-02-20 12:46:24,521 - INFO - 127.0.0.1 - - [20/Feb/2026 12:46:24] "[33mGET /test HTTP/1.1[0m" 404 -
+2026-02-20 12:46:34,136 - INFO - 127.0.0.1 - - [20/Feb/2026 12:46:34] "[33mGET /test HTTP/1.1[0m" 404 -
+2026-02-20 12:46:36,286 - INFO - 127.0.0.1 - - [20/Feb/2026 12:46:36] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
