@@ -664,6 +664,20 @@ def serve_frontend():
             'api_endpoints': ['/api/health', '/api/stats', '/api/transcripts']
         }), 404
 
+@app.route('/analytics_ui_test.html', methods=['GET'])
+@app.route('/test', methods=['GET'])
+def serve_test_frontend():
+    """Serve the test / preview UI (analytics_ui_test.html)"""
+    try:
+        html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'analytics_ui_test.html')
+        with open(html_path, 'r', encoding='utf-8') as f:
+            return f.read(), 200, {'Content-Type': 'text/html; charset=utf-8'}
+    except FileNotFoundError:
+        return jsonify({
+            'error': 'Test UI not found',
+            'message': 'analytics_ui_test.html is missing. Run the test build first.'
+        }), 404
+
 @app.route('/admin', methods=['GET'])
 def serve_admin():
     """Serve the admin UI"""
