@@ -7,7 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
-            margin: 0;
+            margin: 0
             padding: 0;
             box-sizing: border-box;
         }
@@ -1871,10 +1871,9 @@
                 }
 
                 // Per-transcript Q&A panel (TEST UI addition)
+                // Only show if the transcript was marked as having Q&A during data entry.
                 let perTranscriptQAHTML = '';
-                // getTranscriptQAPairs may not be defined yet on first render;
-                // guard against that with a typeof check.
-                if (typeof getTranscriptQAPairs === 'function') {
+                if (typeof getTranscriptQAPairs === 'function' && t.has_q_and_a) {
                     const tQAPairs = getTranscriptQAPairs(t);
                     if (tQAPairs.length > 0) {
                         const escP = s => String(s)
@@ -2643,10 +2642,8 @@
         });
 
         // Load transcript data from API (FULL transcripts from database)
-        // Use production Render API by default, fallback to localhost for development
-        const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-            ? 'http://localhost:5001' 
-            : 'https://funnylolhaha.onrender.com';
+        // TEST UI: always use the production API so real data is available during local preview.
+        const API_BASE = 'https://funnylolhaha.onrender.com';
         const API_URL = `${API_BASE}/api/transcripts`;
 
         // Load transcript data from API
@@ -2902,23 +2899,25 @@
         }
 
         /**
-         * Get Q&A pairs for a transcript:
-         *   1. Prefer pre-computed qa_analytics.pairs from the backend.
-         *   2. Fall back to detecting from the dialogue array.
+         * Get Q&A pairs for a transcript using ONLY the pre-computed data stored
+         * during manual data entry (has_q_and_a + qa_analytics.pairs).
+         * Never runs client-side detection — that data was already carefully
+         * logged at import time and is far more accurate.
          */
         function getTranscriptQAPairs(t) {
+            // Respect the explicit has_q_and_a flag set during data entry
+            if (!t.has_q_and_a) return [];
             if (t.qa_analytics && Array.isArray(t.qa_analytics.pairs) && t.qa_analytics.pairs.length > 0) {
                 return t.qa_analytics.pairs.map(p => ({
-                    questionSpeaker:  p.questionSpeaker || '',
-                    questionText:     p.questionText    || '',
-                    responseSpeaker:  p.responseSpeaker || '',
-                    responseText:     p.responseText    || '',
+                    questionSpeaker:   p.questionSpeaker   || '',
+                    questionText:      p.questionText      || '',
+                    responseSpeaker:   p.responseSpeaker   || '',
+                    responseText:      p.responseText      || '',
                     responseWordCount: p.responseWordCount || 0
                 }));
             }
-            if (t.dialogue && Array.isArray(t.dialogue)) {
-                return detectQAPairsFromDialogue(t.dialogue, t.primary_speaker || '');
-            }
+            // has_q_and_a is true but no pairs stored yet — surface as Q&A-positive
+            // with no pairs (won't inflate avg metrics but will count toward % chance)
             return [];
         }
 
@@ -3036,37 +3035,38 @@
                 return;
             }
 
-            // Attach Q&A pairs to each transcript
-            const withPairs = scopedTranscripts.map(t => ({
-                ...t,
-                _qaPairs: getTranscriptQAPairs(t)
-            }));
-            const withQA = withPairs.filter(t => t._qaPairs.length > 0);
-
-            // --- % chance of Q&A ---
-            const chancePercent = ((withQA.length / total) * 100).toFixed(1);
+            // --- % chance of Q&A (use has_q_and_a flag set during data entry) ---
+            // This is the authoritative signal — more accurate than pair detection.
+            const withQAFlag = scopedTranscripts.filter(t => t.has_q_and_a);
+            const chancePercent = ((withQAFlag.length / total) * 100).toFixed(1);
             document.getElementById('qaChancePercent').textContent = chancePercent + '%';
             document.getElementById('qaChanceSub').textContent =
-                `${withQA.length} of ${total} speeches have Q&A (selected format${selectedCategories.length > 1 ? 's' : ''})`;
+                `${withQAFlag.length} of ${total} speeches have Q&A (selected format${selectedCategories.length > 1 ? 's' : ''})`;
 
-            // --- Avg questions per speech (only over speeches that have Q&A) ---
-            const qCounts    = withQA.map(t => t._qaPairs.length);
-            const avgQ       = qaAverage(qCounts);
-            const sdQ        = qaStdDev(qCounts);
-            document.getElementById('qaAvgQuestions').textContent = avgQ.toFixed(1);
-            document.getElementById('qaQuestionsSub').textContent = `per speech with Q&A (n=${withQA.length})`;
+            // Attach stored pairs (only for Q&A-positive transcripts)
+            const withPairs = withQAFlag.map(t => ({
+                ...t,
+                _qaPairs: getTranscriptQAPairs(t)
+            })).filter(t => t._qaPairs.length > 0);
+
+            // --- Avg questions per speech (only over speeches with stored pairs) ---
+            const qCounts = withPairs.map(t => t._qaPairs.length);
+            const avgQ    = qaAverage(qCounts);
+            const sdQ     = qaStdDev(qCounts);
+            document.getElementById('qaAvgQuestions').textContent = avgQ > 0 ? avgQ.toFixed(1) : '—';
+            document.getElementById('qaQuestionsSub').textContent = `per speech with Q&A (n=${withPairs.length})`;
             renderSDBand('qaQuestionsBand', avgQ, sdQ);
 
-            // --- Avg response length across all pairs ---
-            const respLens   = withQA.flatMap(t => t._qaPairs.map(p => p.responseWordCount || 0));
-            const avgR       = qaAverage(respLens);
-            const sdR        = qaStdDev(respLens);
-            document.getElementById('qaAvgResponseLen').textContent = Math.round(avgR);
+            // --- Avg response length across all stored pairs ---
+            const respLens = withPairs.flatMap(t => t._qaPairs.map(p => p.responseWordCount || 0));
+            const avgR     = qaAverage(respLens);
+            const sdR      = qaStdDev(respLens);
+            document.getElementById('qaAvgResponseLen').textContent = respLens.length > 0 ? Math.round(avgR) : '—';
             document.getElementById('qaResponseLenSub').textContent = `words per answer (n=${respLens.length} pairs)`;
             renderSDBand('qaResponseLenBand', avgR, sdR);
 
             // --- Build flat Q&A list for search/display ---
-            window._qaAllPairs = withQA.flatMap(t =>
+            window._qaAllPairs = withPairs.flatMap(t =>
                 t._qaPairs.map(p => ({
                     ...p,
                     transcriptTitle: cleanDisplayTitle(t.title) || '',
