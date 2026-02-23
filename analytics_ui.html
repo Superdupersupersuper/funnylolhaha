@@ -1116,6 +1116,8 @@
         // activePrimarySpeaker is the exact primary_speaker label (never 'all').
         // Persisted in localStorage; falls back to most-common speaker after data loads.
         let activePrimarySpeaker = localStorage.getItem('qa_active_speaker') || null;
+        // True once the full transcript data (with dialogue) has been loaded from the API.
+        let fullDataLoaded = false;
 
         // Check if a transcript belongs to the given tab label (case-insensitive via speakerMatchesPrimary)
         function transcriptMatchesPrimarySpeaker(transcript, tabLabel) {
@@ -2146,7 +2148,14 @@
 
                 if (results.length === 0) {
                     const searchedFor = combinedTerms.join(', ');
-                    document.getElementById('transcriptsSection').innerHTML = `
+                    // Check if full data hasn't loaded yet — tell the user to wait rather than showing false "no results"
+                    const stillLoading = !fullDataLoaded && document.getElementById('fullDataLoadingBanner');
+                    document.getElementById('transcriptsSection').innerHTML = stillLoading ? `
+                        <div class="empty-state">
+                            <h3>⏳ Still loading transcript content…</h3>
+                            <p>Full transcript text is being fetched. Please wait a moment and search again.</p>
+                        </div>
+                    ` : `
                         <div class="empty-state">
                             <h3>No results found for "${searchedFor}"</h3>
                             <p>Try different keywords, adjust your filters, or switch the primary speaker tab</p>
@@ -2632,6 +2641,13 @@
                         console.log(`✅ Loaded ${metadata.length} transcript metadata entries`);
                         // If we have metadata, fetch full data in background
                         if (metadata.length > 0) {
+                            // Show a subtle loading banner so the user knows content is still loading
+                            const banner = document.createElement('div');
+                            banner.id = 'fullDataLoadingBanner';
+                            banner.style.cssText = 'position:fixed;bottom:16px;right:16px;background:#1e3a5f;color:#93c5fd;border:1px solid #2563eb;border-radius:8px;padding:10px 16px;font-size:13px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.4);';
+                            banner.textContent = '⏳ Loading full transcript content…';
+                            document.body.appendChild(banner);
+
                             fetch(API_URL).then(fullResponse => {
                                 if (fullResponse.ok) {
                                     return fullResponse.json();
@@ -2640,7 +2656,11 @@
                             }).then(async fullData => {
                                 if (fullData.length > 0) {
                                     transcriptsData = fullData;
+                                    fullDataLoaded = true;
                                     console.log(`✅ Loaded full transcript data: ${fullData.length} transcripts`);
+                                    // Remove loading banner
+                                    const b = document.getElementById('fullDataLoadingBanner');
+                                    if (b) b.remove();
                                     // Rebuild tabs + filters with full data (dialogue available for search)
                                     buildSpeakerTabs();
                                     await refreshFiltersForActiveTab();
@@ -2652,6 +2672,8 @@
                                 }
                             }).catch(err => {
                                 console.warn('Background full data load failed:', err);
+                                const b = document.getElementById('fullDataLoadingBanner');
+                                if (b) { b.style.background = '#7f1d1d'; b.style.color = '#fca5a5'; b.textContent = '⚠️ Could not load full content — search may show no results'; }
                             });
                         }
                         // Return metadata for immediate display
@@ -2684,6 +2706,7 @@
                     console.log('   Response size:', text.length, 'bytes');
                     
                     transcriptsData = JSON.parse(text);
+                    fullDataLoaded = true;
                     console.log(`✅ Loaded ${transcriptsData.length} transcripts from API`);
                 } catch (fetchError) {
                     clearTimeout(timeoutId);
