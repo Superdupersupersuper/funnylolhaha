@@ -948,10 +948,26 @@
             </div>
         </div>
 
-        <!-- HIT RATE CHART — shown only when search results exist -->
-        <div id="hitrateSection" style="display:none; background:#2d3748; border-radius:8px; padding:20px; height:300px; margin-bottom:20px;">
-            <div class="chart-title">Historical Hit Rate — % of Events with 1+, 2+, and 3+ Mentions</div>
-            <canvas id="hitrateChart" style="height:calc(100% - 35px); width:100%;"></canvas>
+        <!-- HIT RATE STATS — shown only when search results exist -->
+        <div id="hitrateSection" style="display:none; background:#2d3748; border-radius:8px; padding:20px; margin-bottom:20px;">
+            <div class="chart-title" style="margin-bottom:14px;">Historical Hit Rate</div>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:15px;">
+                <div class="qa-metric-card">
+                    <div class="qa-metric-value" id="hitrate1Plus">—</div>
+                    <div class="qa-metric-label">1+ Mentions</div>
+                    <div class="qa-metric-sub" id="hitrate1PlusSub">— of — events</div>
+                </div>
+                <div class="qa-metric-card">
+                    <div class="qa-metric-value" id="hitrate2Plus" style="color:#f59e0b;">—</div>
+                    <div class="qa-metric-label">2+ Mentions</div>
+                    <div class="qa-metric-sub" id="hitrate2PlusSub">— of — events</div>
+                </div>
+                <div class="qa-metric-card">
+                    <div class="qa-metric-value" id="hitrate3Plus" style="color:#10b981;">—</div>
+                    <div class="qa-metric-label">3+ Mentions</div>
+                    <div class="qa-metric-sub" id="hitrate3PlusSub">— of — events</div>
+                </div>
+            </div>
         </div>
 
         <!-- FILTERS SECTION - HORIZONTAL -->
@@ -1116,7 +1132,6 @@
         // API_BASE declared later with conditional logic
         let mentionsChart = null;
         let locationChart = null;
-        let hitrateChart = null;
         let allTranscripts = [];
         let transcriptsData = [];
         let additionalSearchTerms = [];
@@ -1619,92 +1634,6 @@
                 }
             });
 
-            // BAR CHART for historical hit rate (1+, 2+, 3+ mentions per month)
-            const hitrateCtx = document.getElementById('hitrateChart').getContext('2d');
-            hitrateChart = new Chart(hitrateCtx, {
-                type: 'bar',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: '1+ mentions',
-                            data: [],
-                            backgroundColor: 'rgba(59,130,246,0.75)',
-                            borderColor: '#3b82f6',
-                            borderWidth: 1,
-                            borderRadius: 3
-                        },
-                        {
-                            label: '2+ mentions',
-                            data: [],
-                            backgroundColor: 'rgba(245,158,11,0.75)',
-                            borderColor: '#f59e0b',
-                            borderWidth: 1,
-                            borderRadius: 3
-                        },
-                        {
-                            label: '3+ mentions',
-                            data: [],
-                            backgroundColor: 'rgba(16,185,129,0.75)',
-                            borderColor: '#10b981',
-                            borderWidth: 1,
-                            borderRadius: 3
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: 'top',
-                            labels: { color: '#d1d5db', font: { size: 11 }, boxWidth: 12 }
-                        },
-                        tooltip: {
-                            backgroundColor: '#1a2332',
-                            titleColor: '#f3f4f6',
-                            bodyColor: '#d1d5db',
-                            borderColor: '#374151',
-                            borderWidth: 1,
-                            callbacks: {
-                                label: function(context) {
-                                    return `${context.dataset.label}: ${context.parsed.y}%`;
-                                },
-                                afterBody: function(items) {
-                                    const idx = items[0].dataIndex;
-                                    const rawData = hitrateChart._hitrateRaw;
-                                    if (!rawData || !rawData[idx]) return [];
-                                    const d = rawData[idx];
-                                    return [`(${d.hit1}/${d.total} events)`];
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { color: '#374151' },
-                            ticks: { color: '#9ca3af', font: { size: 11 }, maxRotation: 45, minRotation: 0 }
-                        },
-                        y: {
-                            grid: { color: '#374151' },
-                            ticks: {
-                                color: '#9ca3af',
-                                font: { size: 11 },
-                                callback: v => v + '%'
-                            },
-                            min: 0,
-                            max: 100,
-                            title: {
-                                display: true,
-                                text: 'Hit Rate %',
-                                color: '#9ca3af',
-                                font: { size: 11 }
-                            }
-                        }
-                    }
-                }
-            });
         }
 
         // Rebuild Speakers, Events, Categories filters based on the active tab.
@@ -2129,9 +2058,6 @@
                 locationChart.data.datasets[0].data = [];
                 locationChart.data.datasets[1].data = [];
                 locationChart.update();
-                hitrateChart.data.labels = [];
-                hitrateChart.data.datasets.forEach(ds => ds.data = []);
-                hitrateChart.update();
                 document.getElementById('hitrateSection').style.display = 'none';
                 searchBtn.textContent = '🔍';
                 searchBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
@@ -2403,7 +2329,7 @@
             locationChart.update();
         }
 
-        // Update historical hit-rate chart (1+, 2+, 3+ mentions grouped by month)
+        // Update historical hit-rate stats (1+, 2+, 3+ mentions across all events in range)
         function updateHitrateChart(results) {
             const startDate = new Date(document.getElementById('startDate').value);
             const endDate   = new Date(document.getElementById('endDate').value);
@@ -2428,35 +2354,23 @@
             const mentionMap = new Map();
             results.forEach(r => mentionMap.set(r.id, r.mention_count || 0));
 
-            // Group by month
-            const monthMap = new Map(); // 'YYYY-MM' → { total, hit1, hit2, hit3 }
+            const total = allInRange.length;
+            let hit1 = 0, hit2 = 0, hit3 = 0;
             allInRange.forEach(t => {
-                const key = t.date.substring(0, 7);
-                if (!monthMap.has(key)) monthMap.set(key, { total: 0, hit1: 0, hit2: 0, hit3: 0 });
-                const m = monthMap.get(key);
-                m.total++;
                 const mentions = mentionMap.get(t.id) || 0;
-                if (mentions >= 1) m.hit1++;
-                if (mentions >= 2) m.hit2++;
-                if (mentions >= 3) m.hit3++;
+                if (mentions >= 1) hit1++;
+                if (mentions >= 2) hit2++;
+                if (mentions >= 3) hit3++;
             });
 
-            const sortedKeys = [...monthMap.keys()].sort();
-            const rawData = sortedKeys.map(k => monthMap.get(k));
+            const pct = n => total ? (n / total * 100).toFixed(1) + '%' : '—';
 
-            // Friendly month labels: "Jan '25"
-            const labels = sortedKeys.map(k => {
-                const [y, mo] = k.split('-');
-                return new Date(parseInt(y), parseInt(mo) - 1, 1)
-                    .toLocaleString('default', { month: 'short' }) + " '" + y.slice(2);
-            });
-
-            hitrateChart._hitrateRaw = rawData;
-            hitrateChart.data.labels = labels;
-            hitrateChart.data.datasets[0].data = rawData.map(d => d.total ? Math.round(d.hit1 / d.total * 100) : 0);
-            hitrateChart.data.datasets[1].data = rawData.map(d => d.total ? Math.round(d.hit2 / d.total * 100) : 0);
-            hitrateChart.data.datasets[2].data = rawData.map(d => d.total ? Math.round(d.hit3 / d.total * 100) : 0);
-            hitrateChart.update();
+            document.getElementById('hitrate1Plus').textContent    = pct(hit1);
+            document.getElementById('hitrate1PlusSub').textContent = `${hit1} of ${total} events`;
+            document.getElementById('hitrate2Plus').textContent    = pct(hit2);
+            document.getElementById('hitrate2PlusSub').textContent = `${hit2} of ${total} events`;
+            document.getElementById('hitrate3Plus').textContent    = pct(hit3);
+            document.getElementById('hitrate3PlusSub').textContent = `${hit3} of ${total} events`;
 
             document.getElementById('hitrateSection').style.display = 'block';
         }
