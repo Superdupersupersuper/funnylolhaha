@@ -35,9 +35,6 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const transcriptWhere: Record<string, any> = {};
 
-    if (speaker) {
-      transcriptWhere.primary_speaker = { contains: speaker, mode: "insensitive" };
-    }
     if (theme) {
       transcriptWhere.key_themes = { has: theme };
     }
@@ -110,10 +107,8 @@ export async function GET(req: NextRequest) {
       }
       const entry = transcriptMap.get(tid)!;
 
-      const isPrimary = speakerMatchesPrimary(
-        seg.speaker,
-        seg.transcript.primary_speaker
-      );
+      const selectedSpeaker = speaker || seg.transcript.primary_speaker;
+      const isPrimary = speakerMatchesPrimary(seg.speaker, selectedSpeaker);
 
       // Count only primary-speaker occurrences
       const regex = new RegExp(escapeRegex(q), "gi");

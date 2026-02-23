@@ -52,15 +52,20 @@ export default function SearchPage() {
   // Expanded segments
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
+  const loadFilters = useCallback(async () => {
+    try {
+      const r = await fetch("/api/search/filters", { cache: "no-store" });
+      const data = await r.json();
+      if (data?.speakers) setFilters(data);
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // Fetch filter options on mount
   useEffect(() => {
-    fetch("/api/search/filters")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.speakers) setFilters(data);
-      })
-      .catch(() => {});
-  }, []);
+    loadFilters();
+  }, [loadFilters]);
 
   const doSearch = useCallback(async () => {
     if (!query.trim()) return;
@@ -125,13 +130,22 @@ export default function SearchPage() {
       <div className="mt-4 flex flex-wrap items-end gap-3">
         {filters.speakers.length > 0 && (
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              Speaker
-            </label>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label className="block text-xs text-muted-foreground">
+                Speaker
+              </label>
+              <button
+                type="button"
+                onClick={loadFilters}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Refresh
+              </button>
+            </div>
             <select
               value={speaker}
               onChange={(e) => setSpeaker(e.target.value)}
-              className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             >
               <option value="">All speakers</option>
               {filters.speakers.map((s) => (
@@ -140,6 +154,38 @@ export default function SearchPage() {
                 </option>
               ))}
             </select>
+
+            {/* Speaker tabs */}
+            <div className="mt-2 max-w-[520px] overflow-x-auto">
+              <div className="flex gap-1.5 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setSpeaker("")}
+                  className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-xs ${
+                    speaker === ""
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  All
+                </button>
+                {filters.speakers.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSpeaker(s)}
+                    className={`whitespace-nowrap rounded-full border px-2.5 py-1 text-xs ${
+                      speaker === s
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                    title={s}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

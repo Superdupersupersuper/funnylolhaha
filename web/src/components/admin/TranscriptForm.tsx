@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { parseOtterTranscript, type ParseResult, type ParsedSegment, type QAAnalytics } from "@/lib/parsers/otter";
 import { TagInput } from "./TagInput";
@@ -38,6 +38,9 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
   const router = useRouter();
   const isEdit = !!initialData;
 
+  // Available speakers (for quick re-use)
+  const [availableSpeakers, setAvailableSpeakers] = useState<string[]>([]);
+
   // Form fields
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [eventDate, setEventDate] = useState(initialData?.event_date ?? "");
@@ -69,6 +72,15 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/search/filters", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data?.speakers)) setAvailableSpeakers(data.speakers);
+      })
+      .catch(() => {});
+  }, []);
 
   // Parse the raw text
   const handleParse = useCallback(() => {
@@ -327,8 +339,14 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
               value={primarySpeaker}
               onChange={(e) => setPrimarySpeaker(e.target.value)}
               placeholder="e.g. Zohran Mamdani"
+              list="available-speakers"
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
+            <datalist id="available-speakers">
+              {availableSpeakers.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
           </div>
 
           {/* Total length */}
