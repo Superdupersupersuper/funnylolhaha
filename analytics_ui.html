@@ -948,6 +948,12 @@
             </div>
         </div>
 
+        <!-- HIT RATE CHART — shown only when search results exist -->
+        <div id="hitrateSection" style="display:none; background:#2d3748; border-radius:8px; padding:20px; height:300px; margin-bottom:20px;">
+            <div class="chart-title">Historical Hit Rate — % of Events with 1+, 2+, and 3+ Mentions</div>
+            <canvas id="hitrateChart" style="height:calc(100% - 35px); width:100%;"></canvas>
+        </div>
+
         <!-- FILTERS SECTION - HORIZONTAL -->
         <div class="filters-section">
             <div class="filters-title">Filters</div>
@@ -1110,6 +1116,7 @@
         // API_BASE declared later with conditional logic
         let mentionsChart = null;
         let locationChart = null;
+        let hitrateChart = null;
         let allTranscripts = [];
         let transcriptsData = [];
         let additionalSearchTerms = [];
@@ -1611,6 +1618,93 @@
                     }
                 }
             });
+
+            // BAR CHART for historical hit rate (1+, 2+, 3+ mentions per month)
+            const hitrateCtx = document.getElementById('hitrateChart').getContext('2d');
+            hitrateChart = new Chart(hitrateCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: '1+ mentions',
+                            data: [],
+                            backgroundColor: 'rgba(59,130,246,0.75)',
+                            borderColor: '#3b82f6',
+                            borderWidth: 1,
+                            borderRadius: 3
+                        },
+                        {
+                            label: '2+ mentions',
+                            data: [],
+                            backgroundColor: 'rgba(245,158,11,0.75)',
+                            borderColor: '#f59e0b',
+                            borderWidth: 1,
+                            borderRadius: 3
+                        },
+                        {
+                            label: '3+ mentions',
+                            data: [],
+                            backgroundColor: 'rgba(16,185,129,0.75)',
+                            borderColor: '#10b981',
+                            borderWidth: 1,
+                            borderRadius: 3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: { color: '#d1d5db', font: { size: 11 }, boxWidth: 12 }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1a2332',
+                            titleColor: '#f3f4f6',
+                            bodyColor: '#d1d5db',
+                            borderColor: '#374151',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y}%`;
+                                },
+                                afterBody: function(items) {
+                                    const idx = items[0].dataIndex;
+                                    const rawData = hitrateChart._hitrateRaw;
+                                    if (!rawData || !rawData[idx]) return [];
+                                    const d = rawData[idx];
+                                    return [`(${d.hit1}/${d.total} events)`];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#374151' },
+                            ticks: { color: '#9ca3af', font: { size: 11 }, maxRotation: 45, minRotation: 0 }
+                        },
+                        y: {
+                            grid: { color: '#374151' },
+                            ticks: {
+                                color: '#9ca3af',
+                                font: { size: 11 },
+                                callback: v => v + '%'
+                            },
+                            min: 0,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Hit Rate %',
+                                color: '#9ca3af',
+                                font: { size: 11 }
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         // Rebuild Speakers, Events, Categories filters based on the active tab.
@@ -2035,6 +2129,10 @@
                 locationChart.data.datasets[0].data = [];
                 locationChart.data.datasets[1].data = [];
                 locationChart.update();
+                hitrateChart.data.labels = [];
+                hitrateChart.data.datasets.forEach(ds => ds.data = []);
+                hitrateChart.update();
+                document.getElementById('hitrateSection').style.display = 'none';
                 searchBtn.textContent = '🔍';
                 searchBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
                 return;
@@ -2145,6 +2243,7 @@
                 displayTranscripts(results);
                 updateMentionsChart(results);
                 updateLocationChart(results);
+                updateHitrateChart(results);
 
                 if (results.length === 0) {
                     const searchedFor = combinedTerms.join(', ');
@@ -2302,6 +2401,64 @@
             locationChart.data.datasets[0].data = cumulativeData;
             locationChart.data.datasets[1].data = firstMentionData;
             locationChart.update();
+        }
+
+        // Update historical hit-rate chart (1+, 2+, 3+ mentions grouped by month)
+        function updateHitrateChart(results) {
+            const startDate = new Date(document.getElementById('startDate').value);
+            const endDate   = new Date(document.getElementById('endDate').value);
+            const minWordCount = parseInt(document.getElementById('minWordCount').value) || 0;
+            const selectedCategories = Array.from(document.querySelectorAll('#categoriesFilter input:checked')).map(cb => cb.value);
+
+            // All transcripts in the active tab / date range (denominator)
+            const tabData = getFilteredByPrimarySpeaker(transcriptsData);
+            const allInRange = tabData.filter(t => {
+                const tDate = new Date(t.date);
+                return tDate >= startDate && tDate <= endDate
+                    && (selectedCategories.length === 0 || selectedCategories.includes(t.speech_type))
+                    && (t.word_count || 0) >= minWordCount;
+            });
+
+            if (allInRange.length === 0) {
+                document.getElementById('hitrateSection').style.display = 'none';
+                return;
+            }
+
+            // Build a quick lookup: transcript id → mention_count from search results
+            const mentionMap = new Map();
+            results.forEach(r => mentionMap.set(r.id, r.mention_count || 0));
+
+            // Group by month
+            const monthMap = new Map(); // 'YYYY-MM' → { total, hit1, hit2, hit3 }
+            allInRange.forEach(t => {
+                const key = t.date.substring(0, 7);
+                if (!monthMap.has(key)) monthMap.set(key, { total: 0, hit1: 0, hit2: 0, hit3: 0 });
+                const m = monthMap.get(key);
+                m.total++;
+                const mentions = mentionMap.get(t.id) || 0;
+                if (mentions >= 1) m.hit1++;
+                if (mentions >= 2) m.hit2++;
+                if (mentions >= 3) m.hit3++;
+            });
+
+            const sortedKeys = [...monthMap.keys()].sort();
+            const rawData = sortedKeys.map(k => monthMap.get(k));
+
+            // Friendly month labels: "Jan '25"
+            const labels = sortedKeys.map(k => {
+                const [y, mo] = k.split('-');
+                return new Date(parseInt(y), parseInt(mo) - 1, 1)
+                    .toLocaleString('default', { month: 'short' }) + " '" + y.slice(2);
+            });
+
+            hitrateChart._hitrateRaw = rawData;
+            hitrateChart.data.labels = labels;
+            hitrateChart.data.datasets[0].data = rawData.map(d => d.total ? Math.round(d.hit1 / d.total * 100) : 0);
+            hitrateChart.data.datasets[1].data = rawData.map(d => d.total ? Math.round(d.hit2 / d.total * 100) : 0);
+            hitrateChart.data.datasets[2].data = rawData.map(d => d.total ? Math.round(d.hit3 / d.total * 100) : 0);
+            hitrateChart.update();
+
+            document.getElementById('hitrateSection').style.display = 'block';
         }
 
         // Update statistics with proportional, color-coded bars
