@@ -1389,6 +1389,11 @@
                 console.log('Min word count:', minWordCount);
                 console.log('Categories:', selectedCategories);
                 console.log('Total transcripts to search:', transcriptsData.length);
+                console.log('Transcript word_counts sample:', transcriptsData.slice(0, 5).map(t => `${t.title?.substring(0, 30)}: ${t.word_count}`));
+                console.log('Transcripts after date/cat/wc filter:', transcriptsData.filter(t => {
+                    const tDate = new Date(t.date);
+                    return tDate >= startDate && tDate <= endDate && selectedCategories.includes(t.speech_type) && (t.word_count || 0) >= minWordCount;
+                }).length);
 
                 // Client-side search — only primary speaker's dialogue counts
                 const results = transcriptsData.filter(t => {
@@ -1397,24 +1402,40 @@
                     if (!selectedCategories.includes(t.speech_type)) return false;
                     if ((t.word_count || 0) < minWordCount) return false;
 
-                    const preview = t.preview || '';
-                    const lines = preview.split('\n');
                     const primarySpeaker = t.primary_speaker || '';
 
-                    // Build primary-speaker sections
+                    // Use pre-parsed dialogue array when available (handles inline Otter format)
+                    if (t.dialogue && Array.isArray(t.dialogue) && t.dialogue.length > 0) {
+                        const primaryText = t.dialogue
+                            .filter(seg => speakerMatchesPrimary(seg.speaker || '', primarySpeaker))
+                            .map(seg => seg.text || '')
+                            .join(' ')
+                            .toLowerCase();
+                        return terms.some(term => termMatches(primaryText, term));
+                    }
+
+                    // Fallback: parse preview text — handle both inline and multi-line formats
+                    const preview = t.preview || '';
+                    const lines = preview.split('\n');
                     let primarySections = [];
                     let currentSpeakerIsPrimary = false;
                     for (let i = 0; i < lines.length; i++) {
                         const trimmed = lines[i].trim();
+                        if (!trimmed) continue;
+                        // Inline format: "Speaker Name (0:00): text content"
+                        const inlineMatch = trimmed.match(/^(.+?)\s*\(\d+:\d+(?::\d+)?\):\s*(.+)$/s);
+                        if (inlineMatch) {
+                            if (speakerMatchesPrimary(inlineMatch[1].trim(), primarySpeaker)) {
+                                primarySections.push(inlineMatch[2].trim());
+                            }
+                            continue;
+                        }
+                        // Multi-line format: standalone speaker header line
                         const isSpeakerHeader = /^([A-Za-z][A-Za-z\s.\-,']+?)(\s*\([^)]*\))?(\s+\d{1,2}:\d{2})?\s*:?\s*$/.test(trimmed) && trimmed.length < 80;
                         if (isSpeakerHeader) {
-                            const name = trimmed
-                                .replace(/\s*\([^)]*\)\s*$/, '')
-                                .replace(/\s+\d{1,2}:\d{2}\s*$/, '')
-                                .replace(/:\s*$/, '')
-                                .trim();
+                            const name = trimmed.replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+\d{1,2}:\d{2}\s*$/, '').replace(/:\s*$/, '').trim();
                             currentSpeakerIsPrimary = speakerMatchesPrimary(name, primarySpeaker);
-                        } else if (currentSpeakerIsPrimary && trimmed) {
+                        } else if (currentSpeakerIsPrimary) {
                             primarySections.push(trimmed);
                         }
                     }
@@ -1423,7 +1444,6 @@
                     return terms.some(term => termMatches(primaryText, term));
                 }).map(t => {
                     const preview = t.preview || '';
-                    const lines = preview.split('\n');
                     const primarySpeaker = t.primary_speaker || '';
                     const mentions = [];
                     const mentionLocations = [];
@@ -1431,45 +1451,73 @@
                     let mentionCount = 0;
                     let otherMentionCount = 0;
 
-                    // Parse ALL speaker sections with positions
+                    // Build sections — prefer structured dialogue, fall back to text parsing
                     let sections = []; // { speaker, text, position, isPrimary }
-                    let currentSpeaker = '';
-                    let currentIsPrimary = false;
-                    let currentPos = 0;
-                    let sectionStart = 0;
-                    let sectionLines = [];
 
-                    function flushSection() {
-                        if (sectionLines.length > 0 && currentSpeaker) {
+                    if (t.dialogue && Array.isArray(t.dialogue) && t.dialogue.length > 0) {
+                        let pos = 0;
+                        for (const seg of t.dialogue) {
+                            const spk = seg.speaker || '';
+                            const txt = seg.text || '';
                             sections.push({
-                                speaker: currentSpeaker,
-                                text: sectionLines.join(' '),
-                                position: sectionStart,
-                                isPrimary: currentIsPrimary
+                                speaker: spk,
+                                text: txt,
+                                position: pos,
+                                isPrimary: speakerMatchesPrimary(spk, primarySpeaker)
                             });
+                            pos += txt.length + 1;
                         }
-                        sectionLines = [];
-                    }
+                    } else {
+                        const lines = preview.split('\n');
+                        let currentSpeaker = '';
+                        let currentIsPrimary = false;
+                        let currentPos = 0;
+                        let sectionStart = 0;
+                        let sectionLines = [];
 
-                    for (let i = 0; i < lines.length; i++) {
-                        const lineLength = lines[i].length + 1;
-                        const trimmed = lines[i].trim();
-                        const isSpeakerHeader = /^([A-Za-z][A-Za-z\s.\-,']+?)(\s*\([^)]*\))?(\s+\d{1,2}:\d{2})?\s*:?\s*$/.test(trimmed) && trimmed.length < 80;
-                        if (isSpeakerHeader) {
-                            flushSection();
-                            currentSpeaker = trimmed
-                                .replace(/\s*\([^)]*\)\s*$/, '')
-                                .replace(/\s+\d{1,2}:\d{2}\s*$/, '')
-                                .replace(/:\s*$/, '')
-                                .trim();
-                            currentIsPrimary = speakerMatchesPrimary(currentSpeaker, primarySpeaker);
-                            sectionStart = currentPos + lineLength;
-                        } else if (trimmed) {
-                            sectionLines.push(trimmed);
+                        function flushSection() {
+                            if (sectionLines.length > 0 && currentSpeaker) {
+                                sections.push({
+                                    speaker: currentSpeaker,
+                                    text: sectionLines.join(' '),
+                                    position: sectionStart,
+                                    isPrimary: currentIsPrimary
+                                });
+                            }
+                            sectionLines = [];
                         }
-                        currentPos += lineLength;
+
+                        for (let i = 0; i < lines.length; i++) {
+                            const lineLength = lines[i].length + 1;
+                            const trimmed = lines[i].trim();
+                            if (trimmed) {
+                                // Inline format: "Speaker Name (0:00): content"
+                                const inlineMatch = trimmed.match(/^(.+?)\s*\(\d+:\d+(?::\d+)?\):\s*(.+)$/s);
+                                if (inlineMatch) {
+                                    flushSection();
+                                    currentSpeaker = inlineMatch[1].trim();
+                                    currentIsPrimary = speakerMatchesPrimary(currentSpeaker, primarySpeaker);
+                                    sectionStart = currentPos;
+                                    sectionLines = [inlineMatch[2].trim()];
+                                    currentPos += lineLength;
+                                    flushSection();
+                                    continue;
+                                }
+                                // Multi-line format: standalone header
+                                const isSpeakerHeader = /^([A-Za-z][A-Za-z\s.\-,']+?)(\s*\([^)]*\))?(\s+\d{1,2}:\d{2})?\s*:?\s*$/.test(trimmed) && trimmed.length < 80;
+                                if (isSpeakerHeader) {
+                                    flushSection();
+                                    currentSpeaker = trimmed.replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+\d{1,2}:\d{2}\s*$/, '').replace(/:\s*$/, '').trim();
+                                    currentIsPrimary = speakerMatchesPrimary(currentSpeaker, primarySpeaker);
+                                    sectionStart = currentPos + lineLength;
+                                } else {
+                                    sectionLines.push(trimmed);
+                                }
+                            }
+                            currentPos += lineLength;
+                        }
+                        flushSection();
                     }
-                    flushSection();
 
                     // Search in all sections, count primary vs other
                     terms.forEach(term => {
