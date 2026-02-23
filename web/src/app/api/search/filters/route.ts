@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const [primarySpeakers, speakersPresent, themes, speechTypes] =
+    const [primarySpeakers, speakersPresent, segmentSpeakers, themes, speechTypes] =
       await Promise.all([
       prisma.transcript.findMany({
         select: { primary_speaker: true },
@@ -15,6 +15,10 @@ export async function GET() {
       }),
       prisma.transcript.findMany({
         select: { speakers_present: true },
+      }),
+      prisma.speakingSegment.findMany({
+        select: { speaker: true },
+        distinct: ["speaker"],
       }),
       prisma.transcript.findMany({
         select: { key_themes: true },
@@ -45,6 +49,7 @@ export async function GET() {
     for (const row of speakersPresent) {
       for (const s of row.speakers_present) addSpeaker(s);
     }
+    for (const row of segmentSpeakers) addSpeaker(row.speaker);
     const speakers = Array.from(speakerMap.values()).sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" })
     );

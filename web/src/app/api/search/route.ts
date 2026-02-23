@@ -177,6 +177,19 @@ function speakerMatchesPrimary(
   // Exact match
   if (a === b) return true;
 
+  // Also allow matches that differ only by spacing (e.g. "mrbeast" vs "mr beast")
+  const aNoSpace = a.replace(/\s/g, "");
+  const bNoSpace = b.replace(/\s/g, "");
+  if (
+    aNoSpace &&
+    bNoSpace &&
+    (aNoSpace === bNoSpace ||
+      aNoSpace.includes(bNoSpace) ||
+      bNoSpace.includes(aNoSpace))
+  ) {
+    return true;
+  }
+
   // Split into words for more robust matching
   const aWords = a.split(" ").filter((w) => w.length > 0);
   const bWords = b.split(" ").filter((w) => w.length > 0);
