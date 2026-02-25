@@ -1,0 +1,24 @@
+# Initial ticker set (one per line)
+HD
+NVDA
+SNOW
+DELL
+CAVA
+RY
+CELH
+CRCL
+HIMS
+KTOS
+ORCL
+FDX
+COST
+SBUX
+DPZ
+INTC
+HOOD
+ULTA
+CMG
+WMT
+NKE
+NFLX
+
