@@ -102,10 +102,18 @@ export async function GET(req: NextRequest) {
     type SegmentEntry = {
       speaker: string;
       start_seconds: number;
-      text: string;
-      highlighted: string;
+      highlighted: string; // truncated excerpt with <mark> tags; full text not sent
       isPrimary: boolean;
     };
+
+    // Truncate highlighted text to keep response lean (~400 chars is plenty for UI)
+    function truncateHighlighted(text: string, maxChars = 400): string {
+      if (text.length <= maxChars) return text;
+      // Trim at a word boundary near the limit
+      const cut = text.slice(0, maxChars);
+      const lastSpace = cut.lastIndexOf(" ");
+      return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut) + "…";
+    }
     const transcriptMap = new Map<
       string,
       {
@@ -156,8 +164,7 @@ export async function GET(req: NextRequest) {
         entry.segments.push({
           speaker: seg.speaker,
           start_seconds: seg.start_seconds,
-          text: seg.text,
-          highlighted,
+          highlighted: truncateHighlighted(highlighted),
           isPrimary,
         });
       }
