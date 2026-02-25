@@ -85,31 +85,51 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create transcript + segments in a transaction
-    const transcript = await prisma.$transaction(async (tx) => {
-      const t = await tx.transcript.create({
-        data: {
-          title,
-          event_date: new Date(event_date),
-          speech_type,
-          primary_speaker,
-          speakers_present: speakers_present || [],
-          has_q_and_a: has_q_and_a || false,
-          total_speech_length_seconds: total_speech_length_seconds || null,
-          key_themes: key_themes || [],
-          question_count: question_count || null,
-          avg_response_length_words: avg_response_length_words || null,
-          avg_response_length_seconds: avg_response_length_seconds || null,
-          qa_data: qa_data || null,
-          company_ticker: company_ticker || null,
-          fiscal_year: fiscal_year || null,
-          fiscal_quarter: fiscal_quarter || null,
-          source: source || null,
-          source_url: source_url || null,
-          earnings_key: earnings_key || null,
-        },
-      });
+    const transcriptData = {
+      title,
+      event_date: new Date(event_date),
+      speech_type,
+      primary_speaker,
+      speakers_present: speakers_present || [],
+      has_q_and_a: has_q_and_a || false,
+      total_speech_length_seconds: total_speech_length_seconds || null,
+      key_themes: key_themes || [],
+      question_count: question_count || null,
+      avg_response_length_words: avg_response_length_words || null,
+      avg_response_length_seconds: avg_response_length_seconds || null,
+      qa_data: qa_data || null,
+      company_ticker: company_ticker || null,
+      fiscal_year: fiscal_year || null,
+      fiscal_quarter: fiscal_quarter || null,
+      source: source || null,
+      source_url: source_url || null,
+      earnings_key: earnings_key || null,
+    };
 
+    // For earnings calls: use upsert keyed on earnings_key or source_url so
+    // re-runs are idempotent and update existing records rather than failing.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const upsertWhere: any = earnings_key
+      ? { earnings_key }
+      : source_url
+        ? { source_url }
+        : null;
+
+    const transcript = await prisma.$transaction(async (tx) => {
+      const t = upsertWhere
+        ? await tx.transcript.upsert({
+            where: upsertWhere,
+            create: transcriptData,
+            update: transcriptData,
+            select: { id: true },
+          })
+        : await tx.transcript.create({
+            data: transcriptData,
+            select: { id: true },
+          });
+
+      // Replace segments (delete + re-insert)
+      await tx.speakingSegment.deleteMany({ where: { transcriptId: t.id } });
       await tx.speakingSegment.createMany({
         data: segments.map(
           (seg: {

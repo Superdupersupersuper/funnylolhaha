@@ -36,7 +36,7 @@ type TranscriptRecord = {
   earnings_key: string | null;
   source: "motleyfool" | "insidermonkey";
   source_url: string;
-  participants: { ceo?: string; cfo?: string; others: string[] };
+  participants: { ceo?: string; cfo?: string; others: string[]; companyNames: string[] };
   segments: { speaker: string; text: string }[];
 };
 
@@ -224,34 +224,76 @@ function parseSegmentsFromParagraphs(
 }
 
 /**
- * Extract participants from the "Call participants" block that Motley Fool
- * and InsiderMonkey both include before the full transcript.
+ * Extract ONLY company representatives from the "Call participants" <ul>.
+ * On Motley Fool the format is:
+ *   <h2 id="call-participants">Call participants</h2>
+ *   <ul>
+ *     <li>President and CEO — Jensen Huang</li>
+ *     <li>CFO — Colette Kress</li>
+ *   </ul>
+ * Analysts are NOT listed here — they only appear as Q&A speakers in the
+ * transcript body.  Storing only company reps in `speakers_present` lets the
+ * search engine distinguish company voices from external callers.
+ *
+ * For InsiderMonkey pages we fall back to scanning the raw text block between
+ * "Call participants" and "Full Conference Call Transcript".
  */
 function extractParticipants(
   $: cheerio.CheerioAPI
-): TranscriptRecord["participants"] {
-  const text = $.text();
-  const m = text.match(/Call participants([\s\S]*?)Full Conference Call Transcript/i);
-  const block = m ? m[1] : "";
-  const lines = block
-    .split("\n")
-    .map((l) => norm(l))
-    .filter(Boolean);
-
+): { ceo?: string; cfo?: string; others: string[]; companyNames: string[] } {
   let ceo: string | undefined;
   let cfo: string | undefined;
   const others: string[] = [];
+  const companyNames: string[] = [];
 
-  for (const ln of lines) {
-    const name = (ln.match(/[—–-]\s*(.+)$/) || [])[1]?.trim();
-    if (!name) continue;
-    const lower = ln.toLowerCase();
-    if (!ceo && lower.includes("chief executive officer")) ceo = name;
-    else if (!cfo && lower.includes("chief financial officer")) cfo = name;
-    else others.push(name);
+  // ── Strategy 1: Motley Fool <ul> under "Call participants" heading ──────────
+  const h2 = $("h2, h3")
+    .filter((_, el) => /call participants/i.test($(el).text()))
+    .first();
+  const ul = h2.next("ul");
+
+  if (ul.length) {
+    ul.find("li").each((_, li) => {
+      const raw = norm($(li).text());
+      // Format: "Title — Name" OR "Name — Title" (separator is em-dash)
+      const parts = raw.split(/[—–]/).map((p) => norm(p)).filter(Boolean);
+      if (parts.length < 2) return;
+      // Heuristic: the name is the part WITHOUT a job title keyword
+      const titleKeywords = /\b(officer|president|director|head|vice|investor|relations|ceo|cfo|coo|cto|controller|treasurer|secretary|analyst)\b/i;
+      const nameIdx = parts.findIndex((p) => !titleKeywords.test(p));
+      const name = parts[nameIdx >= 0 ? nameIdx : parts.length - 1];
+      if (!name || name.length < 2) return;
+
+      companyNames.push(name);
+      const lower = raw.toLowerCase();
+      if (!ceo && lower.includes("chief executive officer")) ceo = name;
+      else if (!cfo && lower.includes("chief financial officer")) cfo = name;
+      else others.push(name);
+    });
   }
 
-  return { ceo, cfo, others };
+  // ── Strategy 2: text fallback (InsiderMonkey / older pages) ────────────────
+  if (companyNames.length === 0) {
+    const text = $.text();
+    const m = text.match(/Call participants([\s\S]*?)(?:Full Conference Call Transcript|Prepared Remarks)/i);
+    const block = m ? m[1] : "";
+    const lines = block.split("\n").map((l) => norm(l)).filter(Boolean);
+
+    let inAnalysts = false;
+    for (const ln of lines) {
+      if (/\banalysts?\b/i.test(ln) && ln.length < 30) { inAnalysts = true; continue; }
+      if (inAnalysts) continue; // skip analyst names
+      const name = (ln.match(/[—–-]\s*(.+)$/) || [])[1]?.trim();
+      if (!name || name.length < 2) continue;
+      companyNames.push(name);
+      const lower = ln.toLowerCase();
+      if (!ceo && lower.includes("chief executive officer")) ceo = name;
+      else if (!cfo && lower.includes("chief financial officer")) cfo = name;
+      else others.push(name);
+    }
+  }
+
+  return { ceo, cfo, others, companyNames };
 }
 
 // ─── Motley Fool ──────────────────────────────────────────────────────────────
@@ -497,12 +539,14 @@ async function saveViaApi(r: TranscriptRecord, apiUrl: string, password: string)
     r.segments.find((s) => !/operator/i.test(s.speaker))?.speaker ||
     r.ticker;
 
+  // speakers_present = ONLY company reps (from Call participants <ul>).
+  // This lets the search engine distinguish company voices from external callers.
+  const speakerSet = r.participants.companyNames?.length
+    ? r.participants.companyNames
+    : [r.participants.ceo, r.participants.cfo, ...r.participants.others].filter(Boolean) as string[];
+
   const speakers_present = Array.from(
-    new Map(
-      [r.participants.ceo, r.participants.cfo, ...r.participants.others, ...r.segments.map((s) => s.speaker)]
-        .filter(Boolean)
-        .map((n) => [n!.toLowerCase(), n!])
-    ).values()
+    new Map(speakerSet.map((n) => [n.toLowerCase(), n])).values()
   );
 
   const payload = {

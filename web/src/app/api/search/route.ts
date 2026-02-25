@@ -68,9 +68,13 @@ export async function GET(req: NextRequest) {
             event_date: true,
             speech_type: true,
             primary_speaker: true,
+            speakers_present: true,
             key_themes: true,
             has_q_and_a: true,
             total_speech_length_seconds: true,
+            company_ticker: true,
+            fiscal_year: true,
+            fiscal_quarter: true,
           },
         },
       },
@@ -81,18 +85,19 @@ export async function GET(req: NextRequest) {
     });
 
     // Aggregate by transcript
+    type SegmentEntry = {
+      speaker: string;
+      start_seconds: number;
+      text: string;
+      highlighted: string;
+      isPrimary: boolean;
+    };
     const transcriptMap = new Map<
       string,
       {
         transcript: (typeof matchingSegments)[0]["transcript"];
         mentionCount: number;
-        segments: {
-          speaker: string;
-          start_seconds: number;
-          text: string;
-          highlighted: string;
-          isPrimary: boolean;
-        }[];
+        segments: SegmentEntry[];
       }
     >();
 
@@ -107,8 +112,15 @@ export async function GET(req: NextRequest) {
       }
       const entry = transcriptMap.get(tid)!;
 
+      // For earnings calls: "primary" means any company representative
+      // (stored in speakers_present). For other transcripts: match primary_speaker only.
+      const isEarningsCall = seg.transcript.speech_type === "Earnings Call";
       const selectedSpeaker = speaker || seg.transcript.primary_speaker;
-      const isPrimary = speakerMatchesPrimary(seg.speaker, selectedSpeaker);
+      const isPrimary = isEarningsCall
+        ? seg.transcript.speakers_present.some((s) =>
+            speakerMatchesPrimary(seg.speaker, s)
+          )
+        : speakerMatchesPrimary(seg.speaker, selectedSpeaker);
 
       // Count only primary-speaker occurrences
       const regex = new RegExp(escapeRegex(q), "gi");
