@@ -345,3 +345,11 @@
 {"type":"motleyfool_gap","ticker":"NKE","earnings_key":"NKE:FY2026:Q4","at":"2026-02-25T22:56:42.451Z"}
 {"type":"fallback_error","ticker":"NKE","earnings_key":"NKE:FY2026:Q4","provider":"insidermonkey","error":"API save failed (500): Server error","at":"2026-02-25T22:56:47.256Z"}
 {"type":"motleyfool_gap","ticker":"NKE","earnings_key":"NKE:FY2027:Q1","at":"2026-02-25T22:56:47.858Z"}
+{"type":"not_found","ticker":"NKE","earnings_key":"NKE:FY2027:Q1","at":"2026-02-25T22:56:55.136Z"}
+{"type":"motleyfool_gap","ticker":"NKE","earnings_key":"NKE:FY2027:Q2","at":"2026-02-25T22:56:55.738Z"}
+{"type":"not_found","ticker":"NKE","earnings_key":"NKE:FY2027:Q2","at":"2026-02-25T22:56:56.797Z"}
+{"type":"ticker_done","ticker":"NKE","at":"2026-02-25T22:56:56.798Z"}
+{"type":"ticker_start","ticker":"SBUX","at":"2026-02-25T22:56:56.798Z"}
+{"type":"discover_ok","ticker":"SBUX","provider":"motleyfool","count":24,"at":"2026-02-25T22:56:56.841Z"}
+{"type":"upsert_ok","ticker":"SBUX","source":"motleyfool","source_url":"https://www.fool.com/earnings/call-transcripts/2020/01/28/starbucks-corp-sbux-q1-2020-earnings-call-transcri.aspx","earnings_key":"SBUX:FY2020:Q1","title":"Starbucks Corp (SBUX) Q1 2020 Earnings Call Transcript","transcriptId":"c3a5f599-1a34-464b-89b2-d3f948367948","segmentCount":85,"at":"2026-02-25T22:56:59.031Z"}
+{"type":"upsert_ok","ticker":"SBUX","source":"motleyfool","source_url":"https://www.fool.com/earnings/call-transcripts/2020/04/28/starbucks-corp-sbux-q2-2020-earnings-call-transcri.aspx","earnings_key":"SBUX:FY2020:Q2","title":"Starbucks Corp (SBUX) Q2 2020 Earnings Call Transcript","transcriptId":"26ab8ae2-e120-43c9-8b7d-5e71bc5ba276","segmentCount":87,"at":"2026-02-25T22:57:01.128Z"}
