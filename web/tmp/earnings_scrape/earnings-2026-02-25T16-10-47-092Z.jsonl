@@ -910,3 +910,16 @@
 {"type":"motleyfool_gap","ticker":"NFLX","earnings_key":"NFLX:FY2025:Q3","at":"2026-02-25T16:49:50.693Z"}
 {"type":"not_found","ticker":"NFLX","earnings_key":"NFLX:FY2025:Q3","at":"2026-02-25T16:50:02.338Z"}
 {"type":"motleyfool_gap","ticker":"NFLX","earnings_key":"NFLX:FY2026:Q1","at":"2026-02-25T16:50:02.739Z"}
+{"type":"not_found","ticker":"NFLX","earnings_key":"NFLX:FY2026:Q1","at":"2026-02-25T16:50:18.424Z"}
+{"type":"motleyfool_gap","ticker":"NFLX","earnings_key":"NFLX:FY2026:Q2","at":"2026-02-25T16:50:18.826Z"}
+{"type":"upsert_ok","ticker":"NFLX","source":"insidermonkey","source_url":"https://www.insidermonkey.com/blog/netflix-inc-nasdaqnflx-q1-2025-earnings-call-transcript-1512533/","earnings_key":"NFLX:FY2026:Q2","title":"Netflix, Inc. (NASDAQ:NFLX) Q1 2025 Earnings Call Transcript","transcriptId":"222f054a-93db-4a4f-baa5-6da0a61e65b0","segmentCount":47,"at":"2026-02-25T16:50:21.328Z"}
+{"type":"motleyfool_gap","ticker":"NFLX","earnings_key":"NFLX:FY2026:Q3","at":"2026-02-25T16:50:21.729Z"}
+{"type":"upsert_ok","ticker":"NFLX","source":"insidermonkey","source_url":"https://www.insidermonkey.com/blog/netflix-inc-nasdaqnflx-q2-2025-earnings-call-transcript-1571521/","earnings_key":"NFLX:FY2026:Q3","title":"Netflix, Inc. (NASDAQ:NFLX) Q2 2025 Earnings Call Transcript","transcriptId":"58805f1d-99d5-4ed2-bbc9-77b9808401f3","segmentCount":49,"at":"2026-02-25T16:50:24.466Z"}
+{"type":"motleyfool_gap","ticker":"NFLX","earnings_key":"NFLX:FY2026:Q4","at":"2026-02-25T16:50:24.866Z"}
+{"type":"upsert_ok","ticker":"NFLX","source":"insidermonkey","source_url":"https://www.insidermonkey.com/blog/netflix-inc-nasdaqnflx-q3-2025-earnings-call-transcript-1632294/","earnings_key":"NFLX:FY2026:Q4","title":"Netflix, Inc. (NASDAQ:NFLX) Q3 2025 Earnings Call Transcript","transcriptId":"4d45ae68-b8af-432e-a48b-9d12432d0bd3","segmentCount":40,"at":"2026-02-25T16:50:26.648Z"}
+{"type":"motleyfool_gap","ticker":"NFLX","earnings_key":"NFLX:FY2027:Q1","at":"2026-02-25T16:50:27.049Z"}
+{"type":"not_found","ticker":"NFLX","earnings_key":"NFLX:FY2027:Q1","at":"2026-02-25T16:50:34.255Z"}
+{"type":"motleyfool_gap","ticker":"NFLX","earnings_key":"NFLX:FY2027:Q2","at":"2026-02-25T16:50:34.656Z"}
+{"type":"not_found","ticker":"NFLX","earnings_key":"NFLX:FY2027:Q2","at":"2026-02-25T16:50:35.671Z"}
+{"type":"ticker_done","ticker":"NFLX","at":"2026-02-25T16:50:35.671Z"}
+{"type":"run_done","at":"2026-02-25T16:50:35.671Z"}
