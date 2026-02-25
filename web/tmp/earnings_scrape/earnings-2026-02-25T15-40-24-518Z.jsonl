@@ -235,3 +235,9 @@
 {"type":"motleyfool_gap","ticker":"RY","earnings_key":"RY:FY2023:Q4","at":"2026-02-25T15:52:15.931Z"}
 {"type":"upsert_ok","ticker":"RY","source":"insidermonkey","source_url":"https://www.insidermonkey.com/blog/royal-bank-of-canada-nysery-q4-2022-earnings-call-transcript-1094643/","earnings_key":"RY:FY2023:Q4","title":"Royal Bank of Canada (NYSE:RY) Q4 2022 Earnings Call Transcript","transcriptId":"14d50266-09e6-4e6c-a523-bf9f3ae43ffd","segmentCount":16,"at":"2026-02-25T15:52:18.911Z"}
 {"type":"motleyfool_gap","ticker":"RY","earnings_key":"RY:FY2024:Q1","at":"2026-02-25T15:52:19.411Z"}
+{"type":"not_found","ticker":"RY","earnings_key":"RY:FY2024:Q1","at":"2026-02-25T15:52:29.163Z"}
+{"type":"motleyfool_gap","ticker":"RY","earnings_key":"RY:FY2024:Q2","at":"2026-02-25T15:52:29.662Z"}
+{"type":"upsert_ok","ticker":"RY","source":"insidermonkey","source_url":"https://www.insidermonkey.com/blog/royal-bank-of-canada-nysery-q2-2023-earnings-call-transcript-1154901/","earnings_key":"RY:FY2024:Q2","title":"Royal Bank of Canada (NYSE:RY) Q2 2023 Earnings Call Transcript","transcriptId":"1c42fd7b-9aa5-45f2-a6b8-c6aef1b92715","segmentCount":10,"at":"2026-02-25T15:52:33.413Z"}
+{"type":"motleyfool_gap","ticker":"RY","earnings_key":"RY:FY2024:Q3","at":"2026-02-25T15:52:33.914Z"}
+{"type":"upsert_ok","ticker":"RY","source":"insidermonkey","source_url":"https://www.insidermonkey.com/blog/royal-bank-of-canada-nysery-q3-2023-earnings-call-transcript-1187495/","earnings_key":"RY:FY2024:Q3","title":"Royal Bank of Canada (NYSE:RY) Q3 2023 Earnings Call Transcript","transcriptId":"5a220b5e-34bb-4d20-a494-0cd6a7e14740","segmentCount":17,"at":"2026-02-25T15:52:38.413Z"}
+{"type":"motleyfool_gap","ticker":"RY","earnings_key":"RY:FY2024:Q4","at":"2026-02-25T15:52:38.915Z"}
