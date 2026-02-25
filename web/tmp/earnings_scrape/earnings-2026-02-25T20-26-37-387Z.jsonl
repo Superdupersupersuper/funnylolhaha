@@ -1,0 +1,4 @@
+{"type":"ticker_start","ticker":"TRUE","at":"2026-02-25T20:26:37.392Z"}
+{"type":"discover_ok","ticker":"TRUE","provider":"motleyfool","count":0,"at":"2026-02-25T20:26:37.392Z"}
+{"type":"ticker_done","ticker":"TRUE","at":"2026-02-25T20:26:37.392Z"}
+{"type":"run_done","at":"2026-02-25T20:26:37.392Z"}
