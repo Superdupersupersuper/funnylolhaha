@@ -12,6 +12,7 @@
 
 import { PrismaClient } from "@prisma/client";
 import * as cheerio from "cheerio";
+import type { AnyNode } from "domhandler";
 import pLimit from "p-limit";
 import {
   writeFileSync,
@@ -177,7 +178,7 @@ async function fetchJson(url: string): Promise<unknown> {
  */
 function parseSegmentsFromParagraphs(
   $: cheerio.CheerioAPI,
-  paragraphs: cheerio.Element[]
+  paragraphs: AnyNode[]
 ): { speaker: string; text: string }[] {
   const segments: { speaker: string; text: string }[] = [];
 
@@ -386,7 +387,7 @@ async function parseMotleyFoolPage(
   // Collect paragraphs that follow the "Full Conference Call Transcript" header
   const allNodes = root.find("h2, h3, p").toArray();
   let started = false;
-  const pEls: cheerio.Element[] = [];
+  const pEls: AnyNode[] = [];
   for (const n of allNodes) {
     const t = norm($(n).text());
     if (!started) {
@@ -618,7 +619,7 @@ async function upsertToDb(r: TranscriptRecord) {
         question_count: null,
         avg_response_length_words: null,
         avg_response_length_seconds: null,
-        qa_data: null,
+        qa_data: undefined,
         company_ticker: r.ticker,
         fiscal_year: r.fiscal.fiscal_year,
         fiscal_quarter: r.fiscal.fiscal_quarter,
