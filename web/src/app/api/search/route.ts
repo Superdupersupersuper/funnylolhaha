@@ -60,12 +60,20 @@ export async function GET(req: NextRequest) {
       NOT: { speech_type: "Earnings Call", earnings_key: null },
     };
 
+    // Cap total segments fetched from DB to keep queries fast.
+    // With ~866 transcripts and large segment tables a limitless query returns
+    // thousands of rows (1MB+) and takes 10+ seconds.
+    const SEGMENT_FETCH_LIMIT = 2000;
+    // Max segments shown per transcript in the response (enough for UI context).
+    const MAX_SEGMENTS_PER_TRANSCRIPT = 5;
+
     // Find matching segments
     const matchingSegments = await prisma.speakingSegment.findMany({
       where: {
         text: { contains: q, mode: "insensitive" },
         transcript: { ...transcriptWhere, ...earningsStaleExclude },
       },
+      take: SEGMENT_FETCH_LIMIT,
       include: {
         transcript: {
           select: {
@@ -143,13 +151,16 @@ export async function GET(req: NextRequest) {
         ? seg.text.replace(regex, "<mark>$&</mark>")
         : seg.text.replace(regex, '<mark class="other">$&</mark>');
 
-      entry.segments.push({
-        speaker: seg.speaker,
-        start_seconds: seg.start_seconds,
-        text: seg.text,
-        highlighted,
-        isPrimary,
-      });
+      // Only keep the first N segments per transcript for the response payload
+      if (entry.segments.length < MAX_SEGMENTS_PER_TRANSCRIPT) {
+        entry.segments.push({
+          speaker: seg.speaker,
+          start_seconds: seg.start_seconds,
+          text: seg.text,
+          highlighted,
+          isPrimary,
+        });
+      }
     }
 
     // Only keep transcripts where the primary speaker has at least one mention
