@@ -18,6 +18,14 @@ model Transcript {
   total_speech_length_seconds Int?   // manual or calculated from segments
   key_themes                String[] // manual tags e.g. ["Coney Island", "BID", "Small Business"]
 
+  // Earnings call metadata (nullable to not affect existing political transcripts)
+  company_ticker            String?  // e.g. "NVDA"
+  fiscal_year               Int?     // e.g. 2026
+  fiscal_quarter            Int?     // 1-4
+  source                    String?  // e.g. "yahoo"
+  source_url                String?  @unique // canonical dedupe key (URL of transcript article)
+  earnings_key              String?  @unique // stable key: `${ticker}:FY${year}:Q${q}` for earnings calls
+
   // Q&A Analytics (auto-detected)
   question_count            Int?     // total number of questions detected
   avg_response_length_words Int?     // average response length in words
@@ -33,6 +41,8 @@ model Transcript {
   @@index([primary_speaker])
   @@index([speech_type])
   @@index([has_q_and_a])
+  @@index([company_ticker, event_date])
+  @@index([company_ticker, fiscal_year, fiscal_quarter])
 }
 
 model SpeakingSegment {

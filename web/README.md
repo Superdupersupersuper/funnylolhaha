@@ -142,11 +142,39 @@ npm run dev          # Dev server (localhost:3000)
 npm run build        # Production build
 npm start            # Production server
 npm run lint         # ESLint check
+npm run earnings:scrape:yahoo  # Scrape Yahoo earnings-call transcripts into DB
 npx prisma studio    # Database GUI
 npx prisma db push   # Sync schema (dev)
 npx prisma migrate dev  # Create migration (dev)
 npx prisma migrate deploy  # Apply migrations (prod)
 ```
+
+## Earnings call scraper (Yahoo)
+
+This repo includes a Yahoo Finance earnings-call transcript backfill script at [`web/scripts/scrape_yahoo_earnings_calls.ts`](scripts/scrape_yahoo_earnings_calls.ts).
+
+### 1) Migrate the schema
+
+```bash
+cd web
+npx prisma migrate dev
+```
+
+### 2) Run a dry-run for one ticker
+
+```bash
+cd web
+npm run earnings:scrape:yahoo -- --tickers=NVDA --dry-run=true --min-fiscal-year=2020 --min-fiscal-quarter=1
+```
+
+### 3) Run full backfill for the initial ticker set
+
+```bash
+cd web
+npm run earnings:scrape:yahoo -- --tickers-file=scripts/earnings_tickers_initial.txt --min-fiscal-year=2020 --min-fiscal-quarter=1 --concurrency=2 --delay-ms=800
+```
+
+Outputs (JSONL logs + run metadata) are written under `web/tmp/earnings_scrape/` by default.
 
 ## Tech Stack
 
