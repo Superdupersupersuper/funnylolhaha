@@ -54,11 +54,17 @@ export async function GET(req: NextRequest) {
       };
     }
 
+    // Exclude stale earnings call records (created before earnings_key was introduced)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const earningsStaleExclude: Record<string, any> = {
+      NOT: { speech_type: "Earnings Call", earnings_key: null },
+    };
+
     // Find matching segments
     const matchingSegments = await prisma.speakingSegment.findMany({
       where: {
         text: { contains: q, mode: "insensitive" },
-        transcript: transcriptWhere,
+        transcript: { ...transcriptWhere, ...earningsStaleExclude },
       },
       include: {
         transcript: {
