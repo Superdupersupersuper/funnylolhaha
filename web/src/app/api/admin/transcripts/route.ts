@@ -61,6 +61,8 @@ export async function POST(req: NextRequest) {
       avg_response_length_words,
       avg_response_length_seconds,
       qa_data,
+      qa_data_auto,
+      qa_overrides,
       // Earnings call metadata (optional)
       company_ticker,
       fiscal_year,
@@ -98,6 +100,8 @@ export async function POST(req: NextRequest) {
       avg_response_length_words: avg_response_length_words || null,
       avg_response_length_seconds: avg_response_length_seconds || null,
       qa_data: qa_data || null,
+      qa_data_auto: qa_data_auto || null,
+      qa_overrides: qa_overrides || null,
       company_ticker: company_ticker || null,
       fiscal_year: fiscal_year || null,
       fiscal_quarter: fiscal_quarter || null,

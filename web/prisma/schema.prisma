@@ -26,11 +26,13 @@ model Transcript {
   source_url                String?  @unique // canonical dedupe key (URL of transcript article)
   earnings_key              String?  @unique // stable key: `${ticker}:FY${year}:Q${q}` for earnings calls
 
-  // Q&A Analytics (auto-detected)
-  question_count            Int?     // total number of questions detected
-  avg_response_length_words Int?     // average response length in words
-  avg_response_length_seconds Float? // average response duration in seconds
-  qa_data                   Json?    // detailed Q&A pairs: [{question, response, metrics}]
+  // Q&A Analytics
+  question_count            Int?     // total number of questions in curated qa_data
+  avg_response_length_words Int?     // average response length in words (curated)
+  avg_response_length_seconds Float? // average response duration in seconds (curated)
+  qa_data                   Json?    // curated Q&A pairs shown to users: [{qaKey, question, response, …}]
+  qa_data_auto              Json?    // last auto-detected pairs before any user edits
+  qa_overrides              Json?    // { removedKeys: string[] } — user removals that survive re-parse
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -58,5 +60,19 @@ model SpeakingSegment {
   @@index([transcriptId])
   @@index([transcriptId, start_seconds])
   @@index([speaker])
+}
+
+/** Feedback log for Q&A auto-detection corrections (foundation for future learning). */
+model QADetectionFeedback {
+  id            String   @id @default(uuid())
+  transcriptId  String
+  qaKey         String   // matches QAPair.qaKey — `${questionSpeaker}:${questionStart}`
+  action        String   // "removed" | "restored"
+  pairSnapshot  Json     // full QAPair at time of action
+  created_at    DateTime @default(now())
+
+  @@index([transcriptId])
+  @@index([action])
+  @@index([created_at])
 }
 

@@ -49,6 +49,8 @@ export async function PUT(
       avg_response_length_words,
       avg_response_length_seconds,
       qa_data,
+      qa_data_auto,
+      qa_overrides,
     } = body;
 
     // Update in a transaction: update transcript, delete old segments, insert new
@@ -68,6 +70,8 @@ export async function PUT(
           avg_response_length_words: avg_response_length_words ?? null,
           avg_response_length_seconds: avg_response_length_seconds ?? null,
           qa_data: qa_data ?? null,
+          qa_data_auto: qa_data_auto ?? null,
+          qa_overrides: qa_overrides ?? null,
         },
       });
 

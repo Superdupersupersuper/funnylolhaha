@@ -1,7 +1,7 @@
 "use client";
 
 import { TranscriptForm } from "@/components/admin/TranscriptForm";
-import type { ParsedSegment } from "@/lib/parsers/otter";
+import type { ParsedSegment, QAPair } from "@/lib/parsers/otter";
 
 interface EditTranscriptClientProps {
   data: {
@@ -15,6 +15,9 @@ interface EditTranscriptClientProps {
     total_speech_length_seconds: number | null;
     key_themes: string[];
     segments: ParsedSegment[];
+    qa_data?: QAPair[] | null;
+    qa_data_auto?: QAPair[] | null;
+    qa_overrides?: { removedKeys: string[] } | null;
   };
 }
 

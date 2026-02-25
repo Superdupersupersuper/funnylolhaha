@@ -27,6 +27,8 @@ export interface SpeakerStats {
 }
 
 export interface QAPair {
+  /** Stable identifier: `${questionSpeaker}:${questionStart}` */
+  qaKey: string;
   questionSpeaker: string;
   questionText: string;
   questionStart: number;
@@ -367,110 +369,170 @@ function buildStats(segments: ParsedSegment[]) {
 
 // ─── Q&A Detection ──────────────────────────────────────────────────────────
 
-/** Detect if a segment is likely a question based on multiple heuristics. */
+/**
+ * Strict gating: a segment must have at least ONE strong syntactic question
+ * signal before we even score it. This eliminates back-and-forth chatter
+ * (e.g. "You can give me some", "There we go") that the old permissive scorer
+ * would flag as questions.
+ */
 function isLikelyQuestion(segment: ParsedSegment, primarySpeaker: string | null): boolean {
-  const text = segment.text.toLowerCase();
-  const wordCount = segment.text.split(/\s+/).length;
-  
-  // Not the primary speaker (reporters/audience asking questions)
-  const isDifferentSpeaker = primarySpeaker && segment.speaker !== primarySpeaker;
-  
-  // Skip if this is the primary speaker's long monologue
-  if (segment.speaker === primarySpeaker || wordCount > 100) {
-    return false;
-  }
-  
-  // Question indicators
-  const hasQuestionMark = segment.text.includes("?");
-  const hasQuestionWords = /\b(what|how|why|when|where|who|which|whose|whom|can|could|would|will|should)\b/i.test(text);
-  const hasQuestionPhrases = /\b(question|wondering|curious|asking|want to (know|ask)|quick question)\b/i.test(text);
-  
-  // Strong question indicators (at start of sentence)
-  const startsWithQuestionWord = /^(what|how|why|when|where|who|which|is|are|can|could|would|will|should|do|does|did)\b/i.test(text.trim());
-  
-  // Greetings/thank you phrases (not questions)
-  const isGreeting = /\b(thank you|good (morning|afternoon|evening)|hello|hi\b|thanks)/i.test(text);
-  
-  // Short segments are more likely to be questions (typical Q&A pattern)
-  const isShort = wordCount <= 50;
-  
-  // Scoring system
+  const text = segment.text;
+  const textLower = text.toLowerCase().trim();
+  const wordCount = text.split(/\s+/).length;
+
+  // Must be a non-primary speaker
+  if (primarySpeaker && segment.speaker === primarySpeaker) return false;
+
+  // Skip very long segments — questions are typically concise
+  if (wordCount > 80) return false;
+
+  // ── HARD GATE ─────────────────────────────────────────────────────────────
+  // Need at least one strong syntactic signal of a genuine question.
+
+  // 1. Literal question mark
+  const hasQuestionMark = text.includes("?");
+
+  // 2. Starts with an interrogative word (direct question form)
+  const startsWithInterrogative = /^(what|how|why|when|where|who|which|is|are|do|does|did|have|has|had|will|would|can|could|shall|should|may|might)\b/i.test(textLower);
+
+  // 3. Contains a directed 2nd-person modal question pattern
+  //    e.g. "can you", "could you", "would you", "do you think", etc.
+  const hasDirectQuestion = /\b(can you|could you|would you|will you|do you|did you|have you|are you|is there|are there)\b/i.test(textLower);
+
+  // Must hit at least one of the above — no strong signal → not a question
+  if (!hasQuestionMark && !startsWithInterrogative && !hasDirectQuestion) return false;
+
+  // ── ANTI-FALSE-POSITIVE FILTERS ───────────────────────────────────────────
+  // Narrative / imperative patterns that often include question words but are
+  // clearly not audience questions (common in speech/demonstration contexts).
+  const isNarrative = /^(and (then|now|so|we|you|I|it|this|that|there)|there (we|you) go|look at (this|that)|we need|I need|put it|let('?s| us)|oh (look|and)|so (we|you|I)|just |maybe |we want|we can)\b/i.test(textLower);
+
+  // If the only signal is a ? but it reads as a narrative/imperative, skip it
+  if (isNarrative && !startsWithInterrogative && !hasDirectQuestion) return false;
+
+  // Greetings / closings that happen to end with a ?
+  const isGreeting = /\b(thank you|thanks|good (morning|afternoon|evening)|hello|hi\b|bye|goodbye|great question)\b/i.test(textLower);
+  if (isGreeting && !startsWithInterrogative && !hasDirectQuestion) return false;
+
+  // ── CONFIDENCE SCORING ────────────────────────────────────────────────────
   let score = 0;
-  if (isDifferentSpeaker) score += 2;
   if (hasQuestionMark) score += 4;
-  if (hasQuestionWords) score += 2;
-  if (startsWithQuestionWord) score += 3;
-  if (hasQuestionPhrases) score += 3;
-  if (isShort) score += 1;
-  if (isGreeting) score -= 3; // Penalize greetings
-  
-  // Threshold: need at least 5 points to be considered a question
-  return score >= 5;
+  if (startsWithInterrogative) score += 3;
+  if (hasDirectQuestion) score += 3;
+  if (wordCount <= 50) score += 1;
+  if (isNarrative) score -= 3;
+  if (isGreeting) score -= 2;
+
+  // Lower threshold is fine because gating already eliminates most noise
+  return score >= 4;
+}
+
+/** Compute aggregate analytics from an arbitrary subset of Q&A pairs. */
+export function computeQAAnalyticsFromPairs(
+  pairs: QAPair[]
+): Pick<QAAnalytics, "questionCount" | "avgResponseWords" | "avgResponseSeconds"> {
+  const questionCount = pairs.length;
+  const avgResponseWords =
+    pairs.length > 0
+      ? Math.round(pairs.reduce((sum, p) => sum + p.responseWordCount, 0) / pairs.length)
+      : 0;
+  const responsesWithDuration = pairs.filter((p) => p.responseDurationSeconds !== null);
+  const avgResponseSeconds =
+    responsesWithDuration.length > 0
+      ? Math.round(
+          (responsesWithDuration.reduce(
+            (sum, p) => sum + (p.responseDurationSeconds || 0),
+            0
+          ) /
+            responsesWithDuration.length) *
+            10
+        ) / 10
+      : null;
+  return { questionCount, avgResponseWords, avgResponseSeconds };
 }
 
 /** Analyze Q&A patterns in the transcript segments. */
 function analyzeQA(segments: ParsedSegment[], primarySpeaker: string | null): QAAnalytics {
   const pairs: QAPair[] = [];
-  
+
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
-    
-    // Check if this segment is a question
+
     if (!isLikelyQuestion(segment, primarySpeaker)) continue;
-    
-    // Find the response (next segment from primary speaker)
-    let responseSegment: ParsedSegment | null = null;
+
+    // ── Merge consecutive primary-speaker response segments ───────────────
+    // Real Q&A answers often span multiple consecutive turns from the primary
+    // speaker before the next questioner speaks again.
+    let mergedText = "";
+    let mergedWordCount = 0;
+    let responseStart: number | null = null;
+    let lastResponseIdx = -1;
+
     for (let j = i + 1; j < segments.length; j++) {
-      if (primarySpeaker && segments[j].speaker === primarySpeaker) {
-        responseSegment = segments[j];
-        break;
-      }
-      // If we don't have a primary speaker, take the next segment
-      if (!primarySpeaker && j === i + 1) {
-        responseSegment = segments[j];
+      const seg = segments[j];
+
+      if (primarySpeaker) {
+        // Stop collecting when another non-primary speaker takes the floor
+        if (seg.speaker !== primarySpeaker) break;
+        if (responseStart === null) responseStart = seg.start_seconds;
+        mergedText += (mergedText ? " " : "") + seg.text;
+        mergedWordCount += seg.text.split(/\s+/).length;
+        lastResponseIdx = j;
+      } else {
+        // No primary speaker identified — take the immediately next segment only
+        if (j === i + 1) {
+          responseStart = seg.start_seconds;
+          mergedText = seg.text;
+          mergedWordCount = seg.text.split(/\s+/).length;
+          lastResponseIdx = j;
+        }
         break;
       }
     }
-    
-    if (!responseSegment) continue;
-    
-    // Calculate metrics
-    const questionWords = segment.text.split(/\s+/).length;
-    const responseWords = responseSegment.text.split(/\s+/).length;
-    const responseDuration = 
-      responseSegment.end_seconds !== null && responseSegment.start_seconds !== null
-        ? responseSegment.end_seconds - responseSegment.start_seconds
-        : null;
-    
+
+    // ── Validate the response ─────────────────────────────────────────────
+    if (!mergedText || responseStart === null) continue;
+
+    // Response must be substantive (not just a one-word acknowledgement)
+    if (mergedWordCount < 20) continue;
+
+    // Response should not itself look like a question
+    const respLower = mergedText.toLowerCase().trim();
+    if (
+      mergedText.trim().endsWith("?") ||
+      /^(what|how|why|when|where|who|which|is|are|do|does|did)\b/i.test(respLower)
+    ) {
+      continue;
+    }
+
+    // ── Duration ─────────────────────────────────────────────────────────
+    let responseDuration: number | null = null;
+    if (lastResponseIdx >= 0 && lastResponseIdx + 1 < segments.length) {
+      responseDuration =
+        segments[lastResponseIdx + 1].start_seconds - responseStart;
+    } else if (lastResponseIdx >= 0 && segments[lastResponseIdx].end_seconds !== null) {
+      responseDuration =
+        (segments[lastResponseIdx].end_seconds as number) - responseStart;
+    }
+
+    const qaKey = `${segment.speaker}:${segment.start_seconds}`;
+
     pairs.push({
+      qaKey,
       questionSpeaker: segment.speaker,
       questionText: segment.text,
       questionStart: segment.start_seconds,
-      questionWordCount: questionWords,
-      responseSpeaker: responseSegment.speaker,
-      responseText: responseSegment.text,
-      responseStart: responseSegment.start_seconds,
-      responseWordCount: responseWords,
+      questionWordCount: segment.text.split(/\s+/).length,
+      responseSpeaker: primarySpeaker ?? segments[lastResponseIdx]?.speaker ?? "",
+      responseText: mergedText,
+      responseStart,
+      responseWordCount: mergedWordCount,
       responseDurationSeconds: responseDuration,
     });
   }
-  
-  // Calculate averages
-  const avgResponseWords = pairs.length > 0
-    ? Math.round(pairs.reduce((sum, p) => sum + p.responseWordCount, 0) / pairs.length)
-    : 0;
-  
-  const responsesWithDuration = pairs.filter(p => p.responseDurationSeconds !== null);
-  const avgResponseSeconds = responsesWithDuration.length > 0
-    ? Math.round(
-        (responsesWithDuration.reduce((sum, p) => sum + (p.responseDurationSeconds || 0), 0) / responsesWithDuration.length) * 10
-      ) / 10
-    : null;
-  
+
   return {
-    questionCount: pairs.length,
-    avgResponseWords,
-    avgResponseSeconds,
+    ...computeQAAnalyticsFromPairs(pairs),
     pairs,
   };
 }

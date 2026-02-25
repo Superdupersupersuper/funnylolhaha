@@ -1863,86 +1863,157 @@ def parse_otter_transcript(text, detect_qa=False):
         'qaAnalytics': qa_analytics
     }
 
+def _is_likely_question(seg, primary_speaker):
+    """
+    Strict gating: a segment must have at least ONE strong syntactic question
+    signal. This eliminates back-and-forth chatter (e.g. 'You can give me some',
+    'There we go') that the old permissive scorer would flag as questions.
+    """
+    text = seg['text']
+    text_lower = text.lower().strip()
+    word_count = len(text.split())
+
+    # Must be a non-primary speaker
+    if primary_speaker and seg['speaker'] == primary_speaker:
+        return False
+
+    # Skip very long segments – questions are typically concise
+    if word_count > 80:
+        return False
+
+    # ── HARD GATE ──────────────────────────────────────────────────────────
+    has_question_mark = '?' in text
+    starts_with_interrogative = bool(re.match(
+        r'^(what|how|why|when|where|who|which|is|are|do|does|did|have|has|had|will|would|can|could|shall|should|may|might)\b',
+        text_lower
+    ))
+    has_direct_question = bool(re.search(
+        r'\b(can you|could you|would you|will you|do you|did you|have you|are you|is there|are there)\b',
+        text_lower
+    ))
+
+    if not has_question_mark and not starts_with_interrogative and not has_direct_question:
+        return False
+
+    # ── ANTI-FALSE-POSITIVE FILTERS ────────────────────────────────────────
+    is_narrative = bool(re.match(
+        r'^(and (then|now|so|we|you|I|it|this|that|there)|there (we|you) go|look at (this|that)|we need|I need|put it|let(\'?s| us)|oh (look|and)|so (we|you|I)|just |maybe |we want|we can)',
+        text_lower
+    ))
+    if is_narrative and not starts_with_interrogative and not has_direct_question:
+        return False
+
+    is_greeting = bool(re.search(
+        r'\b(thank you|thanks|good (morning|afternoon|evening)|hello|hi\b|bye|goodbye|great question)\b',
+        text_lower
+    ))
+    if is_greeting and not starts_with_interrogative and not has_direct_question:
+        return False
+
+    # ── CONFIDENCE SCORING ─────────────────────────────────────────────────
+    score = 0
+    if has_question_mark: score += 4
+    if starts_with_interrogative: score += 3
+    if has_direct_question: score += 3
+    if word_count <= 50: score += 1
+    if is_narrative: score -= 3
+    if is_greeting: score -= 2
+
+    return score >= 4
+
+
 def detect_qa_patterns(segments, primary_speaker):
-    """Detect Q&A patterns in segments"""
+    """
+    Detect Q&A pairs in transcript segments using strict question gating,
+    merged primary-speaker responses, and response validation.
+    """
     pairs = []
-    
+
     for i, seg in enumerate(segments):
-        # Check if this is a question
-        text_lower = seg['text'].lower()
-        word_count = len(seg['text'].split())
-        
-        # Skip primary speaker's long segments
-        if seg['speaker'] == primary_speaker or word_count > 100:
+        if not _is_likely_question(seg, primary_speaker):
             continue
-        
-        # Question indicators
-        has_question_mark = '?' in seg['text']
-        has_question_words = bool(re.search(r'\b(what|how|why|when|where|who|which|is|are|can|could|would|will|should)\b', text_lower))
-        has_question_phrase = bool(re.search(r'\b(question|wondering|curious|asking|quick question)\b', text_lower))
-        starts_with_question = bool(re.match(r'^(what|how|why|when|where|who|which|is|are|can|could|would|will|should)\b', text_lower))
-        is_short = word_count <= 50
-        is_greeting = bool(re.search(r'\b(thank you|good (morning|afternoon|evening)|hello|hi\b)', text_lower))
-        
-        # Score
-        score = 0
-        if seg['speaker'] != primary_speaker: score += 2
-        if has_question_mark: score += 4
-        if has_question_words: score += 2
-        if starts_with_question: score += 3
-        if has_question_phrase: score += 3
-        if is_short: score += 1
-        if is_greeting: score -= 3
-        
-        if score < 5:
-            continue
-        
-        # Find response (next segment from primary speaker)
-        response_seg = None
+
+        # ── Merge consecutive primary-speaker response segments ────────────
+        merged_text = ''
+        merged_word_count = 0
+        response_start = None
+        last_response_idx = -1
+
         for j in range(i + 1, len(segments)):
-            if segments[j]['speaker'] == primary_speaker:
-                response_seg = segments[j]
-                break
-        
-        if not response_seg:
-            continue
-        
-        # Calculate response duration
-        response_duration = None
-        if i + 1 < len(segments):
-            next_seg = segments[i + 1]
-            if 'start_seconds' in next_seg and 'start_seconds' in response_seg:
-                # Find the segment after the response
-                for k in range(j + 1, len(segments)):
-                    response_duration = segments[k]['start_seconds'] - response_seg['start_seconds']
+            rseg = segments[j]
+            if primary_speaker:
+                if rseg['speaker'] != primary_speaker:
                     break
-        
+                if response_start is None:
+                    response_start = rseg['start_seconds']
+                merged_text += (' ' if merged_text else '') + rseg['text']
+                merged_word_count += len(rseg['text'].split())
+                last_response_idx = j
+            else:
+                # No primary speaker – take immediately next segment only
+                if j == i + 1:
+                    response_start = rseg['start_seconds']
+                    merged_text = rseg['text']
+                    merged_word_count = len(rseg['text'].split())
+                    last_response_idx = j
+                break
+
+        # ── Validate response ──────────────────────────────────────────────
+        if not merged_text or response_start is None:
+            continue
+
+        # Must be substantive
+        if merged_word_count < 20:
+            continue
+
+        # Response should not itself be a question
+        resp_lower = merged_text.lower().strip()
+        if merged_text.strip().endswith('?') or re.match(
+            r'^(what|how|why|when|where|who|which|is|are|do|does|did)\b', resp_lower
+        ):
+            continue
+
+        # ── Duration ──────────────────────────────────────────────────────
+        response_duration = None
+        if last_response_idx >= 0 and last_response_idx + 1 < len(segments):
+            response_duration = (
+                segments[last_response_idx + 1]['start_seconds'] - response_start
+            )
+        elif last_response_idx >= 0:
+            end_s = segments[last_response_idx].get('end_seconds')
+            if end_s is not None:
+                response_duration = end_s - response_start
+
+        qa_key = f"{seg['speaker']}:{seg['start_seconds']}"
+        resp_speaker = primary_speaker or (
+            segments[last_response_idx]['speaker'] if last_response_idx >= 0 else ''
+        )
+
         pairs.append({
+            'qaKey': qa_key,
             'questionSpeaker': seg['speaker'],
             'questionText': seg['text'],
             'questionStart': seg['start_seconds'],
-            'questionWordCount': word_count,
-            'responseSpeaker': response_seg['speaker'],
-            'responseText': response_seg['text'],
-            'responseStart': response_seg['start_seconds'],
-            'responseWordCount': len(response_seg['text'].split()),
-            'responseDurationSeconds': response_duration
+            'questionWordCount': len(seg['text'].split()),
+            'responseSpeaker': resp_speaker,
+            'responseText': merged_text,
+            'responseStart': response_start,
+            'responseWordCount': merged_word_count,
+            'responseDurationSeconds': response_duration,
         })
-    
-    # Calculate averages
+
     if not pairs:
         return {'questionCount': 0, 'avgResponseWords': 0, 'avgResponseSeconds': None, 'pairs': []}
-    
+
     avg_words = round(sum(p['responseWordCount'] for p in pairs) / len(pairs))
-    
     durations = [p['responseDurationSeconds'] for p in pairs if p['responseDurationSeconds'] is not None]
     avg_seconds = round(sum(durations) / len(durations), 1) if durations else None
-    
+
     return {
         'questionCount': len(pairs),
         'avgResponseWords': avg_words,
         'avgResponseSeconds': avg_seconds,
-        'pairs': pairs
+        'pairs': pairs,
     }
 
 @app.route('/api/store-status', methods=['GET'])

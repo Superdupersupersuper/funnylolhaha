@@ -2,7 +2,13 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { parseOtterTranscript, type ParseResult, type ParsedSegment, type QAAnalytics } from "@/lib/parsers/otter";
+import {
+  parseOtterTranscript,
+  computeQAAnalyticsFromPairs,
+  type ParseResult,
+  type ParsedSegment,
+  type QAPair,
+} from "@/lib/parsers/otter";
 import { TagInput } from "./TagInput";
 import { SegmentPreview } from "./SegmentPreview";
 
@@ -31,6 +37,12 @@ interface TranscriptFormProps {
     key_themes: string[];
     segments: ParsedSegment[];
     raw_text?: string;
+    /** Previously saved curated Q&A pairs */
+    qa_data?: QAPair[] | null;
+    /** Previously saved auto-detected Q&A pairs (before user edits) */
+    qa_data_auto?: QAPair[] | null;
+    /** Keys of pairs the user has removed */
+    qa_overrides?: { removedKeys: string[] } | null;
   };
 }
 
@@ -66,7 +78,25 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
   const [segments, setSegments] = useState<ParsedSegment[]>(
     initialData?.segments ?? []
   );
-  const [qaAnalytics, setQaAnalytics] = useState<QAAnalytics | null>(null);
+
+  // Q&A curation state
+  // autoPairs  — latest auto-detected pairs (from last parse, or loaded from db)
+  // removedKeys — set of qaKeys the user has manually removed
+  const [autoPairs, setAutoPairs] = useState<QAPair[]>(
+    initialData?.qa_data_auto ?? initialData?.qa_data ?? []
+  );
+  const [removedKeys, setRemovedKeys] = useState<Set<string>>(
+    new Set(initialData?.qa_overrides?.removedKeys ?? [])
+  );
+  const [showRemoved, setShowRemoved] = useState(false);
+
+  // Curated pairs = auto pairs minus removed keys
+  const curatedPairs = autoPairs.filter((p) => !removedKeys.has(p.qaKey));
+  const removedPairs = autoPairs.filter((p) => removedKeys.has(p.qaKey));
+  const curatedAnalytics =
+    curatedPairs.length > 0 || autoPairs.length > 0
+      ? computeQAAnalyticsFromPairs(curatedPairs)
+      : null;
 
   // UI state
   const [saving, setSaving] = useState(false);
@@ -88,10 +118,10 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
     const result = parseOtterTranscript(rawText, { detectQA: hasQAndA });
     setParseResult(result);
     setSegments(result.segments);
-    
-    // Store Q&A analytics if detected
+
     if (result.qaAnalytics) {
-      setQaAnalytics(result.qaAnalytics);
+      // Replace auto pairs with freshly detected ones; keep existing overrides in place
+      setAutoPairs(result.qaAnalytics.pairs);
     }
 
     // Auto-fill fields from parse result
@@ -105,6 +135,49 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
       setTotalLength(Math.round(result.calculated.totalSeconds));
     }
   }, [rawText, hasQAndA, primarySpeaker, speakersPresent.length, totalLength]);
+
+  // Remove a Q&A pair (send feedback event if editing an existing transcript)
+  async function handleRemoveQA(pair: QAPair) {
+    setRemovedKeys((prev) => new Set([...prev, pair.qaKey]));
+    if (initialData?.id) {
+      await fetch("/api/admin/qa-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcriptId: initialData.id,
+          qaKey: pair.qaKey,
+          action: "removed",
+          pairSnapshot: pair,
+        }),
+      }).catch(() => {});
+    }
+  }
+
+  // Restore a previously removed Q&A pair
+  async function handleRestoreQA(pair: QAPair) {
+    setRemovedKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(pair.qaKey);
+      return next;
+    });
+    if (initialData?.id) {
+      await fetch("/api/admin/qa-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcriptId: initialData.id,
+          qaKey: pair.qaKey,
+          action: "restored",
+          pairSnapshot: pair,
+        }),
+      }).catch(() => {});
+    }
+  }
+
+  // Reset all removals and go back to fully auto-detected list
+  function handleResetQA() {
+    setRemovedKeys(new Set());
+  }
 
   // Handle file upload
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -153,11 +226,13 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
         end_seconds: s.end_seconds,
         text: s.text,
       })),
-      // Q&A analytics (if detected)
-      question_count: qaAnalytics?.questionCount || null,
-      avg_response_length_words: qaAnalytics?.avgResponseWords || null,
-      avg_response_length_seconds: qaAnalytics?.avgResponseSeconds || null,
-      qa_data: qaAnalytics ? qaAnalytics.pairs : null,
+      // Q&A analytics — save curated pairs + raw auto pairs + overrides
+      question_count: curatedAnalytics?.questionCount ?? null,
+      avg_response_length_words: curatedAnalytics?.avgResponseWords ?? null,
+      avg_response_length_seconds: curatedAnalytics?.avgResponseSeconds ?? null,
+      qa_data: curatedPairs.length > 0 ? curatedPairs : null,
+      qa_data_auto: autoPairs.length > 0 ? autoPairs : null,
+      qa_overrides: removedKeys.size > 0 ? { removedKeys: [...removedKeys] } : null,
     };
 
     setSaving(true);
@@ -401,67 +476,142 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
             </div>
             
             {/* Q&A Analytics Display */}
-            {hasQAndA && qaAnalytics && qaAnalytics.questionCount > 0 && (
+            {hasQAndA && autoPairs.length > 0 && (
               <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-blue-900">
-                  📊 Q&A Analytics Detected
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-blue-900">
+                    Q&amp;A Detected
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    {removedKeys.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleResetQA}
+                        className="text-xs text-blue-600 hover:text-blue-800 underline"
+                      >
+                        Reset all removals ({removedKeys.size})
+                      </button>
+                    )}
+                    {removedPairs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowRemoved((v) => !v)}
+                        className="text-xs text-gray-500 hover:text-gray-700 underline"
+                      >
+                        {showRemoved ? "Hide removed" : `Show removed (${removedPairs.length})`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid gap-3 sm:grid-cols-3 text-sm">
                   <div>
-                    <div className="text-blue-600 font-medium">Questions Asked</div>
+                    <div className="text-blue-600 font-medium">Questions</div>
                     <div className="text-2xl font-bold text-blue-900">
-                      {qaAnalytics.questionCount}
+                      {curatedAnalytics?.questionCount ?? 0}
+                      {removedKeys.size > 0 && (
+                        <span className="ml-1 text-sm font-normal text-gray-400">
+                          / {autoPairs.length} detected
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div>
                     <div className="text-blue-600 font-medium">Avg Response Length</div>
                     <div className="text-2xl font-bold text-blue-900">
-                      {qaAnalytics.avgResponseWords} words
+                      {curatedAnalytics?.avgResponseWords ?? 0} words
                     </div>
                   </div>
                   <div>
                     <div className="text-blue-600 font-medium">Avg Response Time</div>
                     <div className="text-2xl font-bold text-blue-900">
-                      {qaAnalytics.avgResponseSeconds !== null
-                        ? `${qaAnalytics.avgResponseSeconds}s`
+                      {curatedAnalytics?.avgResponseSeconds != null
+                        ? `${curatedAnalytics.avgResponseSeconds}s`
                         : "N/A"}
                     </div>
                   </div>
                 </div>
-                
-                {/* Question List */}
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-sm font-medium text-blue-700 hover:text-blue-800">
-                    View all {qaAnalytics.questionCount} questions →
-                  </summary>
-                  <div className="mt-3 space-y-3 max-h-64 overflow-y-auto">
-                    {qaAnalytics.pairs.map((pair, idx) => (
-                      <div key={idx} className="rounded border border-blue-200 bg-white p-3 text-xs">
+
+                {/* Active Q&A pairs */}
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {curatedPairs.length === 0 && (
+                    <p className="text-xs text-gray-500 italic">
+                      All detected questions have been removed.
+                    </p>
+                  )}
+                  {curatedPairs.map((pair, idx) => (
+                    <div
+                      key={pair.qaKey}
+                      className="rounded border border-blue-200 bg-white p-3 text-xs flex gap-2"
+                    >
+                      <div className="flex-1 min-w-0">
                         <div className="font-medium text-blue-900">
                           Q{idx + 1}: {pair.questionSpeaker}
                         </div>
-                        <div className="mt-1 text-gray-700 italic">"{pair.questionText}"</div>
-                        <div className="mt-2 text-gray-500">
+                        <div className="mt-1 text-gray-700 italic truncate">
+                          &ldquo;{pair.questionText}&rdquo;
+                        </div>
+                        <div className="mt-1 text-gray-500">
                           Response: {pair.responseWordCount} words
-                          {pair.responseDurationSeconds !== null && 
+                          {pair.responseDurationSeconds != null &&
                             ` • ${pair.responseDurationSeconds.toFixed(1)}s`}
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveQA(pair)}
+                        title="Remove this Q&A pair"
+                        className="shrink-0 self-start rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Removed Q&A pairs (shown when toggled) */}
+                {showRemoved && removedPairs.length > 0 && (
+                  <div className="mt-2 space-y-2 max-h-64 overflow-y-auto border-t border-blue-100 pt-2">
+                    <div className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                      Removed — will not be saved
+                    </div>
+                    {removedPairs.map((pair) => (
+                      <div
+                        key={pair.qaKey}
+                        className="rounded border border-gray-200 bg-gray-50 p-3 text-xs flex gap-2 opacity-60"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-600">
+                            {pair.questionSpeaker}
+                          </div>
+                          <div className="mt-1 text-gray-500 italic truncate">
+                            &ldquo;{pair.questionText}&rdquo;
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreQA(pair)}
+                          title="Restore this Q&A pair"
+                          className="shrink-0 self-start rounded px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 border border-green-200"
+                        >
+                          Restore
+                        </button>
+                      </div>
                     ))}
                   </div>
-                </details>
+                )}
               </div>
             )}
-            
-            {hasQAndA && qaAnalytics && qaAnalytics.questionCount === 0 && (
+
+            {hasQAndA && autoPairs.length === 0 && parseResult && (
               <div className="mt-4 rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
-                ⚠️ No questions detected. The Q&A detection looks for short segments with question words/marks from non-primary speakers.
+                No questions detected. Detection requires a clear question (ending in ? or starting with an interrogative) followed by a substantive answer from the primary speaker.
               </div>
             )}
-            
-            {hasQAndA && !qaAnalytics && parseResult && (
+
+            {hasQAndA && autoPairs.length === 0 && !parseResult && (
               <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
-                💡 Click "Parse Transcript" again to detect Q&A patterns
+                Click &ldquo;Parse Transcript&rdquo; to auto-detect Q&amp;A pairs
               </div>
             )}
           </div>

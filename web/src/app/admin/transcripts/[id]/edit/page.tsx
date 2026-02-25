@@ -40,6 +40,13 @@ export default async function EditTranscriptPage({
       end_seconds: s.end_seconds,
       text: s.text,
     })),
+    // Pass Q&A curation state so the editor reflects prior user edits
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    qa_data: (transcript.qa_data as any) ?? null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    qa_data_auto: (transcript.qa_data_auto as any) ?? null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    qa_overrides: (transcript.qa_overrides as any) ?? null,
   };
 
   return <EditTranscriptClient data={data} />;
