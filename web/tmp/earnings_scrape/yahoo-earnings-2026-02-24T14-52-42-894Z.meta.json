@@ -1,0 +1,16 @@
+{
+  "runId": "2026-02-24T14-52-42-894Z",
+  "startedAt": "2026-02-24T14:52:42.895Z",
+  "options": {
+    "tickers": [
+      "NVDA"
+    ],
+    "tickersFile": null,
+    "minFiscalYear": 2020,
+    "minFiscalQuarter": 1,
+    "dryRun": true,
+    "concurrency": 2,
+    "delayMs": 0,
+    "outDir": "tmp/earnings_scrape"
+  }
+}

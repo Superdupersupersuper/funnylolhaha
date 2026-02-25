@@ -1,0 +1,3 @@
+{"type":"ticker_start","ticker":"NVDA","at":"2026-02-24T14:42:41.971Z"}
+{"type":"discover_error","ticker":"NVDA","error":"HTTP 404 Not Found for https://finance.yahoo.com/quote/NVDA/earnings-calls/","at":"2026-02-24T14:42:43.603Z"}
+{"type":"run_done","at":"2026-02-24T14:42:43.603Z"}

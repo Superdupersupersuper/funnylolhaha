@@ -1,0 +1,3 @@
+{"type":"ticker_start","ticker":"NVDA","at":"2026-02-24T14:48:51.394Z"}
+{"type":"discover_error","ticker":"NVDA","error":"Yahoo returned an error page for NVDA earnings-calls","at":"2026-02-24T14:48:54.033Z"}
+{"type":"run_done","at":"2026-02-24T14:48:54.033Z"}

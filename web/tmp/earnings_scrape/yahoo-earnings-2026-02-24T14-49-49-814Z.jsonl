@@ -1,0 +1,4 @@
+{"type":"ticker_start","ticker":"NVDA","at":"2026-02-24T14:49:49.815Z"}
+{"type":"discover_ok","ticker":"NVDA","count":0,"at":"2026-02-24T14:49:52.254Z"}
+{"type":"ticker_done","ticker":"NVDA","at":"2026-02-24T14:49:52.255Z"}
+{"type":"run_done","at":"2026-02-24T14:49:52.256Z"}
