@@ -10,13 +10,18 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "earnings:scrape:yahoo": "tsx scripts/scrape_yahoo_earnings_calls.ts",
+    "earnings:scrape": "tsx scripts/scrape_earnings_calls.ts"
   },
   "dependencies": {
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "@prisma/client": "^6.2.0",
+    "cheerio": "^1.1.2",
+    "p-limit": "^6.2.0",
+    "tsx": "^4.20.5",
     "recharts": "^2.15.0",
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.6.0",

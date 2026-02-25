@@ -61,6 +61,13 @@ export async function POST(req: NextRequest) {
       avg_response_length_words,
       avg_response_length_seconds,
       qa_data,
+      // Earnings call metadata (optional)
+      company_ticker,
+      fiscal_year,
+      fiscal_quarter,
+      source,
+      source_url,
+      earnings_key,
     } = body;
 
     // Validate required fields
@@ -94,6 +101,12 @@ export async function POST(req: NextRequest) {
           avg_response_length_words: avg_response_length_words || null,
           avg_response_length_seconds: avg_response_length_seconds || null,
           qa_data: qa_data || null,
+          company_ticker: company_ticker || null,
+          fiscal_year: fiscal_year || null,
+          fiscal_quarter: fiscal_quarter || null,
+          source: source || null,
+          source_url: source_url || null,
+          earnings_key: earnings_key || null,
         },
       });
 
