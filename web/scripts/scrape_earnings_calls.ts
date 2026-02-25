@@ -247,30 +247,47 @@ function extractParticipants(
   const others: string[] = [];
   const companyNames: string[] = [];
 
-  // ── Strategy 1: Motley Fool <ul> under "Call participants" heading ──────────
+  function addParticipant(name: string, titleRaw: string) {
+    if (!name || name.length < 2) return;
+    const lower = titleRaw.toLowerCase();
+    // Skip analysts and investors
+    if (/\banalyst\b/.test(lower) || /\binvestor\b.*\bfirm\b/.test(lower)) return;
+    companyNames.push(name);
+    if (!ceo && (lower.includes("chief executive") || /\bceo\b/.test(lower))) ceo = name;
+    else if (!cfo && (lower.includes("chief financial") || /\bcfo\b/.test(lower))) cfo = name;
+    else others.push(name);
+  }
+
+  // ── Strategy 1: Motley Fool — "Call participants:" h2 followed by <p><strong>Name</strong> -- <em>Title</em></p>
   const h2 = $("h2, h3")
     .filter((_, el) => /call participants/i.test($(el).text()))
     .first();
-  const ul = h2.next("ul");
 
-  if (ul.length) {
-    ul.find("li").each((_, li) => {
-      const raw = norm($(li).text());
-      // Format: "Title — Name" OR "Name — Title" (separator is em-dash)
-      const parts = raw.split(/[—–]/).map((p) => norm(p)).filter(Boolean);
-      if (parts.length < 2) return;
-      // Heuristic: the name is the part WITHOUT a job title keyword
-      const titleKeywords = /\b(officer|president|director|head|vice|investor|relations|ceo|cfo|coo|cto|controller|treasurer|secretary|analyst)\b/i;
-      const nameIdx = parts.findIndex((p) => !titleKeywords.test(p));
-      const name = parts[nameIdx >= 0 ? nameIdx : parts.length - 1];
-      if (!name || name.length < 2) return;
-
-      companyNames.push(name);
-      const lower = raw.toLowerCase();
-      if (!ceo && lower.includes("chief executive officer")) ceo = name;
-      else if (!cfo && lower.includes("chief financial officer")) cfo = name;
-      else others.push(name);
-    });
+  if (h2.length) {
+    // Walk siblings after the heading until we hit another h2
+    let el = h2.next();
+    while (el.length && !el.is("h2, h3")) {
+      if (el.is("p")) {
+        const strong = el.find("strong").first();
+        const em = el.find("em").first();
+        if (strong.length && em.length) {
+          addParticipant(norm(strong.text()), norm(em.text()));
+        }
+      } else if (el.is("ul")) {
+        // legacy <ul>/<li> format
+        el.find("li").each((_, li) => {
+          const raw = norm($(li).text());
+          const parts = raw.split(/[—–]/).map((p) => norm(p)).filter(Boolean);
+          if (parts.length < 2) return;
+          const titleKw = /\b(officer|president|director|head|vice|investor|relations|ceo|cfo|coo|cto|controller|treasurer|secretary|analyst)\b/i;
+          const nameIdx = parts.findIndex((p) => !titleKw.test(p));
+          const name = parts[nameIdx >= 0 ? nameIdx : parts.length - 1];
+          const title = parts.find((p, i) => i !== nameIdx) ?? "";
+          addParticipant(name, title);
+        });
+      }
+      el = el.next();
+    }
   }
 
   // ── Strategy 2: text fallback (InsiderMonkey / older pages) ────────────────
@@ -283,14 +300,10 @@ function extractParticipants(
     let inAnalysts = false;
     for (const ln of lines) {
       if (/\banalysts?\b/i.test(ln) && ln.length < 30) { inAnalysts = true; continue; }
-      if (inAnalysts) continue; // skip analyst names
+      if (inAnalysts) continue;
       const name = (ln.match(/[—–-]\s*(.+)$/) || [])[1]?.trim();
       if (!name || name.length < 2) continue;
-      companyNames.push(name);
-      const lower = ln.toLowerCase();
-      if (!ceo && lower.includes("chief executive officer")) ceo = name;
-      else if (!cfo && lower.includes("chief financial officer")) cfo = name;
-      else others.push(name);
+      addParticipant(name, ln);
     }
   }
 

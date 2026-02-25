@@ -113,10 +113,12 @@ export async function GET(req: NextRequest) {
       const entry = transcriptMap.get(tid)!;
 
       // For earnings calls: "primary" means any company representative
-      // (stored in speakers_present). For other transcripts: match primary_speaker only.
+      // (stored in speakers_present). Fall back to primary_speaker if
+      // speakers_present is empty (older records or failed participant extraction).
       const isEarningsCall = seg.transcript.speech_type === "Earnings Call";
       const selectedSpeaker = speaker || seg.transcript.primary_speaker;
-      const isPrimary = isEarningsCall
+      const hasSpeakersList = seg.transcript.speakers_present.length > 0;
+      const isPrimary = isEarningsCall && hasSpeakersList
         ? seg.transcript.speakers_present.some((s) =>
             speakerMatchesPrimary(seg.speaker, s)
           )

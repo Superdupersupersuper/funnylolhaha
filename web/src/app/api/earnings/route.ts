@@ -32,6 +32,8 @@ export async function GET(req: NextRequest) {
 
     const where = {
       speech_type: "Earnings Call",
+      // Exclude stale records that predate earnings_key support
+      earnings_key: { not: null },
       ...(tickers.length ? { company_ticker: { in: tickers } } : {}),
     };
 
