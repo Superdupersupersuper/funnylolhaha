@@ -1868,6 +1868,12 @@ def _is_likely_question(seg, primary_speaker):
     Strict gating: a segment must have at least ONE strong syntactic question
     signal. This eliminates back-and-forth chatter (e.g. 'You can give me some',
     'There we go') that the old permissive scorer would flag as questions.
+
+    Calibrated for press conferences / interviews where questions can be:
+      - Long multi-part queries (reporters often ask 80-150 word questions)
+      - Statements ending in '?' after context-setting
+      - Indirect questions ('I wonder if...', "I'd like to know...")
+      - Questions addressed to a subject by title ('Mr. Mayor, ...')
     """
     text = seg['text']
     text_lower = text.lower().strip()
@@ -1877,8 +1883,8 @@ def _is_likely_question(seg, primary_speaker):
     if primary_speaker and seg['speaker'] == primary_speaker:
         return False
 
-    # Skip very long segments – questions are typically concise
-    if word_count > 80:
+    # Skip very long segments – even multi-part press conf questions rarely exceed 150 words
+    if word_count > 150:
         return False
 
     # ── HARD GATE ──────────────────────────────────────────────────────────
@@ -1887,8 +1893,13 @@ def _is_likely_question(seg, primary_speaker):
         r'^(what|how|why|when|where|who|which|is|are|do|does|did|have|has|had|will|would|can|could|shall|should|may|might)\b',
         text_lower
     ))
+    # Covers: "can you tell us...", "I wonder what...", "I'd like to know...", etc.
     has_direct_question = bool(re.search(
-        r'\b(can you|could you|would you|will you|do you|did you|have you|are you|is there|are there)\b',
+        r'\b(can you|could you|would you|will you|do you|did you|have you|are you|is there|are there'
+        r'|i wonder|i\'m wondering|i was wondering|i wanted to ask|i want to (ask|know)'
+        r'|i\'d like to (ask|know)|can you (tell|comment|explain|clarify|address)'
+        r'|what (is|are|was|were) your|what\'s your|what do you (think|believe|say|make)'
+        r'|how do you (feel|respond|react|see)|what (are|were) the)\b',
         text_lower
     ))
 
@@ -1907,17 +1918,25 @@ def _is_likely_question(seg, primary_speaker):
         r'\b(thank you|thanks|good (morning|afternoon|evening)|hello|hi\b|bye|goodbye|great question)\b',
         text_lower
     ))
-    if is_greeting and not starts_with_interrogative and not has_direct_question:
+    if is_greeting and not starts_with_interrogative and not has_direct_question and not has_question_mark:
         return False
+
+    # ── REPORTER ADDRESS BONUS ─────────────────────────────────────────────
+    # Reporters often address the subject by title before asking – reliable signal
+    addresses_subject = bool(re.search(
+        r'\b(mr\.|ms\.|mrs\.|mayor|commissioner|governor|president|secretary|senator|congressman|congresswoman|councilmember|chancellor|minister)\b',
+        text_lower
+    ))
 
     # ── CONFIDENCE SCORING ─────────────────────────────────────────────────
     score = 0
     if has_question_mark: score += 4
     if starts_with_interrogative: score += 3
     if has_direct_question: score += 3
-    if word_count <= 50: score += 1
+    if addresses_subject: score += 2
+    if word_count <= 80: score += 1
     if is_narrative: score -= 3
-    if is_greeting: score -= 2
+    if is_greeting and not has_question_mark: score -= 2
 
     return score >= 4
 
@@ -1963,7 +1982,7 @@ def detect_qa_patterns(segments, primary_speaker):
             continue
 
         # Must be substantive
-        if merged_word_count < 20:
+        if merged_word_count < 15:
             continue
 
         # Response should not itself be a question

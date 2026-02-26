@@ -27,7 +27,7 @@ export interface SpeakerStats {
 }
 
 export interface QAPair {
-  /** Stable identifier: `${questionSpeaker}:${questionStart}` */
+  /** Stable identifier: `${questionSpeaker}:${questionStart}` or `manual:<timestamp>` */
   qaKey: string;
   questionSpeaker: string;
   questionText: string;
@@ -38,6 +38,8 @@ export interface QAPair {
   responseStart: number;
   responseWordCount: number;
   responseDurationSeconds: number | null;
+  /** True for pairs the user added manually (not auto-detected) */
+  isManual?: boolean;
 }
 
 export interface QAAnalytics {
@@ -374,6 +376,12 @@ function buildStats(segments: ParsedSegment[]) {
  * signal before we even score it. This eliminates back-and-forth chatter
  * (e.g. "You can give me some", "There we go") that the old permissive scorer
  * would flag as questions.
+ *
+ * Calibrated for press conferences / interviews where questions can be:
+ *  - Long multi-part queries (reporters often ask 80-150 word questions)
+ *  - Statements ending in "?" after context-setting
+ *  - Indirect questions ("I wonder if...", "I'd like to know...")
+ *  - Questions addressed to a subject by title ("Mr. Mayor, ...")
  */
 function isLikelyQuestion(segment: ParsedSegment, primarySpeaker: string | null): boolean {
   const text = segment.text;
@@ -383,8 +391,8 @@ function isLikelyQuestion(segment: ParsedSegment, primarySpeaker: string | null)
   // Must be a non-primary speaker
   if (primarySpeaker && segment.speaker === primarySpeaker) return false;
 
-  // Skip very long segments — questions are typically concise
-  if (wordCount > 80) return false;
+  // Skip very long segments — even multi-part press conf questions rarely exceed 150 words
+  if (wordCount > 150) return false;
 
   // ── HARD GATE ─────────────────────────────────────────────────────────────
   // Need at least one strong syntactic signal of a genuine question.
@@ -395,9 +403,9 @@ function isLikelyQuestion(segment: ParsedSegment, primarySpeaker: string | null)
   // 2. Starts with an interrogative word (direct question form)
   const startsWithInterrogative = /^(what|how|why|when|where|who|which|is|are|do|does|did|have|has|had|will|would|can|could|shall|should|may|might)\b/i.test(textLower);
 
-  // 3. Contains a directed 2nd-person modal question pattern
-  //    e.g. "can you", "could you", "would you", "do you think", etc.
-  const hasDirectQuestion = /\b(can you|could you|would you|will you|do you|did you|have you|are you|is there|are there)\b/i.test(textLower);
+  // 3. Contains a directed question pattern — 2nd-person modal OR indirect question phrasing
+  //    Covers: "can you tell us...", "I wonder what...", "I'd like to know...", etc.
+  const hasDirectQuestion = /\b(can you|could you|would you|will you|do you|did you|have you|are you|is there|are there|i wonder|i'm wondering|i was wondering|i wanted to ask|i want to (ask|know)|i'd like to (ask|know)|can you (tell|comment|explain|clarify|address)|what (is|are|was|were) your|what('s| is) your|what do you (think|believe|say|make)|how do you (feel|respond|react|see)|what (are|were) the)\b/i.test(textLower);
 
   // Must hit at least one of the above — no strong signal → not a question
   if (!hasQuestionMark && !startsWithInterrogative && !hasDirectQuestion) return false;
@@ -410,18 +418,24 @@ function isLikelyQuestion(segment: ParsedSegment, primarySpeaker: string | null)
   // If the only signal is a ? but it reads as a narrative/imperative, skip it
   if (isNarrative && !startsWithInterrogative && !hasDirectQuestion) return false;
 
-  // Greetings / closings that happen to end with a ?
+  // Greetings / closings that happen to end with a ? (but let through if it also has a direct question)
   const isGreeting = /\b(thank you|thanks|good (morning|afternoon|evening)|hello|hi\b|bye|goodbye|great question)\b/i.test(textLower);
-  if (isGreeting && !startsWithInterrogative && !hasDirectQuestion) return false;
+  if (isGreeting && !startsWithInterrogative && !hasDirectQuestion && !hasQuestionMark) return false;
+
+  // ── REPORTER ADDRESS BONUS ────────────────────────────────────────────────
+  // Reporters often address the subject by title before asking. This is a
+  // reliable signal that the segment is a question in a press conference.
+  const addressesSubject = /\b(mr\.|ms\.|mrs\.|mayor|commissioner|governor|president|secretary|senator|congressman|congresswoman|councilmember|chancellor|minister)\b/i.test(textLower);
 
   // ── CONFIDENCE SCORING ────────────────────────────────────────────────────
   let score = 0;
   if (hasQuestionMark) score += 4;
   if (startsWithInterrogative) score += 3;
   if (hasDirectQuestion) score += 3;
-  if (wordCount <= 50) score += 1;
+  if (addressesSubject) score += 2;
+  if (wordCount <= 80) score += 1;
   if (isNarrative) score -= 3;
-  if (isGreeting) score -= 2;
+  if (isGreeting && !hasQuestionMark) score -= 2;
 
   // Lower threshold is fine because gating already eliminates most noise
   return score >= 4;
@@ -494,7 +508,7 @@ function analyzeQA(segments: ParsedSegment[], primarySpeaker: string | null): QA
     if (!mergedText || responseStart === null) continue;
 
     // Response must be substantive (not just a one-word acknowledgement)
-    if (mergedWordCount < 20) continue;
+    if (mergedWordCount < 15) continue;
 
     // Response should not itself look like a question
     const respLower = mergedText.toLowerCase().trim();

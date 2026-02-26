@@ -79,24 +79,49 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
     initialData?.segments ?? []
   );
 
-  // Q&A curation state
-  // autoPairs  — latest auto-detected pairs (from last parse, or loaded from db)
-  // removedKeys — set of qaKeys the user has manually removed
-  const [autoPairs, setAutoPairs] = useState<QAPair[]>(
-    initialData?.qa_data_auto ?? initialData?.qa_data ?? []
-  );
+  // ── Q&A curation state ──────────────────────────────────────────────────
+  // autoPairs   — auto-detected pairs (refreshed on re-parse, loaded from DB on edit)
+  // manualPairs — pairs the user added manually (survive re-parse)
+  // removedKeys — set of qaKeys the user has removed
+  // editingKey  — qaKey of the pair currently being inline-edited (null = none)
+  const [autoPairs, setAutoPairs] = useState<QAPair[]>(() => {
+    const raw = initialData?.qa_data_auto ?? initialData?.qa_data ?? [];
+    // Back-compat: generate stable qaKey for old pairs that pre-date the field
+    return raw.map((p: QAPair, i: number) => ({
+      ...p,
+      qaKey: p.qaKey ?? `legacy:${i}:${p.questionStart ?? i}`,
+    }));
+  });
+  const [manualPairs, setManualPairs] = useState<QAPair[]>(() => {
+    // On edit load, any existing pairs flagged isManual go here
+    const raw = initialData?.qa_data_auto ?? initialData?.qa_data ?? [];
+    return raw
+      .filter((p: QAPair) => p.isManual)
+      .map((p: QAPair, i: number) => ({
+        ...p,
+        qaKey: p.qaKey ?? `manual:${i}`,
+      }));
+  });
   const [removedKeys, setRemovedKeys] = useState<Set<string>>(
     new Set(initialData?.qa_overrides?.removedKeys ?? [])
   );
   const [showRemoved, setShowRemoved] = useState(false);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<Partial<QAPair>>({});
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newPair, setNewPair] = useState({
+    questionSpeaker: "",
+    questionText: "",
+    responseSpeaker: "",
+    responseText: "",
+  });
 
-  // Curated pairs = auto pairs minus removed keys
-  const curatedPairs = autoPairs.filter((p) => !removedKeys.has(p.qaKey));
-  const removedPairs = autoPairs.filter((p) => removedKeys.has(p.qaKey));
+  // All pairs = auto (detected) + manual (user-added), minus removed
+  const allPairs = [...autoPairs.filter((p) => !p.isManual), ...manualPairs];
+  const curatedPairs = allPairs.filter((p) => !removedKeys.has(p.qaKey));
+  const removedPairs = allPairs.filter((p) => removedKeys.has(p.qaKey));
   const curatedAnalytics =
-    curatedPairs.length > 0 || autoPairs.length > 0
-      ? computeQAAnalyticsFromPairs(curatedPairs)
-      : null;
+    allPairs.length > 0 ? computeQAAnalyticsFromPairs(curatedPairs) : null;
 
   // UI state
   const [saving, setSaving] = useState(false);
@@ -120,7 +145,7 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
     setSegments(result.segments);
 
     if (result.qaAnalytics) {
-      // Replace auto pairs with freshly detected ones; keep existing overrides in place
+      // Replace auto-detected pairs with fresh results; manual pairs are untouched
       setAutoPairs(result.qaAnalytics.pairs);
     }
 
@@ -179,6 +204,62 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
     setRemovedKeys(new Set());
   }
 
+  // Start inline-editing a pair
+  function handleStartEdit(pair: QAPair) {
+    setEditingKey(pair.qaKey);
+    setEditDraft({
+      questionSpeaker: pair.questionSpeaker,
+      questionText: pair.questionText,
+      responseSpeaker: pair.responseSpeaker,
+      responseText: pair.responseText,
+    });
+  }
+
+  // Save inline edits to the pair
+  function handleSaveEdit(pair: QAPair) {
+    const updater = (p: QAPair): QAPair =>
+      p.qaKey === pair.qaKey
+        ? {
+            ...p,
+            questionSpeaker: editDraft.questionSpeaker ?? p.questionSpeaker,
+            questionText: editDraft.questionText ?? p.questionText,
+            questionWordCount: (editDraft.questionText ?? p.questionText).split(/\s+/).filter(Boolean).length,
+            responseSpeaker: editDraft.responseSpeaker ?? p.responseSpeaker,
+            responseText: editDraft.responseText ?? p.responseText,
+            responseWordCount: (editDraft.responseText ?? p.responseText).split(/\s+/).filter(Boolean).length,
+          }
+        : p;
+    if (pair.isManual) {
+      setManualPairs((prev) => prev.map(updater));
+    } else {
+      setAutoPairs((prev) => prev.map(updater));
+    }
+    setEditingKey(null);
+    setEditDraft({});
+  }
+
+  // Add a new Q&A pair manually
+  function handleAddManualPair() {
+    const { questionSpeaker, questionText, responseSpeaker, responseText } = newPair;
+    if (!questionText.trim() || !responseText.trim()) return;
+    const pair: QAPair = {
+      qaKey: `manual:${Date.now()}`,
+      questionSpeaker: questionSpeaker.trim() || "Unknown",
+      questionText: questionText.trim(),
+      questionStart: 0,
+      questionWordCount: questionText.trim().split(/\s+/).filter(Boolean).length,
+      responseSpeaker: responseSpeaker.trim() || primarySpeaker || "Unknown",
+      responseText: responseText.trim(),
+      responseStart: 0,
+      responseWordCount: responseText.trim().split(/\s+/).filter(Boolean).length,
+      responseDurationSeconds: null,
+      isManual: true,
+    };
+    setManualPairs((prev) => [...prev, pair]);
+    setNewPair({ questionSpeaker: "", questionText: "", responseSpeaker: "", responseText: "" });
+    setShowAddForm(false);
+  }
+
   // Handle file upload
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -226,12 +307,12 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
         end_seconds: s.end_seconds,
         text: s.text,
       })),
-      // Q&A analytics — save curated pairs + raw auto pairs + overrides
+      // Q&A analytics — save curated pairs + all detected+manual pairs + overrides
       question_count: curatedAnalytics?.questionCount ?? null,
       avg_response_length_words: curatedAnalytics?.avgResponseWords ?? null,
       avg_response_length_seconds: curatedAnalytics?.avgResponseSeconds ?? null,
       qa_data: curatedPairs.length > 0 ? curatedPairs : null,
-      qa_data_auto: autoPairs.length > 0 ? autoPairs : null,
+      qa_data_auto: allPairs.length > 0 ? allPairs : null,
       qa_overrides: removedKeys.size > 0 ? { removedKeys: [...removedKeys] } : null,
     };
 
@@ -533,7 +614,7 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
                 </div>
 
                 {/* Active Q&A pairs */}
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+                <div className="space-y-2 max-h-[32rem] overflow-y-auto">
                   {curatedPairs.length === 0 && (
                     <p className="text-xs text-gray-500 italic">
                       All detected questions have been removed.
@@ -542,29 +623,104 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
                   {curatedPairs.map((pair, idx) => (
                     <div
                       key={pair.qaKey}
-                      className="rounded border border-blue-200 bg-white p-3 text-xs flex gap-2"
+                      className="rounded border border-blue-200 bg-white p-3 text-xs"
                     >
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-blue-900">
-                          Q{idx + 1}: {pair.questionSpeaker}
+                      {editingKey === pair.qaKey ? (
+                        /* ── Inline edit mode ── */
+                        <div className="space-y-2">
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <div>
+                              <label className="block mb-0.5 font-medium text-gray-600">Question speaker</label>
+                              <input
+                                value={editDraft.questionSpeaker ?? ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, questionSpeaker: e.target.value }))}
+                                className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              />
+                            </div>
+                            <div>
+                              <label className="block mb-0.5 font-medium text-gray-600">Response speaker</label>
+                              <input
+                                value={editDraft.responseSpeaker ?? ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, responseSpeaker: e.target.value }))}
+                                className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block mb-0.5 font-medium text-gray-600">Question text</label>
+                            <textarea
+                              value={editDraft.questionText ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, questionText: e.target.value }))}
+                              rows={3}
+                              className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                          <div>
+                            <label className="block mb-0.5 font-medium text-gray-600">Response text</label>
+                            <textarea
+                              value={editDraft.responseText ?? ""}
+                              onChange={(e) => setEditDraft((d) => ({ ...d, responseText: e.target.value }))}
+                              rows={4}
+                              className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(pair)}
+                              className="rounded px-2 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700"
+                            >
+                              Save edits
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingKey(null); setEditDraft({}); }}
+                              className="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 border border-gray-200"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         </div>
-                        <div className="mt-1 text-gray-700 italic truncate">
-                          &ldquo;{pair.questionText}&rdquo;
+                      ) : (
+                        /* ── Display mode ── */
+                        <div className="flex gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-blue-900 flex items-center gap-1">
+                              Q{idx + 1}: {pair.questionSpeaker}
+                              {pair.isManual && (
+                                <span className="ml-1 rounded bg-purple-100 px-1 py-0.5 text-purple-700 text-[10px]">manual</span>
+                              )}
+                            </div>
+                            <div className="mt-1 text-gray-700 italic line-clamp-2">
+                              &ldquo;{pair.questionText}&rdquo;
+                            </div>
+                            <div className="mt-1 text-gray-500">
+                              <span className="font-medium text-gray-600">{pair.responseSpeaker}</span>
+                              {" — "}{pair.responseWordCount} words
+                              {pair.responseDurationSeconds != null &&
+                                ` • ${pair.responseDurationSeconds.toFixed(1)}s`}
+                            </div>
+                          </div>
+                          <div className="shrink-0 self-start flex flex-col gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(pair)}
+                              title="Edit this Q&A pair"
+                              className="rounded px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 border border-blue-200"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveQA(pair)}
+                              title="Remove this Q&A pair"
+                              className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200"
+                            >
+                              Remove
+                            </button>
+                          </div>
                         </div>
-                        <div className="mt-1 text-gray-500">
-                          Response: {pair.responseWordCount} words
-                          {pair.responseDurationSeconds != null &&
-                            ` • ${pair.responseDurationSeconds.toFixed(1)}s`}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveQA(pair)}
-                        title="Remove this Q&A pair"
-                        className="shrink-0 self-start rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200"
-                      >
-                        Remove
-                      </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -600,6 +756,69 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
                     ))}
                   </div>
                 )}
+
+                {/* Add Q&A pair manually */}
+                <div className="border-t border-blue-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddForm((v) => !v)}
+                    className="text-xs text-blue-700 hover:text-blue-900 underline"
+                  >
+                    {showAddForm ? "Cancel" : "+ Add Q&A pair manually"}
+                  </button>
+                  {showAddForm && (
+                    <div className="mt-2 rounded border border-blue-200 bg-white p-3 space-y-2">
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <label className="block mb-0.5 text-xs font-medium text-gray-600">Question speaker</label>
+                          <input
+                            value={newPair.questionSpeaker}
+                            onChange={(e) => setNewPair((p) => ({ ...p, questionSpeaker: e.target.value }))}
+                            placeholder="Reporter / Unknown Speaker"
+                            className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        </div>
+                        <div>
+                          <label className="block mb-0.5 text-xs font-medium text-gray-600">Response speaker</label>
+                          <input
+                            value={newPair.responseSpeaker}
+                            onChange={(e) => setNewPair((p) => ({ ...p, responseSpeaker: e.target.value }))}
+                            placeholder={primarySpeaker || "Primary speaker"}
+                            className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block mb-0.5 text-xs font-medium text-gray-600">Question text *</label>
+                        <textarea
+                          value={newPair.questionText}
+                          onChange={(e) => setNewPair((p) => ({ ...p, questionText: e.target.value }))}
+                          rows={3}
+                          placeholder="Paste the question from the transcript…"
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-0.5 text-xs font-medium text-gray-600">Response text *</label>
+                        <textarea
+                          value={newPair.responseText}
+                          onChange={(e) => setNewPair((p) => ({ ...p, responseText: e.target.value }))}
+                          rows={4}
+                          placeholder="Paste the response from the transcript…"
+                          className="w-full rounded border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddManualPair}
+                        disabled={!newPair.questionText.trim() || !newPair.responseText.trim()}
+                        className="rounded px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        Add pair
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
