@@ -34,6 +34,12 @@ export default function AdminLayout({
               >
                 Upload New
               </Link>
+              <Link
+                href="/admin/qa-training"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                Q&amp;A Training
+              </Link>
             </nav>
           </div>
           <LogoutButton />

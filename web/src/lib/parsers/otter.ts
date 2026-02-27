@@ -551,6 +551,83 @@ function analyzeQA(segments: ParsedSegment[], primarySpeaker: string | null): QA
   };
 }
 
+// ─── Candidate exchange extractor ────────────────────────────────────────────
+
+export interface CandidateExchange {
+  /** Stable key: `${questionSpeaker}:${questionStart}` */
+  qaKey: string;
+  questionSpeaker: string;
+  questionText: string;
+  questionStart: number;
+  responseSpeaker: string;
+  responseText: string;
+  responseStart: number;
+  responseWordCount: number;
+}
+
+/**
+ * Extracts every candidate Q&A exchange from a list of segments: any
+ * non-primary-speaker turn (≥ 10 words) immediately followed by one or more
+ * consecutive primary-speaker segments.
+ *
+ * Used by:
+ *  – the labeling UI to generate flashcard candidates
+ *  – the AI classifier to determine which exchanges to evaluate
+ */
+export function extractCandidateExchanges(
+  segments: ParsedSegment[],
+  primarySpeaker: string | null
+): CandidateExchange[] {
+  const candidates: CandidateExchange[] = [];
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+
+    // Skip primary speaker and very short segments
+    if (primarySpeaker && seg.speaker === primarySpeaker) continue;
+    const wordCount = seg.text.split(/\s+/).filter(Boolean).length;
+    if (wordCount < 10) continue;
+
+    // Collect the following primary-speaker response block
+    let mergedText = "";
+    let mergedWordCount = 0;
+    let responseStart: number | null = null;
+
+    for (let j = i + 1; j < segments.length; j++) {
+      const rseg = segments[j];
+      if (primarySpeaker) {
+        if (rseg.speaker !== primarySpeaker) break;
+        if (responseStart === null) responseStart = rseg.start_seconds;
+        mergedText += (mergedText ? " " : "") + rseg.text;
+        mergedWordCount += rseg.text.split(/\s+/).filter(Boolean).length;
+      } else {
+        // No primary speaker — take the immediately next segment only
+        if (j === i + 1) {
+          responseStart = rseg.start_seconds;
+          mergedText = rseg.text;
+          mergedWordCount = rseg.text.split(/\s+/).filter(Boolean).length;
+        }
+        break;
+      }
+    }
+
+    if (!mergedText || responseStart === null || mergedWordCount < 10) continue;
+
+    candidates.push({
+      qaKey: `${seg.speaker}:${seg.start_seconds}`,
+      questionSpeaker: seg.speaker,
+      questionText: seg.text,
+      questionStart: seg.start_seconds,
+      responseSpeaker: primarySpeaker ?? "",
+      responseText: mergedText,
+      responseStart,
+      responseWordCount: mergedWordCount,
+    });
+  }
+
+  return candidates;
+}
+
 // ─── Main entry ─────────────────────────────────────────────────────────────
 
 export interface ParseOptions {

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   parseOtterTranscript,
+  extractCandidateExchanges,
   computeQAAnalyticsFromPairs,
   type ParseResult,
   type ParsedSegment,
@@ -127,6 +128,8 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [aiClassifying, setAiClassifying] = useState(false);
+  const [aiClassified, setAiClassified] = useState(false);
 
   useEffect(() => {
     fetch("/api/search/filters", { cache: "no-store" })
@@ -137,17 +140,16 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
       .catch(() => {});
   }, []);
 
-  // Parse the raw text
-  const handleParse = useCallback(() => {
+  // Parse the raw text, then optionally AI-classify Q&A candidates
+  const handleParse = useCallback(async () => {
     if (!rawText.trim()) return;
     const result = parseOtterTranscript(rawText, { detectQA: hasQAndA });
     setParseResult(result);
     setSegments(result.segments);
+    setAiClassified(false);
 
-    if (result.qaAnalytics) {
-      // Replace auto-detected pairs with fresh results; manual pairs are untouched
-      setAutoPairs(result.qaAnalytics.pairs);
-    }
+    const detectedPrimary =
+      result.calculated.suggestedPrimarySpeaker ?? primarySpeaker ?? null;
 
     // Auto-fill fields from parse result
     if (result.calculated.suggestedPrimarySpeaker && !primarySpeaker) {
@@ -158,6 +160,60 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
     }
     if (result.calculated.totalSeconds && !totalLength) {
       setTotalLength(Math.round(result.calculated.totalSeconds));
+    }
+
+    if (!hasQAndA) return;
+
+    // Try AI classification first
+    const candidates = extractCandidateExchanges(result.segments, detectedPrimary);
+
+    if (candidates.length > 0) {
+      setAiClassifying(true);
+      try {
+        const res = await fetch("/api/admin/qa-classify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ candidates, primarySpeaker: detectedPrimary }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.usedAI && Array.isArray(data.results) && data.results.length > 0) {
+            // Build QAPairs from AI-positive candidates
+            const positiveKeys = new Set(
+              (data.results as Array<{ qaKey: string; isQA: boolean }>)
+                .filter((r) => r.isQA)
+                .map((r) => r.qaKey)
+            );
+            const aiPairs: QAPair[] = candidates
+              .filter((c) => positiveKeys.has(c.qaKey))
+              .map((c) => ({
+                qaKey: c.qaKey,
+                questionSpeaker: c.questionSpeaker,
+                questionText: c.questionText,
+                questionStart: c.questionStart,
+                questionWordCount: c.questionText.split(/\s+/).filter(Boolean).length,
+                responseSpeaker: c.responseSpeaker,
+                responseText: c.responseText,
+                responseStart: c.responseStart,
+                responseWordCount: c.responseWordCount,
+                responseDurationSeconds: null,
+              }));
+            setAutoPairs(aiPairs);
+            setAiClassified(true);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to heuristic
+      } finally {
+        setAiClassifying(false);
+      }
+    }
+
+    // Fallback: use heuristic-detected pairs
+    if (result.qaAnalytics) {
+      setAutoPairs(result.qaAnalytics.pairs);
     }
   }, [rawText, hasQAndA, primarySpeaker, speakersPresent.length, totalLength]);
 
@@ -404,10 +460,10 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
         <button
           type="button"
           onClick={handleParse}
-          disabled={!rawText.trim()}
+          disabled={!rawText.trim() || aiClassifying}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          Parse Transcript
+          {aiClassifying ? "Classifying Q&A…" : "Parse Transcript"}
         </button>
       </div>
 
@@ -560,8 +616,13 @@ export function TranscriptForm({ initialData }: TranscriptFormProps) {
             {hasQAndA && autoPairs.length > 0 && (
               <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-blue-900">
+                  <h3 className="text-sm font-semibold text-blue-900 flex items-center gap-2">
                     Q&amp;A Detected
+                    {aiClassified && (
+                      <span className="rounded bg-purple-100 px-1.5 py-0.5 text-xs font-medium text-purple-700">
+                        AI-classified
+                      </span>
+                    )}
                   </h3>
                   <div className="flex items-center gap-2">
                     {removedKeys.size > 0 && (

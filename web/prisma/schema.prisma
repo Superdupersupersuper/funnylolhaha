@@ -76,3 +76,24 @@ model QADetectionFeedback {
   @@index([created_at])
 }
 
+/**
+ * Human-labeled Q&A candidate exchanges used as few-shot examples
+ * for the OpenAI-powered Q&A classifier.
+ */
+model QALabel {
+  id              String   @id @default(uuid())
+  transcriptId    String
+  questionSpeaker String
+  questionText    String
+  responseSpeaker String
+  responseText    String
+  isQA            Boolean  // true = genuine Q&A exchange, false = not Q&A
+  reasoning       String?  // user's explanation — injected into the AI prompt
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([transcriptId])
+  @@index([isQA])
+  @@index([created_at])
+}
+
