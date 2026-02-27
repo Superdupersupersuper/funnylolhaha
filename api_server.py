@@ -368,7 +368,8 @@ def _migrate_add_speech_types_table():
         logging.error(f"Migration error: {e}")
 
 def _migrate_add_qa_columns():
-    """Add has_q_and_a and qa_analytics columns to transcripts table"""
+    """Add has_q_and_a, qa_analytics, qa_data_auto, and qa_overrides columns to transcripts table
+       and create the qa_labels table for AI training."""
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -386,6 +387,41 @@ def _migrate_add_qa_columns():
             cursor.execute("ALTER TABLE transcripts ADD COLUMN qa_analytics TEXT")
             conn.commit()
             logging.info("✅ qa_analytics column added")
+
+        if 'qa_data_auto' not in columns:
+            logging.info("📦 Migrating: adding qa_data_auto column...")
+            cursor.execute("ALTER TABLE transcripts ADD COLUMN qa_data_auto TEXT")
+            conn.commit()
+            logging.info("✅ qa_data_auto column added")
+
+        if 'qa_overrides' not in columns:
+            logging.info("📦 Migrating: adding qa_overrides column...")
+            cursor.execute("ALTER TABLE transcripts ADD COLUMN qa_overrides TEXT")
+            conn.commit()
+            logging.info("✅ qa_overrides column added")
+
+        # Create qa_labels table for AI training data
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='qa_labels'")
+        if not cursor.fetchone():
+            logging.info("📦 Creating qa_labels table...")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS qa_labels (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transcript_id INTEGER NOT NULL,
+                    question_speaker TEXT NOT NULL,
+                    question_text TEXT NOT NULL,
+                    response_speaker TEXT NOT NULL,
+                    response_text TEXT NOT NULL,
+                    is_qa INTEGER NOT NULL,
+                    reasoning TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_qa_labels_transcript ON qa_labels(transcript_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_qa_labels_is_qa ON qa_labels(is_qa)")
+            conn.commit()
+            logging.info("✅ qa_labels table created")
         
         conn.close()
     except Exception as e:
@@ -2062,6 +2098,408 @@ def store_status():
                 'ttl': _cache['ttl'],
             }
     return jsonify(info)
+
+
+# ---------------------------------------------------------------------------
+# Q&A Training — labels + OpenAI classifier
+# ---------------------------------------------------------------------------
+
+@app.route('/api/qa-labels', methods=['GET'])
+def get_qa_labels():
+    """GET /api/qa-labels?transcript_id=...  or  ?stats=1"""
+    stats = request.args.get('stats')
+    if stats == '1':
+        if _use_github():
+            labels = _github_get_all_qa_labels()
+            total_yes = sum(1 for l in labels if l.get('is_qa'))
+            total_no  = sum(1 for l in labels if not l.get('is_qa'))
+        else:
+            conn = get_db()
+            cur  = conn.cursor()
+            cur.execute("SELECT COUNT(*) as n FROM qa_labels WHERE is_qa=1")
+            total_yes = cur.fetchone()['n']
+            cur.execute("SELECT COUNT(*) as n FROM qa_labels WHERE is_qa=0")
+            total_no  = cur.fetchone()['n']
+            conn.close()
+        return jsonify({'totalYes': total_yes, 'totalNo': total_no,
+                        'total': total_yes + total_no})
+
+    transcript_id = request.args.get('transcript_id')
+    if not transcript_id:
+        return jsonify({'error': 'transcript_id is required'}), 400
+
+    if _use_github():
+        labels = [l for l in _github_get_all_qa_labels()
+                  if str(l.get('transcript_id')) == str(transcript_id)]
+    else:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("""SELECT id, transcript_id, question_speaker, question_text,
+                              response_speaker, response_text, is_qa, reasoning, created_at
+                       FROM qa_labels WHERE transcript_id=? ORDER BY created_at ASC""",
+                    (transcript_id,))
+        rows = cur.fetchall()
+        conn.close()
+        labels = [dict(r) for r in rows]
+
+    return jsonify(labels)
+
+
+@app.route('/api/qa-labels', methods=['POST'])
+def save_qa_label():
+    """POST /api/qa-labels — upsert a human label for a Q&A candidate."""
+    data = request.get_json(force=True)
+    transcript_id  = data.get('transcript_id')
+    q_speaker      = data.get('question_speaker', '')
+    q_text         = data.get('question_text', '')
+    r_speaker      = data.get('response_speaker', '')
+    r_text         = data.get('response_text', '')
+    is_qa          = data.get('is_qa')
+    reasoning      = data.get('reasoning', '')
+
+    if not transcript_id or not q_text or not r_text or is_qa is None:
+        return jsonify({'error': 'transcript_id, question_text, response_text, is_qa are required'}), 400
+
+    is_qa_int = 1 if is_qa else 0
+
+    if _use_github():
+        label_id = _github_upsert_qa_label(transcript_id, q_speaker, q_text,
+                                           r_speaker, r_text, is_qa_int, reasoning)
+        return jsonify({'id': label_id, 'is_qa': bool(is_qa)})
+
+    conn = get_db()
+    cur  = conn.cursor()
+    cur.execute("SELECT id FROM qa_labels WHERE transcript_id=? AND question_text=?",
+                (transcript_id, q_text))
+    existing = cur.fetchone()
+    if existing:
+        cur.execute("""UPDATE qa_labels SET is_qa=?, reasoning=?,
+                       updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (is_qa_int, reasoning, existing['id']))
+        label_id = existing['id']
+    else:
+        cur.execute("""INSERT INTO qa_labels
+                       (transcript_id, question_speaker, question_text, response_speaker,
+                        response_text, is_qa, reasoning)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (transcript_id, q_speaker, q_text, r_speaker, r_text, is_qa_int, reasoning))
+        label_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({'id': label_id, 'is_qa': bool(is_qa)})
+
+
+def _github_get_all_qa_labels():
+    """Load qa_labels list from GitHub store (stored as a single JSON file)."""
+    if not _use_github():
+        return []
+    try:
+        from github_store import _get_file, GITHUB_STORE_PREFIX
+        data, _ = _get_file(f'{GITHUB_STORE_PREFIX}/qa_labels.json')
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _github_upsert_qa_label(transcript_id, q_speaker, q_text, r_speaker,
+                             r_text, is_qa_int, reasoning):
+    """Upsert a label into the GitHub-backed qa_labels.json file."""
+    from github_store import _get_file, _put_file, GITHUB_STORE_PREFIX
+    import datetime
+    path   = f'{GITHUB_STORE_PREFIX}/qa_labels.json'
+    labels, sha = _get_file(path)
+    if labels is None:
+        labels = []
+    existing_idx = next(
+        (i for i, l in enumerate(labels)
+         if str(l.get('transcript_id')) == str(transcript_id)
+            and l.get('question_text') == q_text),
+        None
+    )
+    now = datetime.datetime.utcnow().isoformat()
+    if existing_idx is not None:
+        labels[existing_idx].update({'is_qa': is_qa_int, 'reasoning': reasoning, 'updated_at': now})
+        label_id = labels[existing_idx]['id']
+    else:
+        label_id = int(time.time() * 1000)
+        labels.append({
+            'id': label_id, 'transcript_id': transcript_id,
+            'question_speaker': q_speaker, 'question_text': q_text,
+            'response_speaker': r_speaker, 'response_text': r_text,
+            'is_qa': is_qa_int, 'reasoning': reasoning,
+            'created_at': now, 'updated_at': now,
+        })
+    _put_file(path, labels, f'Update qa_labels ({len(labels)} entries)', sha=sha)
+    return label_id
+
+
+@app.route('/api/qa-classify', methods=['POST'])
+def qa_classify():
+    """POST /api/qa-classify — classify candidate exchanges via OpenAI few-shot prompt.
+    Body: { candidates: [{qaKey, questionSpeaker, questionText, responseSpeaker, responseText}],
+            primarySpeaker: str }
+    Returns: { usedAI: bool, results: [{qaKey, isQA, confidence, reason}] }
+    """
+    try:
+        import openai as _openai
+    except ImportError:
+        return jsonify({'usedAI': False, 'results': [],
+                        'message': 'openai package not installed'}), 200
+
+    api_key = os.environ.get('OPENAI_API_KEY')
+    if not api_key:
+        return jsonify({'usedAI': False, 'results': [],
+                        'message': 'OPENAI_API_KEY not set'}), 200
+
+    data           = request.get_json(force=True)
+    candidates     = data.get('candidates', [])
+    primary_speaker = data.get('primarySpeaker', '')
+
+    if not candidates:
+        return jsonify({'usedAI': False, 'results': []}), 200
+
+    MIN_LABELS = 10
+    if _use_github():
+        all_labels = _github_get_all_qa_labels()
+        yes_labels = [l for l in all_labels if l.get('is_qa')][-12:]
+        no_labels  = [l for l in all_labels if not l.get('is_qa')][-12:]
+    else:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("""SELECT question_speaker,question_text,response_speaker,response_text,
+                              is_qa,reasoning FROM qa_labels WHERE is_qa=1
+                       ORDER BY created_at DESC LIMIT 12""")
+        yes_labels = [dict(r) for r in cur.fetchall()]
+        cur.execute("""SELECT question_speaker,question_text,response_speaker,response_text,
+                              is_qa,reasoning FROM qa_labels WHERE is_qa=0
+                       ORDER BY created_at DESC LIMIT 12""")
+        no_labels  = [dict(r) for r in cur.fetchall()]
+        conn.close()
+
+    total_labels = len(yes_labels) + len(no_labels)
+    if total_labels < MIN_LABELS:
+        return jsonify({'usedAI': False, 'results': [],
+                        'message': f'Need {MIN_LABELS} labels, have {total_labels}'}), 200
+
+    def _interleave(a, b):
+        out = []
+        for i in range(max(len(a), len(b))):
+            if i < len(a): out.append(a[i])
+            if i < len(b): out.append(b[i])
+        return out
+
+    def _trunc(text, words=80):
+        parts = text.split()
+        return ' '.join(parts[:words]) + ('…' if len(parts) > words else '')
+
+    examples = _interleave(yes_labels, no_labels)
+    few_shot = '\n\n'.join(
+        f"Example {i+1}:\n"
+        f"  Question speaker: {ex.get('question_speaker','')}\n"
+        f"  Question: \"{_trunc(ex.get('question_text',''))}\"\n"
+        f"  Response speaker: {ex.get('response_speaker','')}\n"
+        f"  Response: \"{_trunc(ex.get('response_text',''))}\"\n"
+        f"  Label: {'YES — genuine Q&A' if ex.get('is_qa') else 'NO — not Q&A'}"
+        + (f"\n  Reason: {ex['reasoning']}" if ex.get('reasoning') else '')
+        for i, ex in enumerate(examples)
+    )
+
+    system_prompt = f"""You are an expert at identifying genuine Q&A exchanges in political press conferences, interviews, and public speeches.
+
+PRIMARY SPEAKER being questioned: "{primary_speaker}"
+
+WHAT COUNTS AS Q&A:
+- A reporter or audience member asks a direct, substantive question about policy, events, or the primary speaker's actions/views
+- The primary speaker gives a genuine answer (not just a transition or filler phrase)
+- The question has clear interrogative intent — whether or not it ends with a question mark
+
+WHAT DOES NOT COUNT AS Q&A:
+- Conversational back-and-forth without a real question (e.g. "Thank you, great, okay")
+- The moderator redirecting the floor or introducing someone
+- The primary speaker summarising what another speaker said
+- Short filler exchanges ("Yeah", "Right", "Exactly") even if followed by a real response
+- A question asked to someone other than the primary speaker
+
+LABELED EXAMPLES FROM HUMAN TRAINER:
+{few_shot}
+
+Return a JSON object with this exact shape:
+{{"results": [{{"qaKey": "<exact qaKey>", "isQA": true|false, "confidence": 0.0-1.0, "reason": "<one sentence>"}}]}}"""
+
+    user_lines = '\n\n'.join(
+        f"Candidate {i+1}:\n"
+        f"  qaKey: \"{c['qaKey']}\"\n"
+        f"  Question speaker: {c.get('questionSpeaker','')}\n"
+        f"  Question: \"{_trunc(c.get('questionText',''), 120)}\"\n"
+        f"  Response speaker: {c.get('responseSpeaker','')}\n"
+        f"  Response: \"{_trunc(c.get('responseText',''), 120)}\""
+        for i, c in enumerate(candidates)
+    )
+    user_prompt = f"Classify each of the following {len(candidates)} candidate exchange(s):\n\n{user_lines}"
+
+    try:
+        client = _openai.OpenAI(api_key=api_key)
+        completion = client.chat.completions.create(
+            model='gpt-4o-mini',
+            temperature=0,
+            response_format={'type': 'json_object'},
+            messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user',   'content': user_prompt},
+            ]
+        )
+        raw     = completion.choices[0].message.content or '{}'
+        parsed  = json.loads(raw)
+        results = [
+            {
+                'qaKey':      r.get('qaKey', ''),
+                'isQA':       bool(r.get('isQA', False)),
+                'confidence': max(0.0, min(1.0, float(r.get('confidence', 0.5)))),
+                'reason':     r.get('reason', ''),
+            }
+            for r in (parsed.get('results') or [])
+        ]
+        return jsonify({'usedAI': True, 'results': results})
+    except Exception as e:
+        logging.error(f"OpenAI classify error: {e}")
+        return jsonify({'usedAI': False, 'results': [],
+                        'message': f'OpenAI error: {str(e)}'}), 200
+
+
+@app.route('/api/qa-candidates/<int:transcript_id>', methods=['GET'])
+def get_qa_candidates(transcript_id):
+    """Return the candidate exchanges for a transcript (for the labeling UI)."""
+    if _use_github():
+        store = get_github_store()
+        t = store.get_transcript(transcript_id)
+    else:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("SELECT * FROM transcripts WHERE id=?", (transcript_id,))
+        row = cur.fetchone()
+        conn.close()
+        t = dict(row) if row else None
+
+    if not t:
+        return jsonify({'error': 'Transcript not found'}), 404
+
+    full_dialogue  = t.get('full_dialogue') or t.get('full_text') or ''
+    primary        = t.get('primary_speaker') or ''
+
+    segments = _parse_segments_from_dialogue(full_dialogue)
+    candidates = _extract_candidate_exchanges(segments, primary)
+
+    return jsonify({'candidates': candidates, 'primarySpeaker': primary,
+                    'title': t.get('title', ''), 'transcriptId': transcript_id})
+
+
+def _parse_segments_from_dialogue(full_dialogue):
+    """Parse 'Speaker  M:SS\ntext' blocks into segment dicts."""
+    segments = []
+    if not full_dialogue:
+        return segments
+    pattern = re.compile(
+        r'^([^\n\t]+?)\s{2,}(\d+:\d+(?::\d+)?)\s*\n([\s\S]*?)(?=\n[^\n\t]+?\s{2,}\d+:\d+|$)',
+        re.MULTILINE
+    )
+    for m in pattern.finditer(full_dialogue):
+        speaker  = m.group(1).strip()
+        ts_parts = m.group(2).strip().split(':')
+        if len(ts_parts) == 2:
+            start_s = int(ts_parts[0]) * 60 + int(ts_parts[1])
+        elif len(ts_parts) == 3:
+            start_s = int(ts_parts[0]) * 3600 + int(ts_parts[1]) * 60 + int(ts_parts[2])
+        else:
+            start_s = 0
+        text = m.group(3).strip()
+        if text:
+            segments.append({'speaker': speaker, 'start_seconds': start_s, 'text': text})
+    return segments
+
+
+def _extract_candidate_exchanges(segments, primary_speaker):
+    """Return every non-primary-speaker turn (>=10 words) followed by a primary response."""
+    candidates = []
+    for i, seg in enumerate(segments):
+        if primary_speaker and seg['speaker'] == primary_speaker:
+            continue
+        word_count = len(seg['text'].split())
+        if word_count < 10:
+            continue
+        merged_text  = ''
+        merged_words = 0
+        resp_start   = None
+        for j in range(i + 1, len(segments)):
+            rseg = segments[j]
+            if primary_speaker:
+                if rseg['speaker'] != primary_speaker:
+                    break
+                if resp_start is None:
+                    resp_start = rseg['start_seconds']
+                merged_text  += (' ' if merged_text else '') + rseg['text']
+                merged_words += len(rseg['text'].split())
+            else:
+                if j == i + 1:
+                    resp_start   = rseg['start_seconds']
+                    merged_text  = rseg['text']
+                    merged_words = len(rseg['text'].split())
+                break
+        if not merged_text or merged_words < 10:
+            continue
+        qa_key = f"{seg['speaker']}:{seg['start_seconds']}"
+        candidates.append({
+            'qaKey':           qa_key,
+            'questionSpeaker': seg['speaker'],
+            'questionText':    seg['text'],
+            'questionStart':   seg['start_seconds'],
+            'responseSpeaker': primary_speaker or '',
+            'responseText':    merged_text,
+            'responseStart':   resp_start,
+            'responseWordCount': merged_words,
+        })
+    return candidates
+
+
+@app.route('/api/qa-transcripts', methods=['GET'])
+def get_qa_transcripts():
+    """Return all transcripts with has_q_and_a=true, with candidate and label counts."""
+    if _use_github():
+        index = _get_cached_index()
+        all_t = [t for t in index if t.get('has_q_and_a')]
+    else:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("""SELECT id, title, date, primary_speaker FROM transcripts
+                       WHERE has_q_and_a=1 ORDER BY date DESC""")
+        rows = cur.fetchall()
+        conn.close()
+        all_t = [dict(r) for r in rows]
+
+    # Fetch label counts per transcript
+    if _use_github():
+        all_labels  = _github_get_all_qa_labels()
+        label_count = {}
+        for l in all_labels:
+            tid = str(l.get('transcript_id'))
+            label_count[tid] = label_count.get(tid, 0) + 1
+    else:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("SELECT transcript_id, COUNT(*) as n FROM qa_labels GROUP BY transcript_id")
+        label_count = {str(r['transcript_id']): r['n'] for r in cur.fetchall()}
+        conn.close()
+
+    result = []
+    for t in all_t:
+        tid = str(t.get('id'))
+        result.append({
+            'id':             t.get('id'),
+            'title':          t.get('title'),
+            'date':           t.get('date'),
+            'primarySpeaker': t.get('primary_speaker') or t.get('primarySpeaker') or '',
+            'labelCount':     label_count.get(tid, 0),
+        })
+    return jsonify({'transcripts': result})
 
 
 # ---------------------------------------------------------------------------

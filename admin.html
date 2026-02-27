@@ -270,6 +270,9 @@
             <button onclick="showTab('speechTypes')" id="speechTypesTab" style="padding: 12px 24px; background: transparent; border: none; border-bottom: 3px solid transparent; color: #9ca3af; font-weight: 600; cursor: pointer;">
                 🎯 Speech Types
             </button>
+            <button onclick="showTab('qaTraining')" id="qaTrainingTab" style="padding: 12px 24px; background: transparent; border: none; border-bottom: 3px solid transparent; color: #9ca3af; font-weight: 600; cursor: pointer;">
+                🤖 Q&A Training
+            </button>
         </div>
 
         <div id="alertContainer"></div>
@@ -403,6 +406,105 @@ More text..."></textarea>
                 </div>
             </div>
         </div>
+
+        <!-- ══════════ Q&A TRAINING SECTION ══════════ -->
+        <div id="qaTrainingSection" style="display: none;">
+
+            <!-- Index view: list of transcripts -->
+            <div id="qaTrainingIndex">
+                <div class="card" style="margin-bottom: 16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+                        <div>
+                            <h2 style="margin-bottom:6px;">🤖 Q&A Training</h2>
+                            <p style="color:#9ca3af; font-size:13px;">Label exchanges as Q&A or Not Q&A. Your labels become few-shot examples for the AI classifier.</p>
+                        </div>
+                        <div id="qaGlobalStats" style="display:flex; gap:16px; font-size:13px;"></div>
+                    </div>
+                </div>
+                <div id="qaTranscriptsList"></div>
+            </div>
+
+            <!-- Flashcard labeling view -->
+            <div id="qaLabelingView" style="display:none; max-width:680px; margin:0 auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <button onclick="showQAIndex()" style="background:transparent; border:none; color:#60a5fa; cursor:pointer; padding:0; font-size:13px;">← Back to Q&A Training</button>
+                        <div id="qaLabelTitle" style="font-size:18px; font-weight:700; margin-top:4px;"></div>
+                        <div id="qaLabelSpeaker" style="font-size:13px; color:#9ca3af; margin-top:2px;"></div>
+                    </div>
+                    <button id="qaViewToggleBtn" onclick="toggleQAView()" style="padding:6px 14px; background:#374151; border:none; border-radius:6px; color:#e5e7eb; cursor:pointer; font-size:12px;">Overview</button>
+                </div>
+
+                <!-- Progress -->
+                <div style="margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; font-size:12px; color:#9ca3af; margin-bottom:4px;">
+                        <span id="qaProgressText">0 labeled</span>
+                        <span id="qaProgressTotal">0 candidates</span>
+                    </div>
+                    <div style="height:6px; background:#374151; border-radius:3px; overflow:hidden;">
+                        <div id="qaProgressBar" style="height:100%; background:#3b82f6; border-radius:3px; width:0%; transition:width 0.3s;"></div>
+                    </div>
+                </div>
+
+                <div id="qaSaveError" style="display:none; background:#7f1d1d; color:#fca5a5; padding:10px 14px; border-radius:6px; margin-bottom:12px; font-size:13px;"></div>
+
+                <!-- Dots nav -->
+                <div id="qaDotsNav" style="display:flex; flex-wrap:wrap; gap:5px; margin-bottom:16px;"></div>
+
+                <!-- Flashcard view -->
+                <div id="qaCardView">
+                    <div style="background:#2d3748; border:1px solid #374151; border-radius:12px; overflow:hidden;">
+                        <!-- Card header -->
+                        <div style="background:#1a2332; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #374151;">
+                            <div>
+                                <span id="qaCardSpeaker" style="font-weight:600; font-size:14px;"></span>
+                                <span id="qaCardTime" style="font-size:12px; color:#9ca3af; margin-left:8px;"></span>
+                                <span id="qaCardCurrentLabel" style="margin-left:10px; font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px; display:none;"></span>
+                            </div>
+                            <span id="qaCardCounter" style="font-size:12px; color:#9ca3af;"></span>
+                        </div>
+                        <!-- Question -->
+                        <div style="padding:16px 20px 12px;">
+                            <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:#9ca3af; margin-bottom:8px;">Question / Statement</div>
+                            <p id="qaCardQuestion" style="font-size:14px; line-height:1.6; color:#e5e7eb;"></p>
+                        </div>
+                        <div style="margin:0 20px; border-top:1px dashed #374151;"></div>
+                        <!-- Response -->
+                        <div style="padding:12px 20px 16px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <div style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:#9ca3af;">
+                                    <span id="qaCardRespSpeaker"></span> responds
+                                    <span id="qaCardRespWords" style="font-weight:400;"></span>
+                                </div>
+                                <button id="qaShowFullBtn" onclick="toggleFullResponse()" style="font-size:11px; color:#60a5fa; background:transparent; border:none; cursor:pointer; display:none;">Show full</button>
+                            </div>
+                            <p id="qaCardResponse" style="font-size:13px; line-height:1.6; color:#9ca3af;"></p>
+                        </div>
+                        <!-- Reasoning -->
+                        <div style="border-top:1px solid #374151; padding:12px 20px;">
+                            <label style="font-size:12px; color:#9ca3af; display:block; margin-bottom:6px;">Reasoning <span style="font-weight:400;">(optional — trains the AI)</span></label>
+                            <textarea id="qaReasoningInput" rows="2" placeholder="e.g. Reporter is directly asking the mayor's position on X — or — just the moderator redirecting" style="width:100%; background:#1a2332; border:1px solid #374151; border-radius:6px; color:#e5e7eb; font-size:13px; padding:8px 12px; resize:none; box-sizing:border-box;"></textarea>
+                        </div>
+                        <!-- Buttons -->
+                        <div style="border-top:1px solid #374151; background:#1a2332; padding:14px 20px; display:flex; gap:12px;">
+                            <button id="qaYesBtn" onclick="labelCurrent(true)" style="flex:1; background:#15803d; border:none; border-radius:8px; color:#fff; font-weight:700; font-size:14px; padding:12px; cursor:pointer;">Yes, this is Q&A</button>
+                            <button id="qaNoBtn" onclick="labelCurrent(false)" style="flex:1; background:#b91c1c; border:none; border-radius:8px; color:#fff; font-weight:700; font-size:14px; padding:12px; cursor:pointer;">Not Q&A</button>
+                        </div>
+                    </div>
+                    <!-- Prev/Next -->
+                    <div style="display:flex; justify-content:space-between; margin-top:12px;">
+                        <button onclick="gotoCard(qaCurrentIdx - 1)" style="padding:6px 16px; background:#374151; border:none; border-radius:6px; color:#e5e7eb; cursor:pointer; font-size:12px;">← Previous</button>
+                        <button onclick="gotoCard(qaCurrentIdx + 1)" style="padding:6px 16px; background:#374151; border:none; border-radius:6px; color:#e5e7eb; cursor:pointer; font-size:12px;">Next →</button>
+                    </div>
+                </div>
+
+                <!-- Overview list view -->
+                <div id="qaOverviewView" style="display:none;">
+                    <div id="qaOverviewList" style="display:flex; flex-direction:column; gap:8px;"></div>
+                </div>
+            </div>
+        </div>
+        <!-- ══════════ END Q&A TRAINING SECTION ══════════ -->
 
         <div id="databaseSection" style="display: none;">
             <div class="card">
@@ -760,42 +862,30 @@ More text..."></textarea>
         });
 
         function showTab(tab) {
-            const uploadSection = document.getElementById('uploadSection');
-            const databaseSection = document.getElementById('databaseSection');
-            const speechTypesSection = document.getElementById('speechTypesSection');
-            const uploadTab = document.getElementById('uploadTab');
-            const databaseTab = document.getElementById('databaseTab');
-            const speechTypesTab = document.getElementById('speechTypesTab');
+            const sections = {
+                upload:      document.getElementById('uploadSection'),
+                database:    document.getElementById('databaseSection'),
+                speechTypes: document.getElementById('speechTypesSection'),
+                qaTraining:  document.getElementById('qaTrainingSection'),
+            };
+            const tabs = {
+                upload:      document.getElementById('uploadTab'),
+                database:    document.getElementById('databaseTab'),
+                speechTypes: document.getElementById('speechTypesTab'),
+                qaTraining:  document.getElementById('qaTrainingTab'),
+            };
 
-            // Hide all sections
-            uploadSection.style.display = 'none';
-            databaseSection.style.display = 'none';
-            speechTypesSection.style.display = 'none';
+            Object.values(sections).forEach(s => { if (s) s.style.display = 'none'; });
+            Object.values(tabs).forEach(t => {
+                if (t) { t.style.borderBottomColor = 'transparent'; t.style.color = '#9ca3af'; }
+            });
 
-            // Reset all tab styles
-            uploadTab.style.borderBottomColor = 'transparent';
-            uploadTab.style.color = '#9ca3af';
-            databaseTab.style.borderBottomColor = 'transparent';
-            databaseTab.style.color = '#9ca3af';
-            speechTypesTab.style.borderBottomColor = 'transparent';
-            speechTypesTab.style.color = '#9ca3af';
+            if (sections[tab]) sections[tab].style.display = 'block';
+            if (tabs[tab])     { tabs[tab].style.borderBottomColor = '#3b82f6'; tabs[tab].style.color = '#3b82f6'; }
 
-            // Show selected tab
-            if (tab === 'upload') {
-                uploadSection.style.display = 'block';
-                uploadTab.style.borderBottomColor = '#3b82f6';
-                uploadTab.style.color = '#3b82f6';
-            } else if (tab === 'database') {
-                databaseSection.style.display = 'block';
-                databaseTab.style.borderBottomColor = '#3b82f6';
-                databaseTab.style.color = '#3b82f6';
-                loadSpeakerBoxes();
-            } else if (tab === 'speechTypes') {
-                speechTypesSection.style.display = 'block';
-                speechTypesTab.style.borderBottomColor = '#3b82f6';
-                speechTypesTab.style.color = '#3b82f6';
-                loadSpeechTypes();
-            }
+            if (tab === 'database')    loadSpeakerBoxes();
+            if (tab === 'speechTypes') loadSpeechTypes();
+            if (tab === 'qaTraining')  loadQATrainingIndex();
         }
 
         async function loadSpeakerBoxes() {
@@ -1351,6 +1441,297 @@ More text..."></textarea>
         document.addEventListener('DOMContentLoaded', function() {
             loadSpeechTypes();
         });
+
+        // ══════════════════════════════════════════════════════════════
+        // Q&A TRAINING — JavaScript
+        // ══════════════════════════════════════════════════════════════
+        let qaCandidates    = [];
+        let qaLabels        = {};   // qaKey → {isQA, reasoning}
+        let qaCurrentIdx    = 0;
+        let qaTranscriptId  = null;
+        let qaShowingFull   = false;
+
+        // ── Index ─────────────────────────────────────────────────────
+        async function loadQATrainingIndex() {
+            const listEl   = document.getElementById('qaTranscriptsList');
+            const statsEl  = document.getElementById('qaGlobalStats');
+            listEl.innerHTML = '<p style="color:#9ca3af; font-size:13px; padding:12px;">Loading…</p>';
+
+            try {
+                const [statsRes, listRes] = await Promise.all([
+                    fetch('/api/qa-labels?stats=1'),
+                    fetch('/api/qa-transcripts')
+                ]);
+                const stats  = await statsRes.json();
+                const data   = await listRes.json();
+                const transcripts = data.transcripts || [];
+
+                statsEl.innerHTML = `
+                    <div style="background:#2d3748; padding:10px 16px; border-radius:8px; text-align:center;">
+                        <div style="font-size:22px; font-weight:700; color:#22c55e;">${stats.totalYes || 0}</div>
+                        <div style="color:#9ca3af; font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">Q&A labels</div>
+                    </div>
+                    <div style="background:#2d3748; padding:10px 16px; border-radius:8px; text-align:center;">
+                        <div style="font-size:22px; font-weight:700; color:#ef4444;">${stats.totalNo || 0}</div>
+                        <div style="color:#9ca3af; font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">Not Q&A labels</div>
+                    </div>
+                    <div style="background:#2d3748; padding:10px 16px; border-radius:8px; text-align:center;">
+                        <div style="font-size:22px; font-weight:700; color:#60a5fa;">${stats.total || 0}</div>
+                        <div style="color:#9ca3af; font-size:11px; text-transform:uppercase; letter-spacing:0.05em;">Total</div>
+                    </div>`;
+
+                if (!transcripts.length) {
+                    listEl.innerHTML = '<div class="card"><p style="color:#9ca3af;">No transcripts with Q&A found. Upload a transcript and check the Has Q&amp;A box first.</p></div>';
+                    return;
+                }
+                listEl.innerHTML = transcripts.map(t => `
+                    <div class="card" style="cursor:pointer; transition:border 0.15s; margin-bottom:10px;" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='transparent'" onclick="openQALabeling(${t.id})" style="border:1px solid transparent;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <div>
+                                <div style="font-weight:600; font-size:14px; color:#e5e7eb;">${t.title}</div>
+                                <div style="font-size:12px; color:#9ca3af; margin-top:3px;">${t.date || ''} ${t.primarySpeaker ? '· ' + t.primarySpeaker : ''}</div>
+                            </div>
+                            <div style="display:flex; gap:10px; align-items:center;">
+                                ${t.labelCount > 0 ? `<span style="font-size:12px; background:#1e3a5f; color:#60a5fa; padding:3px 10px; border-radius:12px;">${t.labelCount} labeled</span>` : ''}
+                                <button style="padding:6px 14px; background:#3b82f6; border:none; border-radius:6px; color:#fff; font-size:12px; font-weight:600; cursor:pointer;">Label →</button>
+                            </div>
+                        </div>
+                    </div>`).join('');
+            } catch (e) {
+                listEl.innerHTML = `<div class="card"><p style="color:#ef4444;">Error loading Q&A training data: ${e.message}</p></div>`;
+            }
+        }
+
+        // ── Open labeling for a transcript ───────────────────────────
+        async function openQALabeling(transcriptId) {
+            qaTranscriptId = transcriptId;
+            qaCurrentIdx   = 0;
+            qaCandidates   = [];
+            qaLabels       = {};
+            qaShowingFull  = false;
+
+            document.getElementById('qaTrainingIndex').style.display = 'none';
+            document.getElementById('qaLabelingView').style.display  = 'block';
+            document.getElementById('qaLabelTitle').textContent       = 'Loading…';
+            document.getElementById('qaLabelSpeaker').textContent     = '';
+            document.getElementById('qaCardView').style.display       = 'block';
+            document.getElementById('qaOverviewView').style.display   = 'none';
+            document.getElementById('qaViewToggleBtn').textContent    = 'Overview';
+            document.getElementById('qaSaveError').style.display      = 'none';
+
+            try {
+                const [candRes, labelRes] = await Promise.all([
+                    fetch(`/api/qa-candidates/${transcriptId}`),
+                    fetch(`/api/qa-labels?transcript_id=${transcriptId}`)
+                ]);
+                const candData   = await candRes.json();
+                const labelData  = await labelRes.json();
+
+                qaCandidates = candData.candidates || [];
+                document.getElementById('qaLabelTitle').textContent   = candData.title || 'Transcript';
+                document.getElementById('qaLabelSpeaker').textContent = candData.primarySpeaker
+                    ? `Primary speaker: ${candData.primarySpeaker}` : '';
+
+                (labelData || []).forEach(l => {
+                    qaLabels[l.question_text] = { isQA: !!l.is_qa, reasoning: l.reasoning || '' };
+                });
+
+                renderQADots();
+                renderQAOverview();
+                updateQAProgress();
+                if (qaCandidates.length) gotoCard(0);
+                else {
+                    document.getElementById('qaCardView').innerHTML =
+                        '<div class="card"><p style="color:#9ca3af;">No candidate exchanges found in this transcript.</p></div>';
+                }
+            } catch (e) {
+                document.getElementById('qaLabelTitle').textContent = 'Error loading';
+                document.getElementById('qaSaveError').style.display = 'block';
+                document.getElementById('qaSaveError').textContent   = e.message;
+            }
+        }
+
+        function showQAIndex() {
+            document.getElementById('qaLabelingView').style.display  = 'none';
+            document.getElementById('qaTrainingIndex').style.display = 'block';
+            loadQATrainingIndex();
+        }
+
+        // ── Flashcard rendering ───────────────────────────────────────
+        function gotoCard(idx) {
+            if (!qaCandidates.length) return;
+            qaCurrentIdx = Math.max(0, Math.min(qaCandidates.length - 1, idx));
+            const c      = qaCandidates[qaCurrentIdx];
+            const label  = qaLabels[c.questionText];
+            qaShowingFull = false;
+
+            const fmtTime = s => {
+                const m = Math.floor(s / 60), ss = s % 60;
+                return `${m}:${String(ss).padStart(2, '0')}`;
+            };
+
+            document.getElementById('qaCardSpeaker').textContent     = c.questionSpeaker;
+            document.getElementById('qaCardTime').textContent         = fmtTime(c.questionStart);
+            document.getElementById('qaCardCounter').textContent      = `${qaCurrentIdx + 1} / ${qaCandidates.length}`;
+            document.getElementById('qaCardQuestion').textContent     = c.questionText;
+            document.getElementById('qaCardRespSpeaker').textContent  = c.responseSpeaker;
+            document.getElementById('qaCardRespWords').textContent    = `(${c.responseWordCount} words)`;
+            document.getElementById('qaReasoningInput').value         = label ? label.reasoning : '';
+
+            const PREVIEW = 200;
+            const fullText = c.responseText;
+            if (fullText.length > PREVIEW) {
+                document.getElementById('qaCardResponse').textContent = fullText.slice(0, PREVIEW) + '…';
+                document.getElementById('qaShowFullBtn').style.display = 'inline';
+                document.getElementById('qaShowFullBtn').textContent   = 'Show full';
+            } else {
+                document.getElementById('qaCardResponse').textContent  = fullText;
+                document.getElementById('qaShowFullBtn').style.display = 'none';
+            }
+
+            const labelEl = document.getElementById('qaCardCurrentLabel');
+            if (label) {
+                labelEl.style.display     = 'inline';
+                labelEl.textContent       = label.isQA ? '✓ Q&A' : '✗ Not Q&A';
+                labelEl.style.background  = label.isQA ? '#14532d' : '#7f1d1d';
+                labelEl.style.color       = label.isQA ? '#86efac' : '#fca5a5';
+            } else {
+                labelEl.style.display = 'none';
+            }
+
+            document.getElementById('qaYesBtn').style.opacity = label && label.isQA  ? '1' : '0.6';
+            document.getElementById('qaNoBtn').style.opacity  = label && !label.isQA ? '1' : '0.6';
+            renderQADots();
+        }
+
+        function toggleFullResponse() {
+            if (!qaCandidates.length) return;
+            const c    = qaCandidates[qaCurrentIdx];
+            const btn  = document.getElementById('qaShowFullBtn');
+            const el   = document.getElementById('qaCardResponse');
+            if (qaShowingFull) {
+                el.textContent   = c.responseText.slice(0, 200) + '…';
+                btn.textContent  = 'Show full';
+                qaShowingFull    = false;
+            } else {
+                el.textContent   = c.responseText;
+                btn.textContent  = 'Show less';
+                qaShowingFull    = true;
+            }
+        }
+
+        function toggleQAView() {
+            const cardEl     = document.getElementById('qaCardView');
+            const overviewEl = document.getElementById('qaOverviewView');
+            const btn        = document.getElementById('qaViewToggleBtn');
+            if (cardEl.style.display === 'none') {
+                cardEl.style.display     = 'block';
+                overviewEl.style.display = 'none';
+                btn.textContent          = 'Overview';
+            } else {
+                cardEl.style.display     = 'none';
+                overviewEl.style.display = 'block';
+                btn.textContent          = 'Flashcard';
+                renderQAOverview();
+            }
+        }
+
+        // ── Labeling ──────────────────────────────────────────────────
+        async function labelCurrent(isQA) {
+            if (!qaCandidates.length) return;
+            const c         = qaCandidates[qaCurrentIdx];
+            const reasoning = document.getElementById('qaReasoningInput').value.trim();
+
+            const errEl = document.getElementById('qaSaveError');
+            errEl.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/qa-labels', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        transcript_id:    qaTranscriptId,
+                        question_speaker: c.questionSpeaker,
+                        question_text:    c.questionText,
+                        response_speaker: c.responseSpeaker,
+                        response_text:    c.responseText,
+                        is_qa:            isQA,
+                        reasoning:        reasoning
+                    })
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                qaLabels[c.questionText] = { isQA, reasoning };
+                updateQAProgress();
+                renderQADots();
+                renderQAOverview();
+                gotoCard(qaCurrentIdx);
+
+                // Auto-advance to next unlabeled
+                const nextUnlabeled = qaCandidates.findIndex(
+                    (x, i) => i > qaCurrentIdx && !qaLabels[x.questionText]
+                );
+                if (nextUnlabeled !== -1) {
+                    setTimeout(() => gotoCard(nextUnlabeled), 280);
+                } else if (qaCurrentIdx < qaCandidates.length - 1) {
+                    setTimeout(() => gotoCard(qaCurrentIdx + 1), 280);
+                }
+            } catch (e) {
+                errEl.style.display  = 'block';
+                errEl.textContent    = 'Save failed: ' + e.message;
+            }
+        }
+
+        // ── Progress + Dots ───────────────────────────────────────────
+        function updateQAProgress() {
+            const labeled  = Object.keys(qaLabels).length;
+            const total    = qaCandidates.length;
+            const pct      = total > 0 ? Math.round((labeled / total) * 100) : 0;
+            document.getElementById('qaProgressText').textContent  = `${labeled} labeled`;
+            document.getElementById('qaProgressTotal').textContent = `${total} candidates`;
+            document.getElementById('qaProgressBar').style.width   = pct + '%';
+        }
+
+        function renderQADots() {
+            const container = document.getElementById('qaDotsNav');
+            container.innerHTML = qaCandidates.map((c, i) => {
+                const label = qaLabels[c.questionText];
+                const color = label ? (label.isQA ? '#22c55e' : '#ef4444') : '#4b5563';
+                const border = i === qaCurrentIdx ? '2px solid #fff' : '2px solid transparent';
+                return `<div onclick="gotoCard(${i})" title="${c.questionSpeaker}" style="width:14px; height:14px; border-radius:50%; background:${color}; border:${border}; cursor:pointer; flex-shrink:0;"></div>`;
+            }).join('');
+        }
+
+        function renderQAOverview() {
+            const container = document.getElementById('qaOverviewList');
+            if (!container) return;
+            container.innerHTML = qaCandidates.map((c, i) => {
+                const label = qaLabels[c.questionText];
+                const color = label ? (label.isQA ? '#14532d' : '#7f1d1d') : '#2d3748';
+                const badge = label ? (label.isQA
+                    ? '<span style="font-size:11px; background:#14532d; color:#86efac; padding:2px 8px; border-radius:4px;">Q&A</span>'
+                    : '<span style="font-size:11px; background:#7f1d1d; color:#fca5a5; padding:2px 8px; border-radius:4px;">Not Q&A</span>')
+                    : '<span style="font-size:11px; background:#374151; color:#9ca3af; padding:2px 8px; border-radius:4px;">Unlabeled</span>';
+                return `
+                    <div onclick="switchToFlashcard(${i})" style="background:${color}; border:1px solid #374151; border-radius:8px; padding:10px 14px; cursor:pointer;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                            <div style="flex:1; min-width:0;">
+                                <div style="font-size:12px; color:#9ca3af; margin-bottom:4px;">${c.questionSpeaker}</div>
+                                <div style="font-size:13px; color:#e5e7eb; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${c.questionText.slice(0, 120)}${c.questionText.length > 120 ? '…' : ''}</div>
+                                ${label && label.reasoning ? `<div style="font-size:11px; color:#9ca3af; margin-top:4px; font-style:italic;">${label.reasoning.slice(0, 80)}…</div>` : ''}
+                            </div>
+                            ${badge}
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        function switchToFlashcard(idx) {
+            document.getElementById('qaCardView').style.display     = 'block';
+            document.getElementById('qaOverviewView').style.display = 'none';
+            document.getElementById('qaViewToggleBtn').textContent  = 'Overview';
+            gotoCard(idx);
+        }
+
     </script>
 </body>
 </html>

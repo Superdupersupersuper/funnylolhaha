@@ -18,3 +18,7 @@ playwright>=1.40.0
 
 # Optional (install if available)
 python-dateutil>=2.8.2
+flask-compress>=1.14
+
+# AI / OpenAI classifier
+openai>=1.0.0
