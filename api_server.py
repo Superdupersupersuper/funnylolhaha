@@ -2394,67 +2394,92 @@ def get_qa_candidates(transcript_id):
 
 
 def _parse_segments_from_dialogue(full_dialogue):
-    """Parse 'Speaker  M:SS\ntext' blocks into segment dicts."""
+    """Parse 'Speaker Name (M:SS): text' blocks separated by double newlines."""
     segments = []
     if not full_dialogue:
         return segments
-    pattern = re.compile(
-        r'^([^\n\t]+?)\s{2,}(\d+:\d+(?::\d+)?)\s*\n([\s\S]*?)(?=\n[^\n\t]+?\s{2,}\d+:\d+|$)',
-        re.MULTILINE
-    )
-    for m in pattern.finditer(full_dialogue):
-        speaker  = m.group(1).strip()
-        ts_parts = m.group(2).strip().split(':')
-        if len(ts_parts) == 2:
-            start_s = int(ts_parts[0]) * 60 + int(ts_parts[1])
-        elif len(ts_parts) == 3:
-            start_s = int(ts_parts[0]) * 3600 + int(ts_parts[1]) * 60 + int(ts_parts[2])
+    # Each segment is a paragraph like: "Speaker Name (0:22): Some text here"
+    seg_pattern = re.compile(r'^(.+?)\s*\((\d+):(\d+)(?::(\d+))?\):\s*([\s\S]+)$')
+    for block in full_dialogue.split('\n\n'):
+        block = block.strip()
+        if not block:
+            continue
+        m = seg_pattern.match(block)
+        if not m:
+            continue
+        speaker = m.group(1).strip()
+        g2, g3, g4 = int(m.group(2)), int(m.group(3)), m.group(4)
+        if g4 is not None:
+            # H:M:S
+            start_s = g2 * 3600 + g3 * 60 + int(g4)
         else:
-            start_s = 0
-        text = m.group(3).strip()
+            # M:SS
+            start_s = g2 * 60 + g3
+        text = m.group(5).strip()
         if text:
             segments.append({'speaker': speaker, 'start_seconds': start_s, 'text': text})
     return segments
 
 
+def _is_primary_speaker(speaker_name, primary_speaker):
+    """Fuzzy match: 'Mamdani' matches 'Zohran Mamdani', case-insensitive."""
+    if not primary_speaker:
+        return False
+    s = speaker_name.lower()
+    p = primary_speaker.lower()
+    return p in s or s in p or any(
+        part in s for part in p.split() if len(part) > 3
+    )
+
+
 def _extract_candidate_exchanges(segments, primary_speaker):
-    """Return every non-primary-speaker turn (>=10 words) followed by a primary response."""
+    """Return every non-primary-speaker turn (>=5 words) followed by
+    a primary-speaker response (>=15 words), merging consecutive primary turns."""
     candidates = []
     for i, seg in enumerate(segments):
-        if primary_speaker and seg['speaker'] == primary_speaker:
+        # Skip segments by the primary speaker — those are answers, not questions
+        if _is_primary_speaker(seg['speaker'], primary_speaker):
             continue
         word_count = len(seg['text'].split())
-        if word_count < 10:
-            continue
+        if word_count < 5:
+            continue  # ignore very short filler segments
+
+        # Collect the next consecutive primary-speaker turn(s) as the response
         merged_text  = ''
         merged_words = 0
         resp_start   = None
         for j in range(i + 1, len(segments)):
             rseg = segments[j]
-            if primary_speaker:
-                if rseg['speaker'] != primary_speaker:
-                    break
+            # If we hit another non-primary-speaker segment BEFORE finding a response, stop
+            if not _is_primary_speaker(rseg['speaker'], primary_speaker):
                 if resp_start is None:
-                    resp_start = rseg['start_seconds']
-                merged_text  += (' ' if merged_text else '') + rseg['text']
-                merged_words += len(rseg['text'].split())
-            else:
-                if j == i + 1:
-                    resp_start   = rseg['start_seconds']
-                    merged_text  = rseg['text']
-                    merged_words = len(rseg['text'].split())
+                    # No response found yet — skip this candidate
+                    pass
                 break
-        if not merged_text or merged_words < 10:
-            continue
+            if resp_start is None:
+                resp_start = rseg['start_seconds']
+            merged_text  += (' ' if merged_text else '') + rseg['text']
+            merged_words += len(rseg['text'].split())
+
+        if not merged_text or merged_words < 15:
+            continue  # response too short
+
+        # Resolve primary speaker label from the actual response segment
+        resp_speaker = primary_speaker or ''
+        for j in range(i + 1, len(segments)):
+            if _is_primary_speaker(segments[j]['speaker'], primary_speaker):
+                resp_speaker = segments[j]['speaker']
+                break
+
         qa_key = f"{seg['speaker']}:{seg['start_seconds']}"
         candidates.append({
-            'qaKey':           qa_key,
-            'questionSpeaker': seg['speaker'],
-            'questionText':    seg['text'],
-            'questionStart':   seg['start_seconds'],
-            'responseSpeaker': primary_speaker or '',
-            'responseText':    merged_text,
-            'responseStart':   resp_start,
+            'qaKey':             qa_key,
+            'questionSpeaker':   seg['speaker'],
+            'questionText':      seg['text'],
+            'questionStart':     seg['start_seconds'],
+            'responseSpeaker':   resp_speaker,
+            'responseText':      merged_text,
+            'responseStart':     resp_start,
             'responseWordCount': merged_words,
         })
     return candidates
