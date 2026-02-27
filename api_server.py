@@ -2370,8 +2370,12 @@ Return a JSON object with this exact shape:
 def get_qa_candidates(transcript_id):
     """Return the candidate exchanges for a transcript (for the labeling UI)."""
     if _use_github():
-        store = get_github_store()
-        t = store.get_transcript(transcript_id)
+        # Use the in-memory cache (same path as get_transcript_for_edit)
+        t = _get_cached_transcript(transcript_id)
+        if not t:
+            # Cache miss — fetch directly from GitHub store
+            store = get_github_store()
+            t = store.get_transcript(transcript_id)
     else:
         conn = get_db()
         cur  = conn.cursor()
@@ -2386,11 +2390,16 @@ def get_qa_candidates(transcript_id):
     full_dialogue  = t.get('full_dialogue') or t.get('full_text') or ''
     primary        = t.get('primary_speaker') or ''
 
-    segments = _parse_segments_from_dialogue(full_dialogue)
+    segments   = _parse_segments_from_dialogue(full_dialogue)
     candidates = _extract_candidate_exchanges(segments, primary)
 
-    return jsonify({'candidates': candidates, 'primarySpeaker': primary,
-                    'title': t.get('title', ''), 'transcriptId': transcript_id})
+    return jsonify({
+        'candidates':    candidates,
+        'primarySpeaker': primary,
+        'title':         t.get('title', ''),
+        'transcriptId':  transcript_id,
+        'segmentCount':  len(segments),   # debug: confirms parser is running
+    })
 
 
 def _parse_segments_from_dialogue(full_dialogue):
