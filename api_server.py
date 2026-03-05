@@ -2576,6 +2576,7 @@ def qa_reclassify_all():
     POST /api/qa-reclassify-all
     Iterates every has_q_and_a transcript, extracts candidate exchanges,
     classifies them with OpenAI (if enough labels), and updates qa_analytics.
+    Body (optional): { "openai_key": "sk-..." }
     Returns a summary of what changed.
     """
     try:
@@ -2584,7 +2585,10 @@ def qa_reclassify_all():
     except ImportError:
         HAS_OPENAI = False
 
-    api_key = os.environ.get('OPENAI_API_KEY')
+    # Accept key from request body OR environment variable
+    body    = request.get_json(silent=True) or {}
+    api_key = body.get('openai_key') or os.environ.get('OPENAI_API_KEY') or ''
+    api_key = api_key.strip()
     use_ai  = HAS_OPENAI and bool(api_key)
 
     # Load labels for few-shot prompt
