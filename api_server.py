@@ -2389,16 +2389,20 @@ def get_qa_candidates(transcript_id):
 
     full_dialogue  = t.get('full_dialogue') or t.get('full_text') or ''
     primary        = t.get('primary_speaker') or ''
+    speakers_raw   = t.get('speakers') or []
+    if isinstance(speakers_raw, str):
+        try: speakers_raw = json.loads(speakers_raw)
+        except: speakers_raw = []
+    extra_speakers = [s for s in speakers_raw if s and not _is_generic_speaker(s)]
 
     segments   = _parse_segments_from_dialogue(full_dialogue)
-    candidates = _extract_candidate_exchanges(segments, primary)
+    candidates = _extract_candidate_exchanges(segments, primary, extra_speakers)
 
     return jsonify({
-        'candidates':    candidates,
+        'candidates':     candidates,
         'primarySpeaker': primary,
-        'title':         t.get('title', ''),
-        'transcriptId':  transcript_id,
-        'segmentCount':  len(segments),   # debug: confirms parser is running
+        'title':          t.get('title', ''),
+        'transcriptId':   transcript_id,
     })
 
 
@@ -2407,7 +2411,6 @@ def _parse_segments_from_dialogue(full_dialogue):
     segments = []
     if not full_dialogue:
         return segments
-    # Each segment is a paragraph like: "Speaker Name (0:22): Some text here"
     seg_pattern = re.compile(r'^(.+?)\s*\((\d+):(\d+)(?::(\d+))?\):\s*([\s\S]+)$')
     for block in full_dialogue.split('\n\n'):
         block = block.strip()
@@ -2418,67 +2421,98 @@ def _parse_segments_from_dialogue(full_dialogue):
             continue
         speaker = m.group(1).strip()
         g2, g3, g4 = int(m.group(2)), int(m.group(3)), m.group(4)
-        if g4 is not None:
-            # H:M:S
-            start_s = g2 * 3600 + g3 * 60 + int(g4)
-        else:
-            # M:SS
-            start_s = g2 * 60 + g3
+        start_s = g2 * 3600 + g3 * 60 + int(g4) if g4 is not None else g2 * 60 + g3
         text = m.group(5).strip()
         if text:
             segments.append({'speaker': speaker, 'start_seconds': start_s, 'text': text})
     return segments
 
 
-def _is_primary_speaker(speaker_name, primary_speaker):
-    """Fuzzy match: 'Mamdani' matches 'Zohran Mamdani', case-insensitive."""
-    if not primary_speaker:
-        return False
-    s = speaker_name.lower()
-    p = primary_speaker.lower()
-    return p in s or s in p or any(
-        part in s for part in p.split() if len(part) > 3
-    )
+def _is_generic_speaker(speaker_name):
+    """Return True if this is an unidentified/reporter speaker (Speaker N, Unknown Speaker)."""
+    s = speaker_name.strip().lower()
+    return bool(re.match(r'^speaker\s*\d+$', s)) or s in ('unknown speaker', 'unknown', 'speaker')
 
 
-def _extract_candidate_exchanges(segments, primary_speaker):
-    """Return every non-primary-speaker turn (>=5 words) followed by
-    a primary-speaker response (>=15 words), merging consecutive primary turns."""
+def _resolve_official_speakers(segments, primary_speaker, extra_speakers=None):
+    """
+    Identify who the official speakers are.
+    Combines:
+      1. The stored primary_speaker (fuzzy match)
+      2. Any extra_speakers list from metadata
+      3. Auto-detection: non-generic speakers who account for >15% of words
+    Returns a set of speaker names (as they appear in the transcript).
+    """
+    officials = set()
+
+    # Count words per speaker
+    word_counts = {}
+    total_words = 0
+    for seg in segments:
+        w = len(seg['text'].split())
+        word_counts[seg['speaker']] = word_counts.get(seg['speaker'], 0) + w
+        total_words += w
+    if total_words == 0:
+        return officials
+
+    for spk, wc in word_counts.items():
+        if _is_generic_speaker(spk):
+            continue
+        # Include if: matches primary_speaker, OR in extra_speakers list, OR speaks >15% of words
+        is_primary = primary_speaker and (
+            primary_speaker.lower() in spk.lower() or
+            spk.lower() in primary_speaker.lower() or
+            any(part in spk.lower() for part in primary_speaker.lower().split() if len(part) > 3)
+        )
+        in_extras = extra_speakers and any(
+            (e.lower() in spk.lower() or spk.lower() in e.lower())
+            for e in extra_speakers if e and not _is_generic_speaker(e)
+        )
+        dominant = (wc / total_words) > 0.15
+        if is_primary or in_extras or dominant:
+            officials.add(spk)
+
+    return officials
+
+
+def _extract_candidate_exchanges(segments, primary_speaker, extra_speakers=None):
+    """
+    Return every non-official-speaker turn (>=5 words) followed by an
+    official-speaker response (>=15 words).
+    Handles joint briefings (multiple official responders).
+    """
+    official_speakers = _resolve_official_speakers(segments, primary_speaker, extra_speakers)
     candidates = []
+
     for i, seg in enumerate(segments):
-        # Skip segments by the primary speaker — those are answers, not questions
-        if _is_primary_speaker(seg['speaker'], primary_speaker):
+        # Skip official-speaker segments — those are answers, not questions
+        if seg['speaker'] in official_speakers:
             continue
         word_count = len(seg['text'].split())
         if word_count < 5:
-            continue  # ignore very short filler segments
+            continue
 
-        # Collect the next consecutive primary-speaker turn(s) as the response
+        # Find the next segment by an official speaker
         merged_text  = ''
         merged_words = 0
         resp_start   = None
+        resp_speaker = ''
         for j in range(i + 1, len(segments)):
             rseg = segments[j]
-            # If we hit another non-primary-speaker segment BEFORE finding a response, stop
-            if not _is_primary_speaker(rseg['speaker'], primary_speaker):
-                if resp_start is None:
-                    # No response found yet — skip this candidate
-                    pass
-                break
+            if rseg['speaker'] not in official_speakers:
+                break   # Another non-official speaker before a response — stop
             if resp_start is None:
-                resp_start = rseg['start_seconds']
-            merged_text  += (' ' if merged_text else '') + rseg['text']
-            merged_words += len(rseg['text'].split())
+                resp_start   = rseg['start_seconds']
+                resp_speaker = rseg['speaker']
+            # Merge consecutive turns by the SAME official speaker
+            if rseg['speaker'] == resp_speaker:
+                merged_text  += (' ' if merged_text else '') + rseg['text']
+                merged_words += len(rseg['text'].split())
+            else:
+                break   # Different official speaker started — don't merge across speakers
 
         if not merged_text or merged_words < 15:
-            continue  # response too short
-
-        # Resolve primary speaker label from the actual response segment
-        resp_speaker = primary_speaker or ''
-        for j in range(i + 1, len(segments)):
-            if _is_primary_speaker(segments[j]['speaker'], primary_speaker):
-                resp_speaker = segments[j]['speaker']
-                break
+            continue
 
         qa_key = f"{seg['speaker']}:{seg['start_seconds']}"
         candidates.append({
@@ -2534,6 +2568,225 @@ def get_qa_transcripts():
             'labelCount':     label_count.get(tid, 0),
         })
     return jsonify({'transcripts': result})
+
+
+@app.route('/api/qa-reclassify-all', methods=['POST'])
+def qa_reclassify_all():
+    """
+    POST /api/qa-reclassify-all
+    Iterates every has_q_and_a transcript, extracts candidate exchanges,
+    classifies them with OpenAI (if enough labels), and updates qa_analytics.
+    Returns a summary of what changed.
+    """
+    try:
+        import openai as _openai
+        HAS_OPENAI = True
+    except ImportError:
+        HAS_OPENAI = False
+
+    api_key = os.environ.get('OPENAI_API_KEY')
+    use_ai  = HAS_OPENAI and bool(api_key)
+
+    # Load labels for few-shot prompt
+    if _use_github():
+        all_labels = _github_get_all_qa_labels()
+    else:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("""SELECT question_speaker, question_text, response_speaker,
+                              response_text, is_qa, reasoning FROM qa_labels
+                       ORDER BY created_at DESC LIMIT 60""")
+        all_labels = [dict(r) for r in cur.fetchall()]
+        conn.close()
+
+    yes_labels = [l for l in all_labels if l.get('is_qa')][-15:]
+    no_labels  = [l for l in all_labels if not l.get('is_qa')][-15:]
+    total_labels = len(yes_labels) + len(no_labels)
+    use_ai = use_ai and total_labels >= 10
+
+    # Get all Q&A transcripts
+    if _use_github():
+        index  = _get_cached_index()
+        qa_ids = [t.get('id') for t in index if t.get('has_q_and_a')]
+    else:
+        conn = get_db()
+        cur  = conn.cursor()
+        cur.execute("SELECT id FROM transcripts WHERE has_q_and_a=1")
+        qa_ids = [r['id'] for r in cur.fetchall()]
+        conn.close()
+
+    # Build few-shot prompt once
+    def _trunc(text, words=80):
+        parts = text.split()
+        return ' '.join(parts[:words]) + ('…' if len(parts) > words else '')
+
+    def _interleave(a, b):
+        out = []
+        for i in range(max(len(a), len(b))):
+            if i < len(a): out.append(a[i])
+            if i < len(b): out.append(b[i])
+        return out
+
+    few_shot_examples = _interleave(yes_labels, no_labels)
+    few_shot = '\n\n'.join(
+        f"Example {i+1}:\n"
+        f"  Question: \"{_trunc(ex.get('question_text',''))}\"\n"
+        f"  Response: \"{_trunc(ex.get('response_text',''))}\"\n"
+        f"  Label: {'YES — genuine Q&A' if ex.get('is_qa') else 'NO — not Q&A'}"
+        + (f"\n  Reason: {ex['reasoning']}" if ex.get('reasoning') else '')
+        for i, ex in enumerate(few_shot_examples)
+    )
+
+    system_prompt = f"""You are an expert at identifying genuine Q&A exchanges in political press conferences.
+
+WHAT COUNTS AS Q&A:
+- A reporter asks a direct, substantive question about policy, events, or the speaker's actions/views
+- The official speaker gives a genuine, substantive answer (not just a transition or filler)
+
+WHAT DOES NOT COUNT AS Q&A:
+- Conversational filler ("Thank you", "That's right", short acknowledgements)
+- Moderator redirects ("Next question", "Go ahead")
+- One official speaker commenting on another's remarks
+- Very short exchanges with no real substance
+
+HUMAN-LABELED EXAMPLES:
+{few_shot}
+
+Return JSON: {{"results": [{{"qaKey": "...", "isQA": true|false, "confidence": 0.0-1.0, "reason": "one sentence"}}]}}"""
+
+    results_summary = []
+    total_processed = 0
+    total_updated   = 0
+
+    for tid in qa_ids:
+        try:
+            # Fetch full transcript
+            if _use_github():
+                t = _get_cached_transcript(tid)
+                if not t:
+                    store = get_github_store()
+                    t = store.get_transcript(tid)
+            else:
+                conn = get_db()
+                cur  = conn.cursor()
+                cur.execute("SELECT * FROM transcripts WHERE id=?", (tid,))
+                row = cur.fetchone()
+                conn.close()
+                t = dict(row) if row else None
+            if not t:
+                continue
+
+            full_dialogue = t.get('full_dialogue') or t.get('full_text') or ''
+            primary       = t.get('primary_speaker') or ''
+            speakers_raw  = t.get('speakers') or []
+            if isinstance(speakers_raw, str):
+                try: speakers_raw = json.loads(speakers_raw)
+                except: speakers_raw = []
+            extra_speakers = [s for s in speakers_raw if s and not _is_generic_speaker(s)]
+
+            segments   = _parse_segments_from_dialogue(full_dialogue)
+            candidates = _extract_candidate_exchanges(segments, primary, extra_speakers)
+            total_processed += 1
+
+            if not candidates:
+                continue
+
+            # Classify with OpenAI
+            if use_ai:
+                user_lines = '\n\n'.join(
+                    f"Candidate {i+1}:\n"
+                    f"  qaKey: \"{c['qaKey']}\"\n"
+                    f"  Question speaker: {c['questionSpeaker']}\n"
+                    f"  Question: \"{_trunc(c['questionText'], 120)}\"\n"
+                    f"  Response speaker: {c['responseSpeaker']}\n"
+                    f"  Response: \"{_trunc(c['responseText'], 120)}\""
+                    for i, c in enumerate(candidates)
+                )
+                try:
+                    client     = _openai.OpenAI(api_key=api_key)
+                    completion = client.chat.completions.create(
+                        model='gpt-4o-mini',
+                        temperature=0,
+                        response_format={'type': 'json_object'},
+                        messages=[
+                            {'role': 'system', 'content': system_prompt},
+                            {'role': 'user',   'content': f"Classify these {len(candidates)} candidates:\n\n{user_lines}"},
+                        ]
+                    )
+                    raw    = completion.choices[0].message.content or '{}'
+                    parsed = json.loads(raw)
+                    ai_map = {r.get('qaKey'): r for r in (parsed.get('results') or [])}
+                except Exception as e:
+                    logging.warning(f"OpenAI classify error for {tid}: {e}")
+                    ai_map = {}
+            else:
+                ai_map = {}
+
+            # Build updated qa_analytics pairs
+            pairs = []
+            for c in candidates:
+                ai = ai_map.get(c['qaKey'], {})
+                is_qa      = ai.get('isQA', True) if ai_map else True
+                confidence = float(ai.get('confidence', 0.5) if ai_map else 0.5)
+                if not is_qa and confidence >= 0.7:
+                    continue  # AI confident it's not Q&A — skip
+                pairs.append({
+                    'qaKey':           c['qaKey'],
+                    'questionSpeaker': c['questionSpeaker'],
+                    'questionText':    c['questionText'],
+                    'responseSpeaker': c['responseSpeaker'],
+                    'responseText':    c['responseText'],
+                    'responseWordCount': c['responseWordCount'],
+                    'responseDuration':  None,
+                    'aiClassified':    bool(ai_map),
+                    'confidence':      round(confidence, 2),
+                })
+
+            if not pairs:
+                continue
+
+            new_analytics = {
+                'questionCount':       len(pairs),
+                'avgResponseWords':    round(sum(p['responseWordCount'] for p in pairs) / len(pairs)),
+                'avgResponseSeconds':  None,
+                'pairs':               pairs,
+                'aiClassified':        bool(ai_map),
+                'classifiedAt':        __import__('datetime').datetime.utcnow().isoformat(),
+            }
+
+            # Persist updated analytics
+            if _use_github():
+                store   = get_github_store()
+                payload = dict(t)
+                payload['qa_analytics'] = new_analytics
+                store.put_transcript(tid, payload)
+                _update_cache_after_write(tid, payload)
+            else:
+                conn = get_db()
+                cur  = conn.cursor()
+                cur.execute("UPDATE transcripts SET qa_analytics=? WHERE id=?",
+                            (json.dumps(new_analytics), tid))
+                conn.commit()
+                conn.close()
+
+            total_updated += 1
+            results_summary.append({
+                'id':        tid,
+                'title':     (t.get('title') or '')[:60],
+                'questions': len(pairs),
+                'aiUsed':    bool(ai_map),
+            })
+
+        except Exception as e:
+            logging.error(f"qa-reclassify-all error for transcript {tid}: {e}")
+
+    return jsonify({
+        'processed': total_processed,
+        'updated':   total_updated,
+        'aiUsed':    use_ai,
+        'labelCount': total_labels,
+        'results':   results_summary,
+    })
 
 
 # ---------------------------------------------------------------------------

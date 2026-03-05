@@ -420,6 +420,14 @@ More text..."></textarea>
                         </div>
                         <div id="qaGlobalStats" style="display:flex; gap:16px; font-size:13px;"></div>
                     </div>
+                    <div style="margin-top:16px; padding-top:16px; border-top:1px solid #374151; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                        <button onclick="launchAI()" id="launchAIBtn" style="padding:10px 22px; background:#7c3aed; border:none; border-radius:8px; color:#fff; font-weight:700; font-size:14px; cursor:pointer;">🚀 Launch AI — Reclassify All Speeches</button>
+                        <span style="font-size:12px; color:#9ca3af;">Re-reads every Q&amp;A-flagged transcript with the latest AI model and your labels.</span>
+                    </div>
+                    <div id="launchAIProgress" style="display:none; margin-top:12px; background:#1a2332; border-radius:8px; padding:14px 16px;">
+                        <div id="launchAIStatus" style="font-size:13px; color:#60a5fa; margin-bottom:8px;">Running…</div>
+                        <div id="launchAIResults" style="font-size:12px; color:#9ca3af;"></div>
+                    </div>
                 </div>
                 <div id="qaTranscriptsList"></div>
             </div>
@@ -1730,6 +1738,50 @@ More text..."></textarea>
             document.getElementById('qaOverviewView').style.display = 'none';
             document.getElementById('qaViewToggleBtn').textContent  = 'Overview';
             gotoCard(idx);
+        }
+
+        // ── Launch AI Reclassification ────────────────────────────────
+        async function launchAI() {
+            const btn      = document.getElementById('launchAIBtn');
+            const progress = document.getElementById('launchAIProgress');
+            const statusEl = document.getElementById('launchAIStatus');
+            const resultsEl = document.getElementById('launchAIResults');
+
+            btn.disabled       = true;
+            btn.textContent    = '⏳ Running…';
+            progress.style.display = 'block';
+            statusEl.textContent   = 'Calling AI on all Q&A transcripts — this may take 1–2 minutes…';
+            resultsEl.innerHTML    = '';
+
+            try {
+                const res = await fetch('/api/qa-reclassify-all', { method: 'POST' });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+
+                const aiMsg = data.aiUsed
+                    ? `✅ AI classifier used (${data.labelCount} labels)`
+                    : `⚠️ AI not used — ${data.labelCount < 10 ? `need at least 10 labels (have ${data.labelCount})` : 'OpenAI key not configured'}`;
+
+                statusEl.innerHTML = `
+                    <span style="color:#22c55e; font-weight:600;">Done!</span>
+                    Processed <strong>${data.processed}</strong> transcripts,
+                    updated <strong>${data.updated}</strong>.
+                    ${aiMsg}`;
+
+                if (data.results && data.results.length) {
+                    resultsEl.innerHTML = data.results.map(r =>
+                        `<div style="padding:4px 0; border-bottom:1px solid #2d3748; display:flex; justify-content:space-between;">
+                            <span style="color:#e5e7eb;">${r.title}…</span>
+                            <span style="color:#60a5fa; flex-shrink:0; margin-left:12px;">${r.questions} Q&amp;As ${r.aiUsed ? '🤖' : ''}</span>
+                        </div>`
+                    ).join('');
+                }
+            } catch (e) {
+                statusEl.innerHTML = `<span style="color:#ef4444;">Error: ${e.message}</span>`;
+            } finally {
+                btn.disabled    = false;
+                btn.textContent = '🚀 Launch AI — Reclassify All Speeches';
+            }
         }
 
     </script>
