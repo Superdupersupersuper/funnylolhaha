@@ -2722,9 +2722,18 @@ Return JSON: {{"results": [{{"qaKey": "...", "isQA": true|false, "confidence": 0
             else:
                 ai_map = {}
 
-            # Build updated qa_analytics pairs
+            # Build updated qa_analytics pairs — only keep responses by the PRIMARY speaker
             pairs = []
             for c in candidates:
+                # Filter: only include exchanges where the primary speaker answered
+                if primary and not (
+                    primary.lower() in c['responseSpeaker'].lower() or
+                    c['responseSpeaker'].lower() in primary.lower() or
+                    any(part in c['responseSpeaker'].lower()
+                        for part in primary.lower().split() if len(part) > 3)
+                ):
+                    continue  # e.g. Vance answered — skip for Leavitt's speech analytics
+
                 ai = ai_map.get(c['qaKey'], {})
                 is_qa      = ai.get('isQA', True) if ai_map else True
                 confidence = float(ai.get('confidence', 0.5) if ai_map else 0.5)
