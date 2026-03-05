@@ -2570,12 +2570,93 @@ def get_qa_transcripts():
     return jsonify({'transcripts': result})
 
 
+_QA_FILLER_RESPONSES = {
+    "thank you", "thanks", "that's right", "that is right", "absolutely",
+    "exactly", "of course", "sure", "right", "yes", "no", "correct",
+    "indeed", "great", "ok", "okay", "i agree", "good question",
+    "next question", "go ahead", "please go ahead",
+}
+
+_QA_INTERROGATIVE_STARTS = (
+    "what ", "why ", "how ", "when ", "where ", "who ", "which ",
+    "will ", "would ", "could ", "should ", "can ", "is ", "are ",
+    "was ", "were ", "do ", "does ", "did ", "have ", "has ", "had ",
+    "isn't ", "aren't ", "wasn't ", "weren't ", "don't ", "doesn't ",
+    "didn't ", "hasn't ", "haven't ",
+)
+
+
+def _rule_based_qa_classify(question_text, response_text):
+    """
+    Classify a candidate exchange as Q&A or not using linguistic heuristics.
+    Returns (is_qa: bool, confidence: float).
+    """
+    q = (question_text or '').strip()
+    r = (response_text or '').strip()
+    q_lower = q.lower()
+    r_lower = r.lower()
+
+    q_words = len(q.split())
+    r_words = len(r.split())
+
+    score = 0.5  # neutral start
+
+    # ── Question signals ──────────────────────────────────────────────────────
+    if q.endswith('?'):
+        score += 0.20
+    if any(q_lower.startswith(p) for p in _QA_INTERROGATIVE_STARTS):
+        score += 0.15
+
+    # Penalise very short or very long questions (monologue, not question)
+    if q_words < 4:
+        score -= 0.25
+    elif q_words < 8:
+        score -= 0.05
+    elif q_words > 120:
+        score -= 0.15  # probably a statement/monologue
+
+    # Multi-sentence question block (reporters often ask follow-ups before "?")
+    if q.count('?') >= 2:
+        score += 0.05
+
+    # ── Response signals ──────────────────────────────────────────────────────
+    # Very short responses are usually acknowledgements, not real answers
+    if r_words < 10:
+        score -= 0.30
+    elif r_words < 25:
+        score -= 0.10
+    elif r_words >= 50:
+        score += 0.10
+    elif r_words >= 100:
+        score += 0.05
+
+    # Filler-only response
+    r_stripped = r_lower.rstrip('.,!').strip()
+    if r_stripped in _QA_FILLER_RESPONSES:
+        score -= 0.40
+
+    # Response starts with a thank-you / acknowledgement
+    thanks_starts = ("thank you", "thanks,", "thank you,", "good question",
+                     "great question", "let me just say", "first of all, thank")
+    if any(r_lower.startswith(t) for t in thanks_starts):
+        # Common in press conferences — doesn't disqualify but lower weight
+        # Only penalise if the entire response is short
+        if r_words < 30:
+            score -= 0.15
+
+    # ── Final clamp & decision ────────────────────────────────────────────────
+    score = max(0.0, min(1.0, score))
+    is_qa = score >= 0.55
+    return is_qa, round(score, 2)
+
+
 @app.route('/api/qa-reclassify-all', methods=['POST'])
 def qa_reclassify_all():
     """
     POST /api/qa-reclassify-all
     Iterates every has_q_and_a transcript, extracts candidate exchanges,
-    classifies them with OpenAI (if enough labels), and updates qa_analytics.
+    classifies them with the rule-based classifier (always available) or
+    OpenAI (if openai_key provided), and updates qa_analytics.
     Body (optional): { "openai_key": "sk-..." }
     Returns a summary of what changed.
     """
@@ -2587,8 +2668,7 @@ def qa_reclassify_all():
 
     # Accept key from request body OR environment variable
     body    = request.get_json(silent=True) or {}
-    api_key = body.get('openai_key') or os.environ.get('OPENAI_API_KEY') or ''
-    api_key = api_key.strip()
+    api_key = (body.get('openai_key') or os.environ.get('OPENAI_API_KEY') or '').strip()
     use_ai  = HAS_OPENAI and bool(api_key)
 
     # Load labels for few-shot prompt
@@ -2695,7 +2775,7 @@ Return JSON: {{"results": [{{"qaKey": "...", "isQA": true|false, "confidence": 0
             if not candidates:
                 continue
 
-            # Classify with OpenAI
+            # Classify with OpenAI if key available, otherwise use rule-based classifier
             if use_ai:
                 user_lines = '\n\n'.join(
                     f"Candidate {i+1}:\n"
@@ -2723,8 +2803,14 @@ Return JSON: {{"results": [{{"qaKey": "...", "isQA": true|false, "confidence": 0
                 except Exception as e:
                     logging.warning(f"OpenAI classify error for {tid}: {e}")
                     ai_map = {}
+                rule_map = {}
             else:
-                ai_map = {}
+                ai_map   = {}
+                # Build rule-based classifications for every candidate
+                rule_map = {
+                    c['qaKey']: _rule_based_qa_classify(c['questionText'], c['responseText'])
+                    for c in candidates
+                }
 
             # Build updated qa_analytics pairs — only keep responses by the PRIMARY speaker
             pairs = []
@@ -2738,11 +2824,17 @@ Return JSON: {{"results": [{{"qaKey": "...", "isQA": true|false, "confidence": 0
                 ):
                     continue  # e.g. Vance answered — skip for Leavitt's speech analytics
 
-                ai = ai_map.get(c['qaKey'], {})
-                is_qa      = ai.get('isQA', True) if ai_map else True
-                confidence = float(ai.get('confidence', 0.5) if ai_map else 0.5)
-                if not is_qa and confidence >= 0.7:
-                    continue  # AI confident it's not Q&A — skip
+                if ai_map:
+                    ai = ai_map.get(c['qaKey'], {})
+                    is_qa      = ai.get('isQA', True)
+                    confidence = float(ai.get('confidence', 0.5))
+                elif rule_map:
+                    is_qa, confidence = rule_map.get(c['qaKey'], (True, 0.5))
+                else:
+                    is_qa, confidence = True, 0.5
+
+                if not is_qa and confidence >= 0.65:
+                    continue  # classifier confident it's not Q&A — skip
                 pairs.append({
                     'qaKey':           c['qaKey'],
                     'questionSpeaker': c['questionSpeaker'],
@@ -2794,11 +2886,12 @@ Return JSON: {{"results": [{{"qaKey": "...", "isQA": true|false, "confidence": 0
             logging.error(f"qa-reclassify-all error for transcript {tid}: {e}")
 
     return jsonify({
-        'processed': total_processed,
-        'updated':   total_updated,
-        'aiUsed':    use_ai,
+        'processed':  total_processed,
+        'updated':    total_updated,
+        'aiUsed':     use_ai,
+        'ruleUsed':   not use_ai,
         'labelCount': total_labels,
-        'results':   results_summary,
+        'results':    results_summary,
     })
 
 

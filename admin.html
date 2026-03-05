@@ -420,19 +420,9 @@ More text..."></textarea>
                         </div>
                         <div id="qaGlobalStats" style="display:flex; gap:16px; font-size:13px;"></div>
                     </div>
-                    <div style="margin-top:16px; padding-top:16px; border-top:1px solid #374151;">
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
-                            <input id="openaiKeyInput" type="password"
-                                placeholder="sk-… OpenAI API key (required for AI)"
-                                style="flex:1; min-width:220px; max-width:400px; padding:8px 12px; background:#1a2332; border:1px solid #374151; border-radius:6px; color:#e5e7eb; font-size:13px; font-family:monospace;"
-                                oninput="localStorage.setItem('openai_key', this.value)"
-                            />
-                            <span style="font-size:11px; color:#6b7280;">Saved in browser only — never sent to a third party</span>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                            <button onclick="launchAI()" id="launchAIBtn" style="padding:10px 22px; background:#7c3aed; border:none; border-radius:8px; color:#fff; font-weight:700; font-size:14px; cursor:pointer;">🚀 Launch AI — Reclassify All Speeches</button>
-                            <span style="font-size:12px; color:#9ca3af;">Re-reads every Q&amp;A-flagged transcript with the latest AI model and your labels.</span>
-                        </div>
+                    <div style="margin-top:16px; padding-top:16px; border-top:1px solid #374151; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                        <button onclick="launchAI()" id="launchAIBtn" style="padding:10px 22px; background:#7c3aed; border:none; border-radius:8px; color:#fff; font-weight:700; font-size:14px; cursor:pointer;">🚀 Reclassify All Speeches</button>
+                        <span style="font-size:12px; color:#9ca3af;">Re-reads every Q&amp;A-flagged transcript using the smart classifier + your labels.</span>
                     </div>
                     <div id="launchAIProgress" style="display:none; margin-top:12px; background:#1a2332; border-radius:8px; padding:14px 16px;">
                         <div id="launchAIStatus" style="font-size:13px; color:#60a5fa; margin-bottom:8px;">Running…</div>
@@ -1471,12 +1461,6 @@ More text..."></textarea>
 
         // ── Index ─────────────────────────────────────────────────────
         async function loadQATrainingIndex() {
-            // Pre-fill API key from localStorage
-            const keyInput = document.getElementById('openaiKeyInput');
-            if (keyInput && !keyInput.value) {
-                keyInput.value = localStorage.getItem('openai_key') || '';
-            }
-
             const listEl   = document.getElementById('qaTranscriptsList');
             const statsEl  = document.getElementById('qaGlobalStats');
             listEl.innerHTML = '<p style="color:#9ca3af; font-size:13px; padding:12px;">Loading…</p>';
@@ -1763,39 +1747,26 @@ More text..."></textarea>
             const statusEl = document.getElementById('launchAIStatus');
             const resultsEl = document.getElementById('launchAIResults');
 
-            // Grab key from input or localStorage
-            const keyInput = document.getElementById('openaiKeyInput');
-            const openaiKey = (keyInput && keyInput.value.trim()) || localStorage.getItem('openai_key') || '';
-            if (!openaiKey) {
-                statusEl.textContent = '⚠️ Please enter your OpenAI API key above before launching.';
-                progress.style.display = 'block';
-                return;
-            }
-
             btn.disabled       = true;
             btn.textContent    = '⏳ Running…';
             progress.style.display = 'block';
-            statusEl.textContent   = 'Calling AI on all Q&A transcripts — this may take 1–2 minutes…';
+            statusEl.textContent   = 'Classifying all Q&A transcripts — this may take 30–60 seconds…';
             resultsEl.innerHTML    = '';
 
             try {
-                const res = await fetch('/api/qa-reclassify-all', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ openai_key: openaiKey }),
-                });
+                const res = await fetch('/api/qa-reclassify-all', { method: 'POST' });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
 
-                const aiMsg = data.aiUsed
-                    ? `✅ AI classifier used (${data.labelCount} labels)`
-                    : `⚠️ AI not used — ${data.labelCount < 10 ? `need at least 10 labels (have ${data.labelCount})` : 'OpenAI key not configured'}`;
+                const classifierMsg = data.aiUsed
+                    ? `🤖 OpenAI classifier used (${data.labelCount} labels)`
+                    : `✅ Smart rule-based classifier applied`;
 
                 statusEl.innerHTML = `
                     <span style="color:#22c55e; font-weight:600;">Done!</span>
                     Processed <strong>${data.processed}</strong> transcripts,
                     updated <strong>${data.updated}</strong>.
-                    ${aiMsg}`;
+                    ${classifierMsg}`;
 
                 if (data.results && data.results.length) {
                     resultsEl.innerHTML = data.results.map(r =>
