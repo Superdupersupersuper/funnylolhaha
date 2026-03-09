@@ -1142,6 +1142,75 @@
             <button class="mode-tab" id="modeTabEarnings" onclick="switchAppMode('earnings')">📈 Earnings Calls</button>
         </div>
 
+        <!-- EARNINGS COMPANY BAR — shown only in earnings mode -->
+        <div id="earningsCompanyBar" style="display:none; margin-bottom:16px;">
+
+            <!-- Title row + Add Company button -->
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:18px; font-weight:700; color:#3b82f6;">📈 Earnings Calls</div>
+                    <div style="font-size:12px; color:#9ca3af; margin-top:2px;" id="earningsHeaderSub">Loading companies…</div>
+                </div>
+                <button onclick="ecToggleParsePanel()"
+                        style="padding:8px 16px; background:#374151; border:1px solid #4b5563; border-radius:6px;
+                               color:#d1d5db; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s;"
+                        onmouseover="this.style.background='#4b5563'" onmouseout="this.style.background='#374151'">
+                    + Add Company
+                </button>
+            </div>
+
+            <!-- Parse new company panel (collapsible) -->
+            <div id="earningsParsePanel" style="display:none; background:#2d3748; border-radius:8px; padding:14px; margin-bottom:12px; border:1px solid #374151;">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+                    <div style="flex:1; min-width:110px;">
+                        <div style="font-size:11px; color:#6b7280; margin-bottom:5px; text-transform:uppercase; letter-spacing:0.08em;">Ticker</div>
+                        <input type="text" class="parse-company-input" id="parseTickerInput"
+                               placeholder="AAPL" maxlength="10"
+                               oninput="this.value=this.value.toUpperCase()"
+                               style="width:100%;">
+                    </div>
+                    <div style="flex:2; min-width:150px;">
+                        <div style="font-size:11px; color:#6b7280; margin-bottom:5px; text-transform:uppercase; letter-spacing:0.08em;">Admin Password</div>
+                        <input type="password" class="parse-company-input" id="parseAdminPw"
+                               placeholder="Password"
+                               style="width:100%; text-transform:none; letter-spacing:normal; font-family:inherit;">
+                    </div>
+                    <button class="parse-company-btn" id="parseBtn" onclick="ecScrapeCompany()"
+                            style="flex-shrink:0; min-width:100px;">Scrape</button>
+                </div>
+                <div class="parse-status" id="parseStatus" style="margin-top:8px;"></div>
+            </div>
+
+            <!-- Company pills -->
+            <div style="background:#2d3748; border-radius:8px; padding:14px; margin-bottom:12px;">
+                <div style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:10px;">Company</div>
+                <div class="ec-company-grid" id="ecCompanyGrid">
+                    <div style="color:#6b7280;font-size:12px;">Loading companies…</div>
+                </div>
+            </div>
+
+            <!-- Quarter / Year filter row -->
+            <div style="background:#2d3748; border-radius:8px; padding:12px 14px; display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
+                <div>
+                    <div style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:7px;">Quarter</div>
+                    <div class="ec-quarter-row">
+                        <button class="ec-quarter-btn active" data-quarter="all" onclick="ecToggleQuarter(this)">All</button>
+                        <button class="ec-quarter-btn" data-quarter="1" onclick="ecToggleQuarter(this)">Q1</button>
+                        <button class="ec-quarter-btn" data-quarter="2" onclick="ecToggleQuarter(this)">Q2</button>
+                        <button class="ec-quarter-btn" data-quarter="3" onclick="ecToggleQuarter(this)">Q3</button>
+                        <button class="ec-quarter-btn" data-quarter="4" onclick="ecToggleQuarter(this)">Q4</button>
+                    </div>
+                </div>
+                <div>
+                    <div style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:7px;">Year</div>
+                    <select class="ec-year-select" id="ecYearSelect" onchange="ecApplyEarningsFilter()" style="width:auto; min-width:110px;">
+                        <option value="all">All Years</option>
+                    </select>
+                </div>
+                <div id="ecLoadingIndicator" style="color:#93c5fd; font-size:12px; margin-top:20px; display:none;">⟳ Loading transcripts…</div>
+            </div>
+        </div>
+
         <!-- SEARCH SECTION -->
         <div class="search-section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -1431,79 +1500,6 @@
             </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════════
-             EARNINGS CALLS SECTION (hidden until tab active)
-             ═══════════════════════════════════════════════ -->
-        <div id="earningsSection" style="display:none;">
-            <div class="earnings-header">
-                <div>
-                    <div class="earnings-header-title">Earnings Calls</div>
-                    <div class="earnings-header-sub" id="earningsHeaderSub">Loading companies…</div>
-                </div>
-            </div>
-            <div class="earnings-layout">
-                <!-- LEFT SIDEBAR -->
-                <div class="earnings-sidebar">
-                    <!-- Company filter -->
-                    <div class="earnings-sidebar-section">
-                        <div class="earnings-sidebar-title">Company</div>
-                        <div class="ec-company-grid" id="ecCompanyGrid">
-                            <div style="color:#6b7280;font-size:12px;">Loading…</div>
-                        </div>
-                    </div>
-
-                    <!-- Quarter filter -->
-                    <div class="earnings-sidebar-section">
-                        <div class="earnings-sidebar-title">Quarter</div>
-                        <div class="ec-quarter-row">
-                            <button class="ec-quarter-btn active" data-quarter="all" onclick="ecToggleQuarter(this)">All</button>
-                            <button class="ec-quarter-btn" data-quarter="1" onclick="ecToggleQuarter(this)">Q1</button>
-                            <button class="ec-quarter-btn" data-quarter="2" onclick="ecToggleQuarter(this)">Q2</button>
-                            <button class="ec-quarter-btn" data-quarter="3" onclick="ecToggleQuarter(this)">Q3</button>
-                            <button class="ec-quarter-btn" data-quarter="4" onclick="ecToggleQuarter(this)">Q4</button>
-                        </div>
-                    </div>
-
-                    <!-- Year filter -->
-                    <div class="earnings-sidebar-section">
-                        <div class="earnings-sidebar-title">Year</div>
-                        <select class="ec-year-select" id="ecYearSelect" onchange="ecFilterAndRender()">
-                            <option value="all">All Years</option>
-                        </select>
-                    </div>
-
-                    <!-- Parse new company -->
-                    <div class="earnings-sidebar-section">
-                        <div class="earnings-sidebar-title">Parse New Company</div>
-                        <div class="parse-company-form">
-                            <input type="text"
-                                   class="parse-company-input"
-                                   id="parseTickerInput"
-                                   placeholder="Ticker (e.g. AAPL)"
-                                   maxlength="10"
-                                   oninput="this.value=this.value.toUpperCase()">
-                            <input type="password"
-                                   class="parse-company-input"
-                                   id="parseAdminPw"
-                                   placeholder="Admin password"
-                                   style="text-transform:none; letter-spacing:normal; font-family:inherit;">
-                            <button class="parse-company-btn" id="parseBtn" onclick="ecScrapeCompany()">
-                                Scrape Company
-                            </button>
-                            <div class="parse-status" id="parseStatus"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- RIGHT MAIN AREA -->
-                <div class="earnings-main">
-                    <div class="earnings-results-bar" id="ecResultsBar"></div>
-                    <div id="ecTranscriptList">
-                        <div class="earnings-empty"><h3>Select a company to view earnings call transcripts</h3></div>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <script>
@@ -2244,7 +2240,7 @@
                 return `
                     <div class="transcript-card" id="card-${t.id}" data-date="${t.date}">
                         <div class="transcript-title">${displayTitle}</div>
-                        <div class="transcript-date">${t.date} | ${t.speech_type}${t.location ? ' | ' + t.location : ''}</div>
+                        <div class="transcript-date">${t.date} | ${t.speech_type}${t._qLabel ? ' · ' + t._qLabel : ''}${t.location ? ' | ' + t.location : ''}</div>
                         ${totalsHTML}
                         ${contextChipsHTML}
                         <div class="preview-toggle" onclick="togglePreview(${t.id})" style="
@@ -3474,134 +3470,250 @@
 
         /* ═══════════════════════════════════════════════════════════════
            EARNINGS CALLS MODE
+           Hooks into the existing analysis engine by swapping transcriptsData
+           with converted earnings transcripts, then calling the same functions.
            ═══════════════════════════════════════════════════════════════ */
         const EARNINGS_API = 'https://mention-markets-web.onrender.com';
 
-        // State for earnings mode
-        let ecCompanies = [];        // [{ticker, transcripts:[]}]
-        let ecSelectedTicker = null; // currently selected company ticker
-        let ecSelectedQuarter = 'all'; // 'all' | '1' | '2' | '3' | '4'
-        let ecSelectedYear = 'all';  // 'all' | '2024' etc.
-        let ecActiveMode = false;    // true when earnings tab is open
+        // ── Earnings mode state ──────────────────────────────────────────────────
+        let ecCompanies = [];            // [{ticker, transcripts:[{id,title,...}]}] — metadata only
+        let ecSelectedTicker = null;
+        let ecSelectedQuarter = 'all';
+        let ecSelectedYear = 'all';
+        let ecActiveMode = false;
+        // Full transcript cache: { [ticker]: [ convertedTranscript, ... ] }
+        const ecFullCache = {};
+        // Original transcripts data (saved when switching to earnings mode)
+        let ecOriginalTranscriptsData = null;
+        let ecOriginalActiveSpeaker = null;
 
-        // IDs of transcript bodies that have been loaded (to avoid re-fetching)
-        const ecLoadedBodies = new Set();
-
-        // ── Mode switch ──────────────────────────────────────────────────────────
-        const TRANSCRIPTS_SECTIONS = [
-            'speakerTabs', 'chartsContainer', 'filtersSection',
-            'statsSection', 'transcriptsSection', 'qaAnalysisSection'
-        ];
-
+        // ── Mode switcher ─────────────────────────────────────────────────────────
         function switchAppMode(mode) {
             ecActiveMode = (mode === 'earnings');
+            document.getElementById('modeTabTranscripts').classList.toggle('active', !ecActiveMode);
+            document.getElementById('modeTabEarnings').classList.toggle('active', ecActiveMode);
 
-            // Update mode tab styling
-            document.getElementById('modeTabTranscripts').classList.toggle('active', mode === 'transcripts');
-            document.getElementById('modeTabEarnings').classList.toggle('active', mode === 'earnings');
+            const bar = document.getElementById('earningsCompanyBar');
+            if (bar) bar.style.display = ecActiveMode ? 'block' : 'none';
 
-            // Show/hide sections
-            const earnEl = document.getElementById('earningsSection');
-            if (earnEl) earnEl.style.display = mode === 'earnings' ? 'block' : 'none';
+            // Speaker tabs: hide in earnings (company pills replace them)
+            const speakerTabsEl = document.getElementById('speakerTabs');
+            if (speakerTabsEl) speakerTabsEl.style.display = ecActiveMode ? 'none' : '';
 
-            // Transcript-mode sections identified by id
-            const ids = {
-                speakerTabs: document.getElementById('speakerTabs'),
-                chartsContainer: document.querySelector('.charts-container'),
-                hitrateSection: document.getElementById('hitrateSection'),
-                filtersSection: document.querySelector('.filters-section'),
-                statsSection: document.getElementById('statsSection'),
-                transcriptsSection: document.getElementById('transcriptsSection'),
-                qaAnalysisSection: document.getElementById('qaAnalysisSection'),
-            };
-            Object.values(ids).forEach(el => {
-                if (el) el.style.display = mode === 'earnings' ? 'none' : '';
-            });
-            // Search section stays visible but gets slightly adapted
-            const searchSec = document.querySelector('.search-section');
-            if (searchSec) searchSec.style.display = mode === 'earnings' ? 'none' : '';
-
-            if (mode === 'earnings' && ecCompanies.length === 0) {
-                ecLoadCompanies();
+            if (!ecActiveMode) {
+                // Restore original transcript data when going back to Transcripts tab
+                if (ecOriginalTranscriptsData !== null) {
+                    transcriptsData = ecOriginalTranscriptsData;
+                    activePrimarySpeaker = ecOriginalActiveSpeaker;
+                    ecOriginalTranscriptsData = null;
+                }
+                buildSpeakerTabs();
+                applyFilters();
+            } else {
+                // Backup current data
+                if (ecOriginalTranscriptsData === null) {
+                    ecOriginalTranscriptsData = transcriptsData;
+                    ecOriginalActiveSpeaker = activePrimarySpeaker;
+                }
+                if (ecCompanies.length === 0) {
+                    ecLoadCompanies();
+                } else {
+                    // Re-activate last selected company (or first)
+                    const ticker = ecSelectedTicker || (ecCompanies[0] && ecCompanies[0].ticker);
+                    if (ticker) ecActivateCompany(ticker);
+                }
             }
         }
 
-        // ── Load companies from proxy / Next.js API ──────────────────────────────
+        // ── Load companies (metadata only) ───────────────────────────────────────
         async function ecLoadCompanies() {
             try {
-                // Prefer local proxy, fall back to direct Next.js
-                const url = `${API_BASE}/api/earnings/companies`;
-                let resp = await fetch(url);
-                if (!resp.ok) throw new Error('proxy failed');
-                const data = await resp.json();
-                ecCompanies = data.companies || [];
-            } catch {
-                // Direct fallback to Next.js
+                let data = null;
+                // Try Flask proxy first
                 try {
-                    const resp2 = await fetch(`${EARNINGS_API}/api/earnings`);
-                    const data2 = await resp2.json();
-                    ecCompanies = data2.companies || [];
-                } catch (e2) {
-                    console.error('Failed to load earnings companies:', e2);
-                    document.getElementById('earningsHeaderSub').textContent = 'Failed to load companies.';
-                    return;
+                    const r = await fetch(`${API_BASE}/api/earnings/companies`);
+                    if (r.ok) data = await r.json();
+                } catch {}
+                // Fallback: direct Next.js
+                if (!data) {
+                    const r2 = await fetch(`${EARNINGS_API}/api/earnings`);
+                    data = await r2.json();
                 }
+                ecCompanies = data.companies || [];
+            } catch (e) {
+                console.error('Failed to load earnings companies:', e);
+                document.getElementById('earningsHeaderSub').textContent = 'Could not load companies.';
+                return;
             }
 
-            ecBuildYearOptions();
-            ecRenderCompanyFilter();
+            // Build year options from metadata
+            const years = new Set();
+            ecCompanies.forEach(c => c.transcripts.forEach(t => { if (t.fiscal_year) years.add(t.fiscal_year); }));
+            const sortedYears = [...years].sort((a, b) => b - a);
+            const sel = document.getElementById('ecYearSelect');
+            sel.innerHTML = '<option value="all">All Years</option>' +
+                sortedYears.map(y => `<option value="${y}">${y}</option>`).join('');
+
+            // Render company pills
+            ecRenderCompanyPills();
+
             const total = ecCompanies.reduce((s, c) => s + c.transcripts.length, 0);
             document.getElementById('earningsHeaderSub').textContent =
                 `${ecCompanies.length} companies · ${total} transcripts`;
 
-            // Auto-select first company
-            if (ecCompanies.length > 0 && !ecSelectedTicker) {
-                ecSelectCompany(ecCompanies[0].ticker);
+            // Auto-select first
+            if (ecCompanies.length > 0) {
+                ecActivateCompany(ecCompanies[0].ticker);
             }
         }
 
-        // Build year <option>s from all transcripts
-        function ecBuildYearOptions() {
-            const years = new Set();
-            ecCompanies.forEach(c => c.transcripts.forEach(t => {
-                if (t.fiscal_year) years.add(t.fiscal_year);
-            }));
-            const sorted = [...years].sort((a,b) => b - a);
-            const sel = document.getElementById('ecYearSelect');
-            sel.innerHTML = '<option value="all">All Years</option>' +
-                sorted.map(y => `<option value="${y}">${y}</option>`).join('');
-        }
-
-        // Render company pill buttons in sidebar
-        function ecRenderCompanyFilter() {
+        function ecRenderCompanyPills() {
             const grid = document.getElementById('ecCompanyGrid');
             if (!grid) return;
-            if (ecCompanies.length === 0) {
+            if (!ecCompanies.length) {
                 grid.innerHTML = '<div style="color:#6b7280;font-size:12px;">No companies found</div>';
                 return;
             }
-            grid.innerHTML = ecCompanies.map(c => {
-                const isActive = c.ticker === ecSelectedTicker;
-                return `<button class="ec-company-btn ${isActive ? 'active' : ''}"
+            grid.innerHTML = ecCompanies.map(c =>
+                `<button class="ec-company-btn ${c.ticker === ecSelectedTicker ? 'active' : ''}"
                     data-ticker="${c.ticker}"
-                    onclick="ecSelectCompany('${c.ticker}')">
-                    ${c.ticker}
-                </button>`;
-            }).join('');
+                    onclick="ecActivateCompany('${c.ticker}')">
+                    ${c.ticker}<span style="font-size:10px;font-weight:400;color:#6b7280;margin-left:4px;">${c.transcripts.length}</span>
+                </button>`
+            ).join('');
         }
 
-        // Select a company and refresh transcript list
-        function ecSelectCompany(ticker) {
+        // ── Activate a company: load full transcripts, convert, inject into engine ─
+        async function ecActivateCompany(ticker) {
             ecSelectedTicker = ticker;
-            // Update button active states
-            document.querySelectorAll('.ec-company-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.ticker === ticker);
-            });
-            ecFilterAndRender();
+            // Update pill active states
+            document.querySelectorAll('.ec-company-btn').forEach(btn =>
+                btn.classList.toggle('active', btn.dataset.ticker === ticker)
+            );
+
+            const loadingEl = document.getElementById('ecLoadingIndicator');
+
+            if (ecFullCache[ticker]) {
+                // Already loaded — just apply filters
+                ecApplyEarningsFilter();
+                return;
+            }
+
+            // Show loading indicator
+            if (loadingEl) loadingEl.style.display = 'inline';
+            document.getElementById('transcriptsSection').innerHTML =
+                '<div class="loading">Loading ' + ticker + ' earnings calls…</div>';
+
+            try {
+                const company = ecCompanies.find(c => c.ticker === ticker);
+                if (!company) return;
+
+                // Parallel fetch of all transcripts with segments
+                const fetched = await Promise.all(
+                    company.transcripts.map(async t => {
+                        try {
+                            let data = null;
+                            try {
+                                const r = await fetch(`${API_BASE}/api/earnings/transcript/${t.id}`);
+                                if (r.ok) data = await r.json();
+                            } catch {}
+                            if (!data) {
+                                const r2 = await fetch(`${EARNINGS_API}/api/earnings?id=${t.id}`);
+                                data = await r2.json();
+                            }
+                            return data && data.transcript ? ecConvert(data.transcript) : null;
+                        } catch { return null; }
+                    })
+                );
+
+                ecFullCache[ticker] = fetched.filter(Boolean);
+            } finally {
+                if (loadingEl) loadingEl.style.display = 'none';
+            }
+
+            ecApplyEarningsFilter();
         }
 
-        // Toggle quarter selection (only one active at a time for simplicity,
-        // or multi-select — here single-select; clicking active resets to 'all')
+        // Numeric ID counter for earnings transcripts — avoids UUID issues in DOM handlers
+        // (starts high so it doesn't clash with SQLite integer IDs)
+        let _ecIdSeq = 900000;
+
+        // Convert a Next.js earnings transcript to the format expected by the analysis engine
+        function ecConvert(t) {
+            const segments = t.segments || [];
+            // Full text in "Speaker:\ntext" format — what the analysis engine parses
+            const full_text = segments.map(s => `${s.speaker}:\n${s.text}`).join('\n\n');
+            const preview = full_text.substring(0, 800);
+            const word_count = full_text.split(/\s+/).length;
+            const uniqueSpeakers = [...new Set(segments.map(s => s.speaker))];
+            const dateStr = (t.event_date || '').substring(0, 10);
+            const qLabel = t.fiscal_quarter ? `Q${t.fiscal_quarter} ${t.fiscal_year || ''}`.trim() : '';
+
+            // Assign stable numeric ID (DOM-safe, no UUID conflicts)
+            const numericId = ++_ecIdSeq;
+
+            return {
+                // Numeric integer ID used by all DOM handlers (togglePreview, seekInTranscript, etc.)
+                id: numericId,
+                // Original UUID kept for API calls
+                _ecRealId: t.id,
+                title: t.title || '',
+                date: dateStr,
+                event_date: t.event_date,
+                // Primary speaker used for speaker tabs — the CEO / lead executive
+                primary_speaker: t.primary_speaker || (t.speakers_present && t.speakers_present[0]) || t.company_ticker || '',
+                speech_type: 'Earnings Call',
+                speakers: uniqueSpeakers,
+                speakers_present: t.speakers_present || [],
+                has_q_and_a: true,
+                full_text,
+                preview,
+                word_count,
+                mention_count: 0,
+                mentions: [],
+                mention_locations: [],
+                company_ticker: t.company_ticker,
+                fiscal_year: t.fiscal_year,
+                fiscal_quarter: t.fiscal_quarter,
+                _qLabel: qLabel,
+                _segments: segments,
+            };
+        }
+
+        // ── Apply quarter/year filter, then inject into analysis engine ──────────
+        function ecApplyEarningsFilter() {
+            ecSelectedYear = document.getElementById('ecYearSelect').value;
+
+            let data = ecFullCache[ecSelectedTicker] || [];
+
+            if (ecSelectedQuarter !== 'all') {
+                const q = parseInt(ecSelectedQuarter);
+                data = data.filter(t => t.fiscal_quarter === q);
+            }
+            if (ecSelectedYear !== 'all') {
+                const y = parseInt(ecSelectedYear);
+                data = data.filter(t => t.fiscal_year === y);
+            }
+
+            // Sort newest first
+            data = [...data].sort((a, b) => {
+                if (b.fiscal_year !== a.fiscal_year) return (b.fiscal_year || 0) - (a.fiscal_year || 0);
+                return (b.fiscal_quarter || 0) - (a.fiscal_quarter || 0);
+            });
+
+            // Inject into analysis engine
+            transcriptsData = data;
+            allTranscripts = data;
+
+            // Speaker tabs: rebuild using executives from this company's calls
+            // activePrimarySpeaker resets so the first exec tab is selected
+            activePrimarySpeaker = null;
+            buildSpeakerTabs();
+
+            // Reload speech-type filter, rebuild events filter, then apply
+            refreshFiltersForActiveTab().then(() => applyFilters());
+        }
+
         function ecToggleQuarter(btn) {
             const val = btn.dataset.quarter;
             document.querySelectorAll('.ec-quarter-btn').forEach(b => b.classList.remove('active'));
@@ -3612,161 +3724,25 @@
                 ecSelectedQuarter = val;
                 btn.classList.add('active');
             }
-            ecFilterAndRender();
+            ecApplyEarningsFilter();
         }
 
-        // Filter and render transcript list for active company+quarter+year
-        function ecFilterAndRender() {
-            ecSelectedYear = document.getElementById('ecYearSelect').value;
-            const company = ecCompanies.find(c => c.ticker === ecSelectedTicker);
-            if (!company) {
-                document.getElementById('ecTranscriptList').innerHTML =
-                    '<div class="earnings-empty"><h3>Select a company to view transcripts</h3></div>';
-                document.getElementById('ecResultsBar').textContent = '';
-                return;
-            }
-
-            let results = company.transcripts;
-
-            if (ecSelectedQuarter !== 'all') {
-                const q = parseInt(ecSelectedQuarter);
-                results = results.filter(t => t.fiscal_quarter === q);
-            }
-            if (ecSelectedYear !== 'all') {
-                const y = parseInt(ecSelectedYear);
-                results = results.filter(t => t.fiscal_year === y);
-            }
-
-            // Sort: newest first
-            results = [...results].sort((a, b) => {
-                if (b.fiscal_year !== a.fiscal_year) return (b.fiscal_year||0) - (a.fiscal_year||0);
-                return (b.fiscal_quarter||0) - (a.fiscal_quarter||0);
-            });
-
-            const qLabel = ecSelectedQuarter === 'all' ? '' : ` · Q${ecSelectedQuarter}`;
-            const yLabel = ecSelectedYear === 'all' ? '' : ` · ${ecSelectedYear}`;
-            document.getElementById('ecResultsBar').textContent =
-                `${results.length} transcript${results.length !== 1 ? 's' : ''} for ${ecSelectedTicker}${qLabel}${yLabel}`;
-
-            ecRenderTranscripts(results, company);
+        function ecToggleParsePanel() {
+            const panel = document.getElementById('earningsParsePanel');
+            if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
         }
 
-        // Render transcript cards
-        function ecRenderTranscripts(transcripts, company) {
-            const container = document.getElementById('ecTranscriptList');
-            if (transcripts.length === 0) {
-                container.innerHTML = `<div class="earnings-empty">
-                    <h3>No transcripts match the selected filters</h3>
-                    <p style="font-size:13px;margin-top:6px;">Try "All Years" or a different quarter.</p>
-                </div>`;
-                return;
-            }
-
-            container.innerHTML = transcripts.map(t => {
-                const qLabel = t.fiscal_quarter ? `Q${t.fiscal_quarter}` : '';
-                const yLabel = t.fiscal_year || '';
-                const dateStr = t.event_date ? new Date(t.event_date).toLocaleDateString('en-US', {year:'numeric',month:'short',day:'numeric'}) : '';
-                const ceo = t.speakers_present && t.speakers_present.length > 0 ? t.speakers_present[0] : (t.primary_speaker || '');
-                const segCount = t._count ? t._count.segments : 0;
-
-                return `<div class="earnings-transcript-card" id="ec-card-${t.id}">
-                    <div class="earnings-card-header" onclick="ecToggleTranscript('${t.id}')">
-                        <div class="earnings-card-meta">
-                            <div class="earnings-card-title">${escHtml(t.title)}</div>
-                            <div class="earnings-card-sub">
-                                ${qLabel ? `<span class="earnings-badge">${qLabel} ${yLabel}</span>` : ''}
-                                ${dateStr ? `<span>${dateStr}</span>` : ''}
-                                ${ceo ? `<span style="color:#d1d5db;">${escHtml(ceo)}</span>` : ''}
-                                ${segCount ? `<span style="color:#6b7280;">${segCount} segments</span>` : ''}
-                            </div>
-                        </div>
-                        <span class="earnings-card-chevron" id="ec-chevron-${t.id}">▶</span>
-                    </div>
-                    <div class="earnings-transcript-body" id="ec-body-${t.id}">
-                        <div class="et-loading" id="ec-loading-${t.id}">Loading transcript…</div>
-                        <div class="et-segment-list" id="ec-segments-${t.id}" style="display:none;"></div>
-                    </div>
-                </div>`;
-            }).join('');
-        }
-
-        // Toggle transcript expand/collapse, fetch if needed
-        async function ecToggleTranscript(id) {
-            const body = document.getElementById(`ec-body-${id}`);
-            const chevron = document.getElementById(`ec-chevron-${id}`);
-            if (!body) return;
-
-            const isOpen = body.classList.contains('open');
-            if (isOpen) {
-                body.classList.remove('open');
-                body.style.display = 'none';
-                if (chevron) { chevron.textContent = '▶'; chevron.classList.remove('open'); }
-                return;
-            }
-
-            body.classList.add('open');
-            body.style.display = 'block';
-            if (chevron) { chevron.textContent = '▼'; chevron.classList.add('open'); }
-
-            if (!ecLoadedBodies.has(id)) {
-                ecLoadedBodies.add(id);
-                await ecLoadTranscriptBody(id);
-            }
-        }
-
-        // Load full transcript segments
-        async function ecLoadTranscriptBody(id) {
-            const loadingEl = document.getElementById(`ec-loading-${id}`);
-            const segList = document.getElementById(`ec-segments-${id}`);
-
-            try {
-                // Try local proxy first, then direct
-                let data = null;
-                try {
-                    const r = await fetch(`${API_BASE}/api/earnings/transcript/${id}`);
-                    if (r.ok) data = await r.json();
-                } catch {}
-                if (!data) {
-                    const r2 = await fetch(`${EARNINGS_API}/api/earnings?id=${id}`);
-                    data = await r2.json();
-                }
-
-                const t = data.transcript;
-                if (!t || !t.segments) throw new Error('No segments');
-
-                const companyReps = new Set((t.speakers_present || []).map(s => s.toLowerCase()));
-
-                segList.innerHTML = t.segments.map(seg => {
-                    const isCompany = companyReps.size > 0
-                        ? [...companyReps].some(r => seg.speaker.toLowerCase().includes(r) || r.includes(seg.speaker.toLowerCase()))
-                        : true;
-                    const speakerClass = companyReps.size === 0 ? '' : (isCompany ? 'company' : 'analyst');
-                    return `<div class="et-segment">
-                        <div class="et-speaker ${speakerClass}">${escHtml(seg.speaker)}</div>
-                        <div class="et-text">${escHtml(seg.text)}</div>
-                    </div>`;
-                }).join('');
-
-                if (loadingEl) loadingEl.style.display = 'none';
-                if (segList) segList.style.display = 'block';
-
-            } catch (e) {
-                if (loadingEl) loadingEl.textContent = `Failed to load transcript: ${e.message}`;
-            }
-        }
-
-        // ── Parse new company ────────────────────────────────────────────────────
+        // ── Parse / scrape a new company ─────────────────────────────────────────
         async function ecScrapeCompany() {
-            const ticker = document.getElementById('parseTickerInput').value.trim().toUpperCase();
-            const pw = document.getElementById('parseAdminPw').value.trim();
-            const statusEl = document.getElementById('parseStatus');
+            const ticker = (document.getElementById('parseTickerInput').value || '').trim().toUpperCase();
+            const pw = (document.getElementById('parseAdminPw').value || '').trim();
             const btn = document.getElementById('parseBtn');
 
             if (!ticker) { ecSetParseStatus('error', 'Please enter a ticker symbol.'); return; }
-            if (!pw) { ecSetParseStatus('error', 'Admin password required.'); return; }
+            if (!pw)     { ecSetParseStatus('error', 'Admin password required.'); return; }
 
             btn.disabled = true;
-            ecSetParseStatus('loading', `Searching for ${ticker} earnings call transcripts… (this may take 1-2 min)`);
+            ecSetParseStatus('loading', `Searching Motley Fool for ${ticker} transcripts… (may take 1–2 min)`);
 
             try {
                 const resp = await fetch(`${API_BASE}/api/earnings/scrape`, {
@@ -3776,15 +3752,14 @@
                 });
                 const data = await resp.json();
                 if (!resp.ok) {
-                    ecSetParseStatus('error', data.error || `Error ${resp.status}`);
+                    ecSetParseStatus('error', data.error || `HTTP ${resp.status}`);
                 } else {
-                    const msg = data.message || `Saved ${data.saved || 0} transcripts for ${ticker}.`;
-                    ecSetParseStatus('success', msg + ' Reload the page to see new data.');
-                    // Reload companies after a short delay
+                    ecSetParseStatus('success', (data.message || `Done.`) + ' Reloading…');
                     setTimeout(() => {
                         ecCompanies = [];
+                        ecFullCache[ticker] && delete ecFullCache[ticker];
                         ecLoadCompanies();
-                    }, 2000);
+                    }, 1500);
                 }
             } catch (e) {
                 ecSetParseStatus('error', `Request failed: ${e.message}`);
