@@ -1659,8 +1659,20 @@
         // Check if a section speaker matches the transcript's primary_speaker field.
         // Uses case-insensitive, punctuation-stripped comparison.
         // Returns true if the names are the same person (substring containment both ways).
+        //
+        // EARNINGS MODE: primary_speaker may be a pipe-separated list of company reps,
+        // e.g. "Brian Niccol|Jack Hartung|Operator". In that case we check each name.
         function speakerMatchesPrimary(sectionSpeaker, primarySpeaker) {
             if (!sectionSpeaker || !primarySpeaker) return false;
+
+            // Handle pipe-separated list on either side (earnings calls)
+            if (primarySpeaker.includes('|')) {
+                return primarySpeaker.split('|').some(ps => speakerMatchesPrimary(sectionSpeaker, ps.trim()));
+            }
+            if (sectionSpeaker.includes('|')) {
+                return sectionSpeaker.split('|').some(ss => speakerMatchesPrimary(ss.trim(), primarySpeaker));
+            }
+
             const norm = s => String(s).toLowerCase().replace(/[^a-z\s]/g, '').replace(/\s+/g, ' ').trim();
             const a = norm(sectionSpeaker);
             const b = norm(primarySpeaker);
@@ -1677,11 +1689,10 @@
             }
             
             // Split into words for more robust matching
+            // e.g., "Zohran Mamdani" matches "Mamdani", "Donald J Trump" matches "Donald Trump"
             const aWords = a.split(' ').filter(w => w.length > 0);
             const bWords = b.split(' ').filter(w => w.length > 0);
             
-            // If either contains all words of the other, it's a match
-            // e.g., "Zohran Mamdani" matches "Mamdani", "Donald J Trump" matches "Donald Trump"
             const aContainsAllB = bWords.every(w => aWords.includes(w));
             const bContainsAllA = aWords.every(w => bWords.includes(w));
             
@@ -3641,6 +3652,18 @@
         // Convert a Next.js earnings transcript to the format expected by the analysis engine
         function ecConvert(t) {
             const segments = t.segments || [];
+
+            // Detect Operator from segments (common in all earnings calls)
+            const hasOperator = segments.some(s => /^operator$/i.test(s.speaker));
+
+            // Build full company reps list: speakers_present + Operator if present
+            // Anyone in this list is treated as a company representative (primary speaker).
+            // Analysts / questioners will NOT be in this list.
+            const companyReps = [...(t.speakers_present || [])];
+            if (hasOperator && !companyReps.some(r => /^operator$/i.test(r))) {
+                companyReps.push('Operator');
+            }
+
             // Full text in "Speaker:\ntext" format — what the analysis engine parses
             const full_text = segments.map(s => `${s.speaker}:\n${s.text}`).join('\n\n');
             const preview = full_text.substring(0, 800);
@@ -3660,12 +3683,18 @@
                 title: t.title || '',
                 date: dateStr,
                 event_date: t.event_date,
-                // Primary speaker used for speaker tabs — the CEO / lead executive
-                primary_speaker: t.primary_speaker || (t.speakers_present && t.speakers_present[0]) || t.company_ticker || '',
+                // primary_speaker = pipe-joined list of ALL company reps + Operator.
+                // speakerMatchesPrimary() splits on "|" so any rep is treated as primary.
+                // This means search/charts highlight ALL reps blue, analysts orange.
+                primary_speaker: companyReps.length > 0
+                    ? companyReps.join('|')
+                    : (t.company_ticker || ''),
                 speech_type: 'Earnings Call',
                 speakers: uniqueSpeakers,
-                speakers_present: t.speakers_present || [],
+                speakers_present: companyReps,
                 has_q_and_a: true,
+                // dialogue array = direct segments → used by getDialogueForSpeaker for full-text search
+                dialogue: segments.map(s => ({ speaker: s.speaker, text: s.text })),
                 full_text,
                 preview,
                 word_count,
@@ -3678,6 +3707,48 @@
                 _qLabel: qLabel,
                 _segments: segments,
             };
+        }
+
+        // ── Build per-rep speaker tabs for the active company ────────────────────
+        // Replaces buildSpeakerTabs() in earnings mode.
+        // Shows one tab per company representative (CEO, CFO, Operator, etc.).
+        // Each rep tab lets the user focus Q&A analysis on that individual.
+        // For SEARCH / MENTION COUNTING, all reps are always "primary" regardless
+        // of which tab is selected (because primary_speaker is the full pipe list).
+        function ecBuildEarningsSpeakerTabs() {
+            const tabsContainer = document.getElementById('speakerTabs');
+            if (!tabsContainer) return;
+            tabsContainer.style.display = 'flex';
+
+            const data = ecFullCache[ecSelectedTicker] || [];
+
+            // Count how many transcripts each rep appears in
+            const repCounts = {};
+            data.forEach(t => {
+                (t.speakers_present || []).forEach(rep => {
+                    repCounts[rep] = (repCounts[rep] || 0) + 1;
+                });
+            });
+
+            const reps = Object.keys(repCounts).sort((a, b) => repCounts[b] - repCounts[a]);
+
+            // Validate / auto-select activePrimarySpeaker
+            // Prefer the most-frequent non-Operator rep as default
+            if (!activePrimarySpeaker || !repCounts[activePrimarySpeaker]) {
+                const preferNonOp = reps.filter(r => !/^operator$/i.test(r));
+                activePrimarySpeaker = (preferNonOp[0] || reps[0]) || null;
+                if (activePrimarySpeaker) localStorage.setItem('qa_active_speaker', activePrimarySpeaker);
+            }
+
+            tabsContainer.innerHTML = reps.map(rep => {
+                const safeAttr = rep.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                const isActive = activePrimarySpeaker === rep;
+                return `<button class="speaker-tab ${isActive ? 'active' : ''}"
+                    data-speaker="${safeAttr}"
+                    onclick="switchPrimarySpeaker(this.dataset.speaker)">
+                    ${rep}<span class="tab-count">${repCounts[rep]}</span>
+                </button>`;
+            }).join('');
         }
 
         // ── Apply quarter/year filter, then inject into analysis engine ──────────
@@ -3705,10 +3776,9 @@
             transcriptsData = data;
             allTranscripts = data;
 
-            // Speaker tabs: rebuild using executives from this company's calls
-            // activePrimarySpeaker resets so the first exec tab is selected
+            // Build per-rep speaker tabs (not the default per-primary-speaker tabs)
             activePrimarySpeaker = null;
-            buildSpeakerTabs();
+            ecBuildEarningsSpeakerTabs();
 
             // Reload speech-type filter, rebuild events filter, then apply
             refreshFiltersForActiveTab().then(() => applyFilters());
