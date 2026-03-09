@@ -7,9 +7,9 @@ export default function HomePage() {
       <p className="mt-4 text-center text-muted-foreground">
         Transcript intelligence for prediction markets.
         <br />
-        Search mentions across political speeches, press conferences, and more.
+        Search mentions across speeches, press conferences, and earnings calls.
       </p>
-      <div className="mt-8 flex gap-4">
+      <div className="mt-8 flex flex-wrap justify-center gap-4">
         <Link
           href="/search"
           className="rounded-md bg-primary px-6 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -17,8 +17,14 @@ export default function HomePage() {
           Search Transcripts
         </Link>
         <Link
-          href="/admin/transcripts"
+          href="/earnings"
           className="rounded-md border border-input px-6 py-2.5 text-sm font-medium hover:bg-accent"
+        >
+          Earnings Calls
+        </Link>
+        <Link
+          href="/admin/transcripts"
+          className="rounded-md border border-input px-6 py-2.5 text-sm font-medium opacity-50 hover:bg-accent hover:opacity-100"
         >
           Admin
         </Link>

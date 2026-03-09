@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { secondsToTime } from "@/lib/parsers/otter";
+import Nav from "@/components/Nav";
 
 interface SearchResult {
   transcript: {
@@ -101,7 +102,9 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="min-h-screen">
+      <Nav active="search" />
+      <div className="mx-auto max-w-5xl px-4 py-8">
       <h1 className="mb-6 text-3xl font-bold tracking-tight">
         MentionMarkets Search
       </h1>
@@ -327,6 +330,7 @@ export default function SearchPage() {
           )}
         </div>
       )}
+    </div>
     </div>
   );
 }

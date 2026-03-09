@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Nav from "@/components/Nav";
 
 interface TranscriptSummary {
   id: string;
@@ -213,6 +214,8 @@ export default function EarningsPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      <Nav active="earnings" />
+
       {openTranscript && (
         <TranscriptViewer
           transcript={openTranscript}
