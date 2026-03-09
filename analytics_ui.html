@@ -834,10 +834,314 @@
         }
         .qa-per-transcript-panel .q-text { color: #e5e7eb; }
         .qa-per-transcript-panel .a-text { color: #c4b5fd; }
+
+        /* =========================================
+           EARNINGS CALLS MODE
+           ========================================= */
+        .mode-switcher-bar {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin-bottom: 20px;
+            background: #2d3748;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #374151;
+        }
+        .mode-tab {
+            padding: 13px 26px;
+            background: transparent;
+            color: #9ca3af;
+            border: none;
+            border-right: 1px solid #374151;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .mode-tab:last-child { border-right: none; }
+        .mode-tab:hover { background: rgba(59,130,246,0.08); color: #e5e7eb; }
+        .mode-tab.active {
+            background: rgba(59,130,246,0.18);
+            color: #3b82f6;
+        }
+        .mode-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 3px;
+            background: #3b82f6;
+        }
+        /* Earnings layout */
+        .earnings-container { padding: 20px; }
+        .earnings-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            gap: 12px;
+        }
+        .earnings-header-title {
+            font-size: 22px;
+            font-weight: 700;
+            color: #3b82f6;
+        }
+        .earnings-header-sub {
+            font-size: 13px;
+            color: #9ca3af;
+            margin-top: 2px;
+        }
+        .earnings-layout {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+        @media (max-width: 768px) {
+            .earnings-layout { grid-template-columns: 1fr; }
+        }
+        .earnings-sidebar {
+            background: #2d3748;
+            border-radius: 8px;
+            padding: 16px;
+            position: sticky;
+            top: 10px;
+        }
+        .earnings-sidebar-section { margin-bottom: 20px; }
+        .earnings-sidebar-section:last-child { margin-bottom: 0; }
+        .earnings-sidebar-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 10px;
+        }
+        .ec-company-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .ec-company-btn {
+            padding: 5px 11px;
+            background: #374151;
+            border: 1px solid #4b5563;
+            border-radius: 5px;
+            color: #d1d5db;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+            letter-spacing: 0.03em;
+        }
+        .ec-company-btn:hover { background: #4b5563; color: #f3f4f6; }
+        .ec-company-btn.active {
+            background: rgba(59,130,246,0.22);
+            border-color: #3b82f6;
+            color: #93c5fd;
+        }
+        .ec-quarter-row { display: flex; gap: 5px; flex-wrap: wrap; }
+        .ec-quarter-btn {
+            flex: 1;
+            min-width: 44px;
+            padding: 6px 8px;
+            background: #374151;
+            border: 1px solid #4b5563;
+            border-radius: 5px;
+            color: #d1d5db;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-align: center;
+        }
+        .ec-quarter-btn:hover { background: #4b5563; }
+        .ec-quarter-btn.active {
+            background: rgba(59,130,246,0.22);
+            border-color: #3b82f6;
+            color: #93c5fd;
+        }
+        .ec-year-select {
+            width: 100%;
+            padding: 7px 10px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 5px;
+            color: #e5e7eb;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+        /* Transcript cards */
+        .earnings-main { min-width: 0; }
+        .earnings-results-bar {
+            font-size: 13px;
+            color: #9ca3af;
+            margin-bottom: 14px;
+            padding: 0 2px;
+        }
+        .earnings-transcript-card {
+            background: #2d3748;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .earnings-transcript-card:hover { border-color: #4b5563; }
+        .earnings-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            cursor: pointer;
+            gap: 10px;
+        }
+        .earnings-card-meta { flex: 1; min-width: 0; }
+        .earnings-card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e5e7eb;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .earnings-card-sub {
+            font-size: 12px;
+            color: #9ca3af;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .earnings-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            background: rgba(59,130,246,0.15);
+            border: 1px solid rgba(59,130,246,0.3);
+            color: #93c5fd;
+        }
+        .earnings-badge.green {
+            background: rgba(52,211,153,0.12);
+            border-color: rgba(52,211,153,0.3);
+            color: #34d399;
+        }
+        .earnings-card-chevron {
+            color: #6b7280;
+            font-size: 12px;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        .earnings-card-chevron.open { transform: rotate(90deg); }
+        .earnings-transcript-body {
+            display: none;
+            border-top: 1px solid #374151;
+        }
+        .earnings-transcript-body.open { display: block; }
+        .et-loading {
+            padding: 30px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 13px;
+        }
+        .et-segment-list {
+            max-height: 520px;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        .et-segment {
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #1a2332;
+        }
+        .et-segment:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .et-speaker {
+            font-size: 12px;
+            font-weight: 700;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 5px;
+        }
+        .et-speaker.company { color: #34d399; }
+        .et-speaker.analyst { color: #fb923c; }
+        .et-text {
+            font-size: 13px;
+            line-height: 1.7;
+            color: #d1d5db;
+        }
+        /* Parse new company */
+        .parse-company-form { display: flex; flex-direction: column; gap: 8px; }
+        .parse-company-input {
+            padding: 8px 10px;
+            background: #1a2332;
+            border: 1px solid #374151;
+            border-radius: 5px;
+            color: #e5e7eb;
+            font-size: 13px;
+            font-family: monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .parse-company-input:focus { outline: none; border-color: #3b82f6; }
+        .parse-company-btn {
+            padding: 9px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .parse-company-btn:hover { opacity: 0.9; }
+        .parse-company-btn:disabled { background: #374151; color: #6b7280; cursor: not-allowed; }
+        .parse-status {
+            font-size: 12px;
+            padding: 7px 10px;
+            border-radius: 4px;
+            line-height: 1.4;
+            display: none;
+        }
+        .parse-status.success {
+            background: rgba(52,211,153,0.1);
+            border: 1px solid rgba(52,211,153,0.3);
+            color: #34d399;
+            display: block;
+        }
+        .parse-status.error {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.3);
+            color: #f87171;
+            display: block;
+        }
+        .parse-status.loading {
+            background: rgba(59,130,246,0.1);
+            border: 1px solid rgba(59,130,246,0.3);
+            color: #93c5fd;
+            display: block;
+        }
+        .earnings-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6b7280;
+        }
+        .earnings-empty h3 { font-size: 16px; margin-bottom: 8px; color: #9ca3af; }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- MODE SWITCHER -->
+        <div class="mode-switcher-bar" id="modeSwitcherBar">
+            <button class="mode-tab active" id="modeTabTranscripts" onclick="switchAppMode('transcripts')">Transcripts</button>
+            <button class="mode-tab" id="modeTabEarnings" onclick="switchAppMode('earnings')">📈 Earnings Calls</button>
+        </div>
+
         <!-- SEARCH SECTION -->
         <div class="search-section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -1123,6 +1427,80 @@
                         </div>
                     </div>
                     <div id="qaList"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════
+             EARNINGS CALLS SECTION (hidden until tab active)
+             ═══════════════════════════════════════════════ -->
+        <div id="earningsSection" style="display:none;">
+            <div class="earnings-header">
+                <div>
+                    <div class="earnings-header-title">Earnings Calls</div>
+                    <div class="earnings-header-sub" id="earningsHeaderSub">Loading companies…</div>
+                </div>
+            </div>
+            <div class="earnings-layout">
+                <!-- LEFT SIDEBAR -->
+                <div class="earnings-sidebar">
+                    <!-- Company filter -->
+                    <div class="earnings-sidebar-section">
+                        <div class="earnings-sidebar-title">Company</div>
+                        <div class="ec-company-grid" id="ecCompanyGrid">
+                            <div style="color:#6b7280;font-size:12px;">Loading…</div>
+                        </div>
+                    </div>
+
+                    <!-- Quarter filter -->
+                    <div class="earnings-sidebar-section">
+                        <div class="earnings-sidebar-title">Quarter</div>
+                        <div class="ec-quarter-row">
+                            <button class="ec-quarter-btn active" data-quarter="all" onclick="ecToggleQuarter(this)">All</button>
+                            <button class="ec-quarter-btn" data-quarter="1" onclick="ecToggleQuarter(this)">Q1</button>
+                            <button class="ec-quarter-btn" data-quarter="2" onclick="ecToggleQuarter(this)">Q2</button>
+                            <button class="ec-quarter-btn" data-quarter="3" onclick="ecToggleQuarter(this)">Q3</button>
+                            <button class="ec-quarter-btn" data-quarter="4" onclick="ecToggleQuarter(this)">Q4</button>
+                        </div>
+                    </div>
+
+                    <!-- Year filter -->
+                    <div class="earnings-sidebar-section">
+                        <div class="earnings-sidebar-title">Year</div>
+                        <select class="ec-year-select" id="ecYearSelect" onchange="ecFilterAndRender()">
+                            <option value="all">All Years</option>
+                        </select>
+                    </div>
+
+                    <!-- Parse new company -->
+                    <div class="earnings-sidebar-section">
+                        <div class="earnings-sidebar-title">Parse New Company</div>
+                        <div class="parse-company-form">
+                            <input type="text"
+                                   class="parse-company-input"
+                                   id="parseTickerInput"
+                                   placeholder="Ticker (e.g. AAPL)"
+                                   maxlength="10"
+                                   oninput="this.value=this.value.toUpperCase()">
+                            <input type="password"
+                                   class="parse-company-input"
+                                   id="parseAdminPw"
+                                   placeholder="Admin password"
+                                   style="text-transform:none; letter-spacing:normal; font-family:inherit;">
+                            <button class="parse-company-btn" id="parseBtn" onclick="ecScrapeCompany()">
+                                Scrape Company
+                            </button>
+                            <div class="parse-status" id="parseStatus"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT MAIN AREA -->
+                <div class="earnings-main">
+                    <div class="earnings-results-bar" id="ecResultsBar"></div>
+                    <div id="ecTranscriptList">
+                        <div class="earnings-empty"><h3>Select a company to view earnings call transcripts</h3></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -3092,6 +3470,342 @@
                 panel.style.display = 'none';
                 if (icon) icon.textContent = '▶';
             }
+        }
+
+        /* ═══════════════════════════════════════════════════════════════
+           EARNINGS CALLS MODE
+           ═══════════════════════════════════════════════════════════════ */
+        const EARNINGS_API = 'https://mention-markets-web.onrender.com';
+
+        // State for earnings mode
+        let ecCompanies = [];        // [{ticker, transcripts:[]}]
+        let ecSelectedTicker = null; // currently selected company ticker
+        let ecSelectedQuarter = 'all'; // 'all' | '1' | '2' | '3' | '4'
+        let ecSelectedYear = 'all';  // 'all' | '2024' etc.
+        let ecActiveMode = false;    // true when earnings tab is open
+
+        // IDs of transcript bodies that have been loaded (to avoid re-fetching)
+        const ecLoadedBodies = new Set();
+
+        // ── Mode switch ──────────────────────────────────────────────────────────
+        const TRANSCRIPTS_SECTIONS = [
+            'speakerTabs', 'chartsContainer', 'filtersSection',
+            'statsSection', 'transcriptsSection', 'qaAnalysisSection'
+        ];
+
+        function switchAppMode(mode) {
+            ecActiveMode = (mode === 'earnings');
+
+            // Update mode tab styling
+            document.getElementById('modeTabTranscripts').classList.toggle('active', mode === 'transcripts');
+            document.getElementById('modeTabEarnings').classList.toggle('active', mode === 'earnings');
+
+            // Show/hide sections
+            const earnEl = document.getElementById('earningsSection');
+            if (earnEl) earnEl.style.display = mode === 'earnings' ? 'block' : 'none';
+
+            // Transcript-mode sections identified by id
+            const ids = {
+                speakerTabs: document.getElementById('speakerTabs'),
+                chartsContainer: document.querySelector('.charts-container'),
+                hitrateSection: document.getElementById('hitrateSection'),
+                filtersSection: document.querySelector('.filters-section'),
+                statsSection: document.getElementById('statsSection'),
+                transcriptsSection: document.getElementById('transcriptsSection'),
+                qaAnalysisSection: document.getElementById('qaAnalysisSection'),
+            };
+            Object.values(ids).forEach(el => {
+                if (el) el.style.display = mode === 'earnings' ? 'none' : '';
+            });
+            // Search section stays visible but gets slightly adapted
+            const searchSec = document.querySelector('.search-section');
+            if (searchSec) searchSec.style.display = mode === 'earnings' ? 'none' : '';
+
+            if (mode === 'earnings' && ecCompanies.length === 0) {
+                ecLoadCompanies();
+            }
+        }
+
+        // ── Load companies from proxy / Next.js API ──────────────────────────────
+        async function ecLoadCompanies() {
+            try {
+                // Prefer local proxy, fall back to direct Next.js
+                const url = `${API_BASE}/api/earnings/companies`;
+                let resp = await fetch(url);
+                if (!resp.ok) throw new Error('proxy failed');
+                const data = await resp.json();
+                ecCompanies = data.companies || [];
+            } catch {
+                // Direct fallback to Next.js
+                try {
+                    const resp2 = await fetch(`${EARNINGS_API}/api/earnings`);
+                    const data2 = await resp2.json();
+                    ecCompanies = data2.companies || [];
+                } catch (e2) {
+                    console.error('Failed to load earnings companies:', e2);
+                    document.getElementById('earningsHeaderSub').textContent = 'Failed to load companies.';
+                    return;
+                }
+            }
+
+            ecBuildYearOptions();
+            ecRenderCompanyFilter();
+            const total = ecCompanies.reduce((s, c) => s + c.transcripts.length, 0);
+            document.getElementById('earningsHeaderSub').textContent =
+                `${ecCompanies.length} companies · ${total} transcripts`;
+
+            // Auto-select first company
+            if (ecCompanies.length > 0 && !ecSelectedTicker) {
+                ecSelectCompany(ecCompanies[0].ticker);
+            }
+        }
+
+        // Build year <option>s from all transcripts
+        function ecBuildYearOptions() {
+            const years = new Set();
+            ecCompanies.forEach(c => c.transcripts.forEach(t => {
+                if (t.fiscal_year) years.add(t.fiscal_year);
+            }));
+            const sorted = [...years].sort((a,b) => b - a);
+            const sel = document.getElementById('ecYearSelect');
+            sel.innerHTML = '<option value="all">All Years</option>' +
+                sorted.map(y => `<option value="${y}">${y}</option>`).join('');
+        }
+
+        // Render company pill buttons in sidebar
+        function ecRenderCompanyFilter() {
+            const grid = document.getElementById('ecCompanyGrid');
+            if (!grid) return;
+            if (ecCompanies.length === 0) {
+                grid.innerHTML = '<div style="color:#6b7280;font-size:12px;">No companies found</div>';
+                return;
+            }
+            grid.innerHTML = ecCompanies.map(c => {
+                const isActive = c.ticker === ecSelectedTicker;
+                return `<button class="ec-company-btn ${isActive ? 'active' : ''}"
+                    data-ticker="${c.ticker}"
+                    onclick="ecSelectCompany('${c.ticker}')">
+                    ${c.ticker}
+                </button>`;
+            }).join('');
+        }
+
+        // Select a company and refresh transcript list
+        function ecSelectCompany(ticker) {
+            ecSelectedTicker = ticker;
+            // Update button active states
+            document.querySelectorAll('.ec-company-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.ticker === ticker);
+            });
+            ecFilterAndRender();
+        }
+
+        // Toggle quarter selection (only one active at a time for simplicity,
+        // or multi-select — here single-select; clicking active resets to 'all')
+        function ecToggleQuarter(btn) {
+            const val = btn.dataset.quarter;
+            document.querySelectorAll('.ec-quarter-btn').forEach(b => b.classList.remove('active'));
+            if (ecSelectedQuarter === val && val !== 'all') {
+                ecSelectedQuarter = 'all';
+                document.querySelector('.ec-quarter-btn[data-quarter="all"]').classList.add('active');
+            } else {
+                ecSelectedQuarter = val;
+                btn.classList.add('active');
+            }
+            ecFilterAndRender();
+        }
+
+        // Filter and render transcript list for active company+quarter+year
+        function ecFilterAndRender() {
+            ecSelectedYear = document.getElementById('ecYearSelect').value;
+            const company = ecCompanies.find(c => c.ticker === ecSelectedTicker);
+            if (!company) {
+                document.getElementById('ecTranscriptList').innerHTML =
+                    '<div class="earnings-empty"><h3>Select a company to view transcripts</h3></div>';
+                document.getElementById('ecResultsBar').textContent = '';
+                return;
+            }
+
+            let results = company.transcripts;
+
+            if (ecSelectedQuarter !== 'all') {
+                const q = parseInt(ecSelectedQuarter);
+                results = results.filter(t => t.fiscal_quarter === q);
+            }
+            if (ecSelectedYear !== 'all') {
+                const y = parseInt(ecSelectedYear);
+                results = results.filter(t => t.fiscal_year === y);
+            }
+
+            // Sort: newest first
+            results = [...results].sort((a, b) => {
+                if (b.fiscal_year !== a.fiscal_year) return (b.fiscal_year||0) - (a.fiscal_year||0);
+                return (b.fiscal_quarter||0) - (a.fiscal_quarter||0);
+            });
+
+            const qLabel = ecSelectedQuarter === 'all' ? '' : ` · Q${ecSelectedQuarter}`;
+            const yLabel = ecSelectedYear === 'all' ? '' : ` · ${ecSelectedYear}`;
+            document.getElementById('ecResultsBar').textContent =
+                `${results.length} transcript${results.length !== 1 ? 's' : ''} for ${ecSelectedTicker}${qLabel}${yLabel}`;
+
+            ecRenderTranscripts(results, company);
+        }
+
+        // Render transcript cards
+        function ecRenderTranscripts(transcripts, company) {
+            const container = document.getElementById('ecTranscriptList');
+            if (transcripts.length === 0) {
+                container.innerHTML = `<div class="earnings-empty">
+                    <h3>No transcripts match the selected filters</h3>
+                    <p style="font-size:13px;margin-top:6px;">Try "All Years" or a different quarter.</p>
+                </div>`;
+                return;
+            }
+
+            container.innerHTML = transcripts.map(t => {
+                const qLabel = t.fiscal_quarter ? `Q${t.fiscal_quarter}` : '';
+                const yLabel = t.fiscal_year || '';
+                const dateStr = t.event_date ? new Date(t.event_date).toLocaleDateString('en-US', {year:'numeric',month:'short',day:'numeric'}) : '';
+                const ceo = t.speakers_present && t.speakers_present.length > 0 ? t.speakers_present[0] : (t.primary_speaker || '');
+                const segCount = t._count ? t._count.segments : 0;
+
+                return `<div class="earnings-transcript-card" id="ec-card-${t.id}">
+                    <div class="earnings-card-header" onclick="ecToggleTranscript('${t.id}')">
+                        <div class="earnings-card-meta">
+                            <div class="earnings-card-title">${escHtml(t.title)}</div>
+                            <div class="earnings-card-sub">
+                                ${qLabel ? `<span class="earnings-badge">${qLabel} ${yLabel}</span>` : ''}
+                                ${dateStr ? `<span>${dateStr}</span>` : ''}
+                                ${ceo ? `<span style="color:#d1d5db;">${escHtml(ceo)}</span>` : ''}
+                                ${segCount ? `<span style="color:#6b7280;">${segCount} segments</span>` : ''}
+                            </div>
+                        </div>
+                        <span class="earnings-card-chevron" id="ec-chevron-${t.id}">▶</span>
+                    </div>
+                    <div class="earnings-transcript-body" id="ec-body-${t.id}">
+                        <div class="et-loading" id="ec-loading-${t.id}">Loading transcript…</div>
+                        <div class="et-segment-list" id="ec-segments-${t.id}" style="display:none;"></div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // Toggle transcript expand/collapse, fetch if needed
+        async function ecToggleTranscript(id) {
+            const body = document.getElementById(`ec-body-${id}`);
+            const chevron = document.getElementById(`ec-chevron-${id}`);
+            if (!body) return;
+
+            const isOpen = body.classList.contains('open');
+            if (isOpen) {
+                body.classList.remove('open');
+                body.style.display = 'none';
+                if (chevron) { chevron.textContent = '▶'; chevron.classList.remove('open'); }
+                return;
+            }
+
+            body.classList.add('open');
+            body.style.display = 'block';
+            if (chevron) { chevron.textContent = '▼'; chevron.classList.add('open'); }
+
+            if (!ecLoadedBodies.has(id)) {
+                ecLoadedBodies.add(id);
+                await ecLoadTranscriptBody(id);
+            }
+        }
+
+        // Load full transcript segments
+        async function ecLoadTranscriptBody(id) {
+            const loadingEl = document.getElementById(`ec-loading-${id}`);
+            const segList = document.getElementById(`ec-segments-${id}`);
+
+            try {
+                // Try local proxy first, then direct
+                let data = null;
+                try {
+                    const r = await fetch(`${API_BASE}/api/earnings/transcript/${id}`);
+                    if (r.ok) data = await r.json();
+                } catch {}
+                if (!data) {
+                    const r2 = await fetch(`${EARNINGS_API}/api/earnings?id=${id}`);
+                    data = await r2.json();
+                }
+
+                const t = data.transcript;
+                if (!t || !t.segments) throw new Error('No segments');
+
+                const companyReps = new Set((t.speakers_present || []).map(s => s.toLowerCase()));
+
+                segList.innerHTML = t.segments.map(seg => {
+                    const isCompany = companyReps.size > 0
+                        ? [...companyReps].some(r => seg.speaker.toLowerCase().includes(r) || r.includes(seg.speaker.toLowerCase()))
+                        : true;
+                    const speakerClass = companyReps.size === 0 ? '' : (isCompany ? 'company' : 'analyst');
+                    return `<div class="et-segment">
+                        <div class="et-speaker ${speakerClass}">${escHtml(seg.speaker)}</div>
+                        <div class="et-text">${escHtml(seg.text)}</div>
+                    </div>`;
+                }).join('');
+
+                if (loadingEl) loadingEl.style.display = 'none';
+                if (segList) segList.style.display = 'block';
+
+            } catch (e) {
+                if (loadingEl) loadingEl.textContent = `Failed to load transcript: ${e.message}`;
+            }
+        }
+
+        // ── Parse new company ────────────────────────────────────────────────────
+        async function ecScrapeCompany() {
+            const ticker = document.getElementById('parseTickerInput').value.trim().toUpperCase();
+            const pw = document.getElementById('parseAdminPw').value.trim();
+            const statusEl = document.getElementById('parseStatus');
+            const btn = document.getElementById('parseBtn');
+
+            if (!ticker) { ecSetParseStatus('error', 'Please enter a ticker symbol.'); return; }
+            if (!pw) { ecSetParseStatus('error', 'Admin password required.'); return; }
+
+            btn.disabled = true;
+            ecSetParseStatus('loading', `Searching for ${ticker} earnings call transcripts… (this may take 1-2 min)`);
+
+            try {
+                const resp = await fetch(`${API_BASE}/api/earnings/scrape`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker, admin_password: pw }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    ecSetParseStatus('error', data.error || `Error ${resp.status}`);
+                } else {
+                    const msg = data.message || `Saved ${data.saved || 0} transcripts for ${ticker}.`;
+                    ecSetParseStatus('success', msg + ' Reload the page to see new data.');
+                    // Reload companies after a short delay
+                    setTimeout(() => {
+                        ecCompanies = [];
+                        ecLoadCompanies();
+                    }, 2000);
+                }
+            } catch (e) {
+                ecSetParseStatus('error', `Request failed: ${e.message}`);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function ecSetParseStatus(type, msg) {
+            const el = document.getElementById('parseStatus');
+            el.className = `parse-status ${type}`;
+            el.textContent = msg;
+        }
+
+        function escHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
         }
     </script>
 

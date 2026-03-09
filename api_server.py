@@ -17,6 +17,7 @@ import os
 import logging
 import sys
 import re
+import requests
 
 # Import backup utilities (only used in sqlite mode)
 try:
@@ -2943,6 +2944,286 @@ def _start_keepalive():
 
 # Start keep-alive as soon as the module is imported (works with gunicorn too)
 _start_keepalive()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EARNINGS CALLS — proxy + scraper endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+NEXTJS_BASE = 'https://mention-markets-web.onrender.com'
+
+
+@app.route('/api/earnings/companies', methods=['GET'])
+def earnings_companies():
+    """Proxy: fetch companies/transcripts list from Next.js earnings API."""
+    try:
+        resp = requests.get(f'{NEXTJS_BASE}/api/earnings', timeout=30)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 502
+
+
+@app.route('/api/earnings/transcript/<transcript_id>', methods=['GET'])
+def earnings_transcript(transcript_id):
+    """Proxy: fetch a single earnings transcript with segments from Next.js."""
+    try:
+        resp = requests.get(f'{NEXTJS_BASE}/api/earnings?id={transcript_id}', timeout=30)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({'error': str(e)}), 502
+
+
+@app.route('/api/earnings/scrape', methods=['POST'])
+def earnings_scrape():
+    """
+    Scrape Motley Fool earnings call transcripts for a given ticker and
+    POST them to the Next.js admin API.
+
+    Body: { "ticker": "AAPL", "admin_password": "..." }
+    """
+    import re as _re
+    from datetime import datetime as _dt
+    from bs4 import BeautifulSoup
+
+    data = request.get_json(silent=True) or {}
+    ticker = (data.get('ticker') or '').upper().strip()
+    admin_password = (data.get('admin_password') or os.environ.get('ADMIN_PASSWORD', '')).strip()
+
+    if not ticker:
+        return jsonify({'error': 'ticker is required'}), 400
+    if not admin_password:
+        return jsonify({'error': 'admin_password is required'}), 400
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (compatible; MentionMarkets-Scraper/1.0)',
+        'Accept': 'text/html,application/xhtml+xml',
+    }
+
+    # ── Step 1: discover transcript URLs from Motley Fool sitemaps ──────────────
+    transcript_urls = []
+    current_year = _dt.now().year
+    # Search last 5 years of monthly sitemaps
+    for year in range(current_year, current_year - 6, -1):
+        for month in range(1, 13):
+            sitemap_url = f'https://www.fool.com/sitemap/investing/{year}-{month:02d}.xml'
+            try:
+                r = requests.get(sitemap_url, timeout=15, headers=headers)
+                if r.status_code == 200:
+                    urls_in_sitemap = _re.findall(
+                        r'<loc>(https://www\.fool\.com[^<]+earnings[^<]*)</loc>',
+                        r.text, _re.IGNORECASE
+                    )
+                    for u in urls_in_sitemap:
+                        if ticker.lower() in u.lower():
+                            transcript_urls.append(u)
+            except Exception:
+                pass
+
+    transcript_urls = list(set(transcript_urls))
+
+    if not transcript_urls:
+        return jsonify({
+            'message': f'No transcripts found for {ticker} on Motley Fool. '
+                       f'Try a different ticker or check the spelling.',
+            'found': 0, 'saved': 0
+        }), 200
+
+    # ── Step 2: authenticate with Next.js admin API ────────────────────────────
+    session = requests.Session()
+    login = session.post(
+        f'{NEXTJS_BASE}/api/admin/auth',
+        json={'password': admin_password},
+        timeout=15
+    )
+    if login.status_code != 200:
+        return jsonify({'error': 'Admin authentication failed. Check the password.'}), 401
+
+    # ── Step 3: scrape and save each transcript ────────────────────────────────
+    saved = 0
+    skipped = 0
+    errors = []
+
+    def norm_text(t):
+        return ' '.join(t.split())
+
+    for url in transcript_urls[:25]:   # cap at 25 to stay within request timeout
+        try:
+            page = requests.get(url, timeout=25, headers=headers)
+            if page.status_code != 200:
+                continue
+
+            soup = BeautifulSoup(page.text, 'lxml')
+
+            # Title
+            h1 = soup.find('h1')
+            title = norm_text(h1.get_text()) if h1 else url.split('/')[-1].replace('-', ' ').title()
+
+            # Date
+            date_meta = soup.find('meta', property='article:published_time')
+            event_date = None
+            if date_meta and date_meta.get('content'):
+                event_date = date_meta['content'][:10]
+            if not event_date:
+                time_el = soup.find('time', attrs={'datetime': True})
+                if time_el:
+                    event_date = time_el['datetime'][:10]
+            if not event_date:
+                continue
+
+            # Fiscal quarter / year from title
+            qm = _re.search(r'Q([1-4])[^\d]*(\d{4})', title, _re.I) or \
+                 _re.search(r'(\d{4})[^\d]*Q([1-4])', title, _re.I)
+            if qm:
+                g = qm.groups()
+                if len(g[0]) == 1:
+                    fiscal_quarter, fiscal_year = int(g[0]), int(g[1])
+                else:
+                    fiscal_year, fiscal_quarter = int(g[0]), int(g[1])
+            else:
+                fiscal_quarter = None
+                fiscal_year = int(event_date[:4]) if event_date else None
+
+            earnings_key = f'{ticker}:FY{fiscal_year}:Q{fiscal_quarter}' \
+                if fiscal_year and fiscal_quarter else None
+
+            # Participants
+            company_reps = []
+            ceo = None
+            cfo = None
+
+            cp_heading = soup.find(['h2', 'h3'], string=_re.compile(r'call participants', _re.I))
+            if cp_heading:
+                sib = cp_heading.find_next_sibling()
+                while sib and sib.name not in ('h2', 'h3'):
+                    if sib.name == 'p':
+                        strong = sib.find('strong')
+                        em = sib.find('em')
+                        if strong and em:
+                            name = norm_text(strong.get_text())
+                            role = norm_text(em.get_text()).lower()
+                            if 'analyst' not in role and 'investor' not in role:
+                                company_reps.append(name)
+                                if not ceo and ('chief exec' in role or 'ceo' in role):
+                                    ceo = name
+                                elif not cfo and ('chief fin' in role or 'cfo' in role):
+                                    cfo = name
+                    elif sib.name == 'ul':
+                        for li in sib.find_all('li'):
+                            raw = norm_text(li.get_text())
+                            parts = [p.strip() for p in _re.split(r'[—–-]', raw) if p.strip()]
+                            if len(parts) < 2:
+                                continue
+                            role = parts[-1].lower()
+                            name = parts[0]
+                            if 'analyst' not in role:
+                                company_reps.append(name)
+                                if not ceo and ('chief exec' in role or 'ceo' in role):
+                                    ceo = name
+                                elif not cfo and ('chief fin' in role or 'cfo' in role):
+                                    cfo = name
+                    sib = sib.find_next_sibling()
+
+            primary_speaker = ceo or cfo or (company_reps[0] if company_reps else ticker)
+
+            # Speaking segments
+            segments = []
+            cur_speaker = None
+            cur_lines = []
+
+            content = (soup.find('div', class_='article-body') or
+                       soup.find('div', class_='article-content') or
+                       soup.find('article'))
+            if not content:
+                continue
+
+            for el in content.find_all(['p', 'h2', 'h3']):
+                txt = norm_text(el.get_text())
+                if not txt:
+                    continue
+                if el.name in ('h2', 'h3'):
+                    if cur_speaker and cur_lines:
+                        segments.append({
+                            'speaker': cur_speaker,
+                            'start_seconds': len(segments) * 60,
+                            'text': ' '.join(cur_lines)
+                        })
+                        cur_lines = []
+                    cur_speaker = None
+                    continue
+
+                strong = el.find('strong')
+                em_tag = el.find('em')
+                # Skip "Name -- Title" intro lines
+                if strong and em_tag and '--' in el.get_text():
+                    continue
+                # New speaker paragraph (bold name, short text)
+                if strong and not em_tag:
+                    candidate = norm_text(strong.get_text()).rstrip(':')
+                    if 2 < len(candidate) < 60 and not _re.search(r'\d', candidate):
+                        if cur_speaker and cur_lines:
+                            segments.append({
+                                'speaker': cur_speaker,
+                                'start_seconds': len(segments) * 60,
+                                'text': ' '.join(cur_lines)
+                            })
+                        cur_speaker = candidate
+                        cur_lines = []
+                        rest = _re.sub(r'^' + _re.escape(candidate) + r'\s*:?\s*', '', txt)
+                        if rest:
+                            cur_lines.append(rest)
+                        continue
+
+                if cur_speaker:
+                    cur_lines.append(txt)
+
+            if cur_speaker and cur_lines:
+                segments.append({
+                    'speaker': cur_speaker,
+                    'start_seconds': len(segments) * 60,
+                    'text': ' '.join(cur_lines)
+                })
+
+            if not segments:
+                skipped += 1
+                continue
+
+            payload = {
+                'title': title,
+                'event_date': event_date + 'T00:00:00.000Z',
+                'speech_type': 'Earnings Call',
+                'primary_speaker': primary_speaker,
+                'speakers_present': company_reps,
+                'has_q_and_a': True,
+                'key_themes': [],
+                'segments': segments,
+                'company_ticker': ticker,
+                'fiscal_year': fiscal_year,
+                'fiscal_quarter': fiscal_quarter,
+                'source': 'Motley Fool',
+                'source_url': url,
+                'earnings_key': earnings_key,
+            }
+
+            post_resp = session.post(
+                f'{NEXTJS_BASE}/api/admin/transcripts',
+                json=payload,
+                timeout=30
+            )
+            if post_resp.status_code in (200, 201):
+                saved += 1
+            else:
+                errors.append(f'{url}: HTTP {post_resp.status_code}')
+
+        except Exception as exc:
+            errors.append(f'{url}: {exc}')
+
+    return jsonify({
+        'message': f'Scraped {saved} new transcript(s) for {ticker}. '
+                   f'({skipped} skipped, {len(errors)} errors)',
+        'found': len(transcript_urls),
+        'saved': saved,
+        'skipped': skipped,
+        'errors': errors[:5],
+    })
 
 
 if __name__ == '__main__':
