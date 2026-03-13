@@ -53,26 +53,29 @@ export async function PUT(
       qa_overrides,
     } = body;
 
-    // Update in a transaction: update transcript, delete old segments, insert new
+    // Build a partial update object — only include fields present in the request
+    // so that omitted fields are left untouched (important for Q&A-only backfills).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateData: Record<string, any> = {};
+    if (title !== undefined) updateData.title = title;
+    if (event_date !== undefined) updateData.event_date = new Date(event_date);
+    if (speech_type !== undefined) updateData.speech_type = speech_type;
+    if (primary_speaker !== undefined) updateData.primary_speaker = primary_speaker;
+    if (speakers_present !== undefined) updateData.speakers_present = speakers_present || [];
+    if (has_q_and_a !== undefined) updateData.has_q_and_a = has_q_and_a;
+    if (total_speech_length_seconds !== undefined) updateData.total_speech_length_seconds = total_speech_length_seconds;
+    if (key_themes !== undefined) updateData.key_themes = key_themes || [];
+    if (question_count !== undefined) updateData.question_count = question_count;
+    if (avg_response_length_words !== undefined) updateData.avg_response_length_words = avg_response_length_words;
+    if (avg_response_length_seconds !== undefined) updateData.avg_response_length_seconds = avg_response_length_seconds;
+    if (qa_data !== undefined) updateData.qa_data = qa_data;
+    if (qa_data_auto !== undefined) updateData.qa_data_auto = qa_data_auto;
+    if (qa_overrides !== undefined) updateData.qa_overrides = qa_overrides;
+
     const transcript = await prisma.$transaction(async (tx) => {
       const t = await tx.transcript.update({
         where: { id },
-        data: {
-          title,
-          event_date: event_date ? new Date(event_date) : undefined,
-          speech_type,
-          primary_speaker,
-          speakers_present: speakers_present || [],
-          has_q_and_a: has_q_and_a ?? false,
-          total_speech_length_seconds: total_speech_length_seconds ?? null,
-          key_themes: key_themes || [],
-          question_count: question_count ?? null,
-          avg_response_length_words: avg_response_length_words ?? null,
-          avg_response_length_seconds: avg_response_length_seconds ?? null,
-          qa_data: qa_data ?? null,
-          qa_data_auto: qa_data_auto ?? null,
-          qa_overrides: qa_overrides ?? null,
-        },
+        data: updateData,
       });
 
       if (segments && Array.isArray(segments)) {

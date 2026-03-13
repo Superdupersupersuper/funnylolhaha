@@ -2972,6 +2972,112 @@ def earnings_transcript(transcript_id):
         return jsonify({'error': str(e)}), 502
 
 
+def _detect_earnings_qa(segments, company_reps):
+    """Rule-based Q&A detection for earnings calls (Python mirror of earnings-qa.ts)."""
+    import re as _re
+
+    def _norm(n):
+        return _re.sub(r'[^a-z\s]', '', n.lower()).strip()
+
+    rep_set = {_norm(r) for r in company_reps if _norm(r)}
+    has_operator = any(_re.match(r'^operator$', s.get('speaker', ''), _re.I) for s in segments)
+    if has_operator:
+        rep_set.add('operator')
+
+    def _is_rep(speaker):
+        norm = _norm(speaker)
+        if not norm:
+            return False
+        for r in rep_set:
+            if norm == r or norm in r or r in norm:
+                return True
+        return False
+
+    def _is_question(seg):
+        speaker = seg.get('speaker', '')
+        if _is_rep(speaker) or _re.match(r'^operator$', speaker, _re.I):
+            return False
+        text = seg.get('text', '')
+        words = text.split()
+        wc = len(words)
+        if wc < 8 or wc > 200:
+            return False
+        has_qmark = '?' in text
+        tl = text.lower().strip()
+        starts_interrog = bool(_re.match(
+            r'^(what|how|why|when|where|who|which|is|are|do|does|did|have|has|had|will|would|can|could|shall|should|may|might)\b', tl))
+        has_direct = bool(_re.search(
+            r'\b(can you|could you|would you|will you|do you|did you|have you|are you|is there|are there|'
+            r"i wonder|i'm wondering|i was wondering|what (is|are|was|were) your|how do you)", tl))
+        if not has_qmark and not starts_interrog and not has_direct:
+            return False
+        score = 0
+        if has_qmark:
+            score += 4
+        if starts_interrog:
+            score += 3
+        if has_direct:
+            score += 3
+        if wc <= 80:
+            score += 1
+        return score >= 4
+
+    pairs = []
+    for i, seg in enumerate(segments):
+        if not _is_question(seg):
+            continue
+        merged_text = ''
+        merged_wc = 0
+        resp_start = None
+        resp_speaker = ''
+        last_j = -1
+        for j in range(i + 1, len(segments)):
+            rseg = segments[j]
+            if not (_is_rep(rseg.get('speaker', '')) or _re.match(r'^operator$', rseg.get('speaker', ''), _re.I)):
+                break
+            if resp_start is None:
+                resp_start = rseg.get('start_seconds', 0)
+                resp_speaker = rseg.get('speaker', '')
+            merged_text += (' ' if merged_text else '') + rseg.get('text', '')
+            merged_wc += len(rseg.get('text', '').split())
+            last_j = j
+        if not merged_text or resp_start is None or merged_wc < 10:
+            continue
+        if merged_text.strip().endswith('?'):
+            continue
+
+        resp_dur = None
+        if last_j >= 0 and last_j + 1 < len(segments):
+            resp_dur = segments[last_j + 1].get('start_seconds', 0) - resp_start
+
+        pairs.append({
+            'qaKey': f"{seg.get('speaker', '')}:{seg.get('start_seconds', 0)}",
+            'questionSpeaker': seg.get('speaker', ''),
+            'questionText': seg.get('text', ''),
+            'questionStart': seg.get('start_seconds', 0),
+            'questionWordCount': len(seg.get('text', '').split()),
+            'responseSpeaker': resp_speaker,
+            'responseText': merged_text,
+            'responseStart': resp_start,
+            'responseWordCount': merged_wc,
+            'responseDurationSeconds': resp_dur,
+        })
+
+    qc = len(pairs)
+    avg_words = round(sum(p['responseWordCount'] for p in pairs) / qc) if qc else None
+    dur_pairs = [p for p in pairs if p['responseDurationSeconds'] is not None]
+    avg_sec = round(sum(p['responseDurationSeconds'] for p in dur_pairs) / len(dur_pairs) * 10) / 10 if dur_pairs else None
+
+    return {
+        'qa_data_auto': pairs,
+        'qa_data': pairs,
+        'question_count': qc,
+        'avg_response_length_words': avg_words,
+        'avg_response_length_seconds': avg_sec,
+        'has_q_and_a': qc > 0,
+    }
+
+
 @app.route('/api/earnings/scrape', methods=['POST'])
 def earnings_scrape():
     """
@@ -3186,13 +3292,16 @@ def earnings_scrape():
                 skipped += 1
                 continue
 
+            # ── Auto Q&A detection ─────────────────────────────────────────
+            qa_result = _detect_earnings_qa(segments, company_reps)
+
             payload = {
                 'title': title,
                 'event_date': event_date + 'T00:00:00.000Z',
                 'speech_type': 'Earnings Call',
                 'primary_speaker': primary_speaker,
                 'speakers_present': company_reps,
-                'has_q_and_a': True,
+                'has_q_and_a': qa_result['has_q_and_a'],
                 'key_themes': [],
                 'segments': segments,
                 'company_ticker': ticker,
@@ -3201,6 +3310,11 @@ def earnings_scrape():
                 'source': 'Motley Fool',
                 'source_url': url,
                 'earnings_key': earnings_key,
+                'question_count': qa_result['question_count'],
+                'avg_response_length_words': qa_result['avg_response_length_words'],
+                'avg_response_length_seconds': qa_result['avg_response_length_seconds'],
+                'qa_data': qa_result['qa_data'],
+                'qa_data_auto': qa_result['qa_data_auto'],
             }
 
             post_resp = session.post(
